@@ -13,10 +13,11 @@ style ergonomics.
 
 `repr(workflow)` indents nested `AgentParam`/`Session` previews similarly to nested modules.
 
-### Shortcut helper
+### Calling `run_session_loop`
 
-`run_session_loop_from_agent` forwards keyword arguments from an `AgentParam` into
-`run_session_loop` (mapping `agent_session`, `provider`, optional executor and round limits).
+Use `run_session_loop` from `rath.session`: pass the user `Session`, `agent_session` and
+`agent_provider` taken from your `AgentParam` (and optional `executor`, `tools`,
+`max_tool_rounds`).
 
 ## AgentParam
 
