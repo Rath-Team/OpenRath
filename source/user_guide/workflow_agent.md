@@ -1,35 +1,35 @@
-# Workflow and Agent
+# Workflow and AgentParam
 
 ## Workflow
 
 `Workflow` subclasses organize multi-agent orchestration:
 
-1. Instantiate agents by assigning `Agent` instances to attributes (`self.planner`, …).
+1. Instantiate agent params by assigning `AgentParam` instances to attributes (`self.planner`, …).
 2. Implement `forward(self, session: Session) -> Session` (blocking).
 
 Calling `workflow(session)` delegates to `forward`. `named_agents()` enumerates
 registered `(name, agent)` pairs sorted by name, mirroring `nn.Module.named_children()`
 style ergonomics.
 
-`repr(workflow)` indents nested `Agent`/`Session` previews similarly to nested modules.
+`repr(workflow)` indents nested `AgentParam`/`Session` previews similarly to nested modules.
 
 ### Shortcut helper
 
-`run_session_loop_from_agent` forwards keyword arguments from an `Agent` into
+`run_session_loop_from_agent` forwards keyword arguments from an `AgentParam` into
 `run_session_loop` (mapping `agent_session`, `provider`, optional executor and round limits).
 
-## Agent
+## AgentParam
 
-`Agent` bundles:
+`AgentParam` bundles:
 
 | Field | Purpose |
 |-------|---------|
 | `agent_session` | Frozen-ish instructions (`Session`) concatenated **ahead** of user chunks inside `run_session_loop`. |
 | `provider` | `Provider` dataclass carrying OpenAI-style sampling knobs (`model`, `temperature`, `tool_choice`, …). |
 
-`Agent.data` exposes a read-only mapping view over both fields for debugging.
+`AgentParam.data` exposes a read-only mapping view over both fields for debugging.
 
-`Agent` **does not** own transports (`complete`) or sandbox dispatch—those stay inside a
+`AgentParam` **does not** own transports (`complete`) or sandbox dispatch—those stay inside a
 `SessionLoopExecutor`.
 
 ## Session loop kernel

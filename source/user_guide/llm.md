@@ -13,7 +13,7 @@ Typical fields:
 | `temperature`, `top_p`, `max_tokens`, … | Sampling knobs mirroring OpenAI SDK |
 | `tool_choice`, `parallel_tool_calls` | Tool-call policy hints |
 
-Use `flow.Provider(...)` or `rath.llm.Provider(...)` interchangeably (`flow.Agent` imports the same type).
+Use `flow.Provider(...)` or `rath.llm.Provider(...)` interchangeably (`flow.AgentParam` imports the same type).
 
 ## RathOpenAIChatClient
 

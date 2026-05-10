@@ -5,7 +5,7 @@ after installing OpenRath (and optional extras as noted).
 
 | Script | Highlights |
 |--------|------------|
-| `example/workflow_usage.py` | `Workflow` + `Agent` + synchronous `run_session_loop` |
+| `example/workflow_usage.py` | `Workflow` + `AgentParam` + synchronous `run_session_loop` |
 | `example/session_usage.py` | Session construction / inspection |
 | `example/custom_tool_usage.py` | Registering tools on `ToolTable` |
 | `example/sandbox_backend_local.py` | Local backend sandbox binding |

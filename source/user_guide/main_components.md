@@ -14,17 +14,17 @@ and pass the session into `Workflow.forward` / `run_session_loop`.
 ## Workflow
 
 [`Workflow`](workflow_agent) subclasses implement `forward(session) -> session`.
-Assign [`Agent`](workflow_agent) instances as attributes to register them for
+Assign [`AgentParam`](workflow_agent) instances as attributes to register them for
 `named_agents()`—similar to registering child modules on `nn.Module`.
 
-## Agent
+## AgentParam
 
-[`Agent`](workflow_agent) pairs:
+[`AgentParam`](workflow_agent) pairs:
 
 - `agent_session` — system / developer-facing chunks (`Session`),
 - `provider` — [`Provider`](llm) sampling and routing fields folded into each completion request.
 
-`Agent` intentionally excludes HTTP clients or executors; those belong to the session loop.
+`AgentParam` intentionally excludes HTTP clients or executors; those belong to the session loop.
 
 ## run_session_loop
 

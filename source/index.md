@@ -2,7 +2,7 @@
 
 OpenRath is an open-source Python framework for **dynamic multi-agent workflows**
 with a deliberately **torch-inspired API surface**: composable modules
-(`Workflow`), attachable configuration (`Agent`), a tape-like conversation state
+(`Workflow`), attachable configuration (`AgentParam`), a tape-like conversation state
 (`Session`), structured tool calls (`FlowToolCall`) dispatched through sandbox
 **backends**, and an OpenAI-compatible **LLM** client path.
 
@@ -26,7 +26,7 @@ the runtime hardens. Expect APIs and performance characteristics to evolve.
   * [Design overview](user_guide/concepts.md)
   * [OpenRath main components](user_guide/main_components.md)
   * [Sessions and chunks](user_guide/session.md)
-  * [Workflow and Agent](user_guide/workflow_agent.md)
+  * [Workflow and AgentParam](user_guide/workflow_agent.md)
   * [Tools and ToolTable](user_guide/tools.md)
   * [Backends and sandboxes](user_guide/backends.md)
   * [LLM client and settings](user_guide/llm.md)
