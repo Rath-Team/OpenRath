@@ -14,27 +14,41 @@
 
 These mirror **functional** APIs: produce plain values consumed by backends.
 
-## ToolTable
+## Global ToolTable
 
-`ToolTable` stores `ToolRegistration` entries mapping OpenAI-style tool names to:
+`global_tool_table()` is the **single** registry used by `run_session_loop`. Default
+sandbox-loop tools (`run_shell_command`, `write_workspace_file`) are installed the
+first time the global table is accessed (including when you `import rath.flow.tool`).
 
-1. JSON Schema payloads surfaced to the LLM (`tools=[...]` wire format).
-2. Callables that emit concrete `FlowToolCall` instances when the model selects a tool.
+`extend_builtin_sandbox_tools(table)` reapplies those defaults onto any `ToolTable`
+(useful for isolated tests).
 
-`global_tool_table()` returns the process-wide default; pass an explicit `tool_table`
-to `run_session_loop` to scope registrations per workflow.
+## Inline tools — `@tool`
 
-`register_builtin_session_tools(table)` loads stock filesystem/command/code helpers used by the session loop.
+`tool(...)` (LangChain-style) registers a **Python** callable with a Pydantic
+`args_schema`. When the model selects that tool, arguments are validated with Pydantic
+and the function runs **in-process** inside `run_session_loop` (not via the sandbox).
+Use sandbox `ToolRegistration` builders when execution must happen on `BackendSandbox`.
 
-`register_global_tool` raises `ToolNameConflictError` if names collide—fail-fast registration semantics.
+`register_global_tool` raises `ToolNameConflictError` if names collide.
+
+## ToolRegistration
+
+Entries are either:
+
+1. **Sandbox** — `builder(args) -> FlowToolCall`, explicit JSON Schema `parameters`.
+2. **Inline** — `inline_fn` + `args_schema` (`type[pydantic.BaseModel]`); schema for the LLM
+   usually comes from `args_schema.model_json_schema()`.
+
+Use `ToolTable.resolve(name, arguments)` for both kinds; `ToolTable.build` accepts **sandbox**
+tools only.
 
 ## Dispatch path
 
 During `run_session_loop`:
 
-1. Executor `tool_schemas()` advertises available tools (falls back to `table.schemas()`).
+1. Tool definitions come from `global_tool_table()`; executor `tool_schemas()` may override the advertised list.
 2. Assistant messages may contain tool calls.
-3. Each call resolves through the table; executor `dispatch_tool` sends the resulting `FlowToolCall`
-   to the active `BackendSandbox`.
+3. Each call is **resolved** through the table; **sandbox** resolutions go to `executor.dispatch_tool` → `BackendSandbox.dispatch`; **inline** resolutions call the registered Python function and JSON-serialize the return value for the model.
 
-Unsupported payloads surface as `UnsupportedBackendTool` from the backend layer.
+Unsupported sandbox payloads surface as `UnsupportedBackendTool` from the backend layer.

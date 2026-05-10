@@ -16,7 +16,7 @@ style ergonomics.
 ### Shortcut helper
 
 `run_session_loop_from_agent` forwards keyword arguments from an `Agent` into
-`run_session_loop` (mapping `agent_session`, `provider`, optional executor/tool table limits).
+`run_session_loop` (mapping `agent_session`, `provider`, optional executor and round limits).
 
 ## Agent
 
@@ -34,16 +34,16 @@ style ergonomics.
 
 ## Session loop kernel
 
-`run_session_loop(user_session, agent_session, *, agent_provider, executor=None, tool_table=None, max_tool_rounds=16)`
+`run_session_loop(user_session, agent_session, *, agent_provider, executor=None, max_tool_rounds=16)`
 
 runs synchronously:
 
 - Builds messages by concatenating `chunk_table_to_messages(agent_session)` with the evolving user-session rows.
 - Issues completions via `executor.complete(RathLLMChatRequest(...))`.
-- Executes parallel tool calls through `executor.dispatch_tool(session_snapshot, FlowToolCall)`.
+- Resolves each tool call via `global_tool_table().resolve(...)`: **sandbox** tools use `executor.dispatch_tool(session_snapshot, FlowToolCall)`; **inline** `@tool` functions run in-process and results are serialized for the model.
 - Appends assistant chunks plus serialized tool feedback chunks until no tools remain or rounds exhaust.
 
-When `executor` is omitted, OpenRath constructs `DefaultSessionLoopExecutor(RathOpenAIChatClient(), tool_table=resolved_table)`
+When `executor` is omitted, OpenRath constructs `DefaultSessionLoopExecutor(RathOpenAIChatClient())`
 wrapping the default synchronous chat client configured via `.env` / environment variables.
 
 See the repository file `example/workflow_usage.py` for a minimal pattern.

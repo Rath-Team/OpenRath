@@ -36,9 +36,9 @@ output session.
 
 ## ToolTable and FlowToolCall
 
-[`ToolTable`](tools) maps OpenAI-style tool names to callables that emit structured
-[`FlowToolCall`](tools) objects (command runs, file IO, code execution, etc.).
-Built-ins register through `register_builtin_session_tools`.
+[`ToolTable`](tools) maps OpenAI-style tool names to **sandbox** builders (`FlowToolCall`)
+or **inline** `@tool` callables validated by Pydantic. There is a single process-wide
+[`global_tool_table`](tools); `run_session_loop` always reads from it.
 
 ## Backends
 
