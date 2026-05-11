@@ -1,56 +1,38 @@
-# OpenRath main components
+# OpenRath 主要组件
 
-The building blocks below mirror how PyTorch separates **data** (tensor),
-**modules** (`nn.Module`), **functional ops**, and **device backends**—adapted to LLM
-agents and sandboxed tools.
+下文对应 PyTorch 中**数据、模块、函数式算子、设备后端**的分工，并适配 LLM 智能体与沙箱工具。请按此顺序阅读；每节链向详解章节。
 
-## Session
+## 会话
 
-[`Session`](session) stores a [`ChunkTable`](session) plus optional sandbox binding.
-Construct leaf sessions with helpers such as `Session.from_user_message` and
-`Session.from_agent_prompt`, attach a backend with `.to(backend_name, spec=...)`,
-and pass the session into `Workflow.forward` / `run_session_loop`.
+[`Session`](session.md) 存放 [`ChunkTable`](session.md) 及可选的沙箱绑定。可用 `Session.from_user_message`、`Session.from_agent_prompt` 等构造叶会话，用 `.to(backend_name, spec=...)` 挂载后端，再传入 `Workflow.forward` / `run_session_loop`。
 
-## Workflow
+## 沙箱后端
 
-[`Workflow`](workflow_agent) subclasses implement `forward(session) -> session`.
-Assign [`AgentParam`](workflow_agent) instances as attributes to register them for
-`named_agents()`—similar to registering child modules on `nn.Module`.
+[`BackendSandbox`](backends.md) 是会话打开沙箱时获得的**运行时句柄**。[`Backend.dispatch`](backends.md) 执行工具载荷（`FlowToolCall` / `BackendTool`）并返回类型化结果（`CommandResult`、`FileContent` 等）。本地与 OpenSandbox 适配器位于 `rath.backend.local` 与 `rath.backend.opensandbox`（可选 extra）。
 
-## AgentParam
+## 工具
 
-[`AgentParam`](workflow_agent) pairs:
+[`ToolTable`](tools.md) 将 OpenAI 风格的工具名映射到 **沙箱** 构建器（`FlowToolCall`）或经 Pydantic 校验的 **进程内** `@tool` 可调用对象。全进程单例 [`global_tool_table()`](tools.md) 为 `run_session_loop` 所依赖。
 
-- `agent_session` — system / developer-facing chunks (`Session`),
-- `provider` — [`Provider`](llm) sampling and routing fields folded into each completion request.
+## 工作流
 
-`AgentParam` intentionally excludes HTTP clients or executors; those belong to the session loop.
+[`Workflow`](workflow_agent.md) 的子类实现 `forward(session) -> session`。将 [`AgentParam`](workflow_agent.md) 赋给属性，以便 `named_agents()` 枚举——类似 `nn.Module` 注册子模块。
 
-## run_session_loop
+## Agent 参数
 
-[`run_session_loop`](workflow_agent) alternates **chat completions** with **tool rounds**.
-It concatenates `agent_session` chunks ahead of the mutable user-side rows seen by the model,
-dispatches tool calls through a [`SessionLoopExecutor`](workflow_agent), and returns a new
-`Session` carrying assistant and tool-result chunks. Sandbox ownership is rebased onto the
-output session.
+[`AgentParam`](workflow_agent.md) 包含：
 
-## ToolTable and FlowToolCall
+- `agent_session` — 在循环中拼在用户分块**之前**的 system / 开发者侧 `Session` 分块；
+- `provider` — 并入每次补全请求的 [`Provider`](llm.md) 字段。
 
-[`ToolTable`](tools) maps OpenAI-style tool names to **sandbox** builders (`FlowToolCall`)
-or **inline** `@tool` callables validated by Pydantic. There is a single process-wide
-[`global_tool_table`](tools); `run_session_loop` always reads from it.
+`AgentParam` 刻意不包含 HTTP 客户端或执行器；后者属于会话循环执行器。
 
-## Backends
+## 会话循环
 
-[`BackendSandbox`](backends) is the runtime handle obtained when opening a sandbox.
-[`Backend.dispatch`](backends) executes `BackendTool` payloads (aliases of `FlowToolCall`)
-and returns typed results (`CommandResult`, `FileContent`, …).
+[`run_session_loop`](workflow_agent.md) 在 **聊天补全** 与 **工具轮次** 间交替：把 `agent_session` 的分块与用户会话的演变合并、经全局工具表解析、通过执行器分发沙箱调用，并返回带 assistant 与 tool 结果行的新 `Session`。
 
-Local and OpenSandbox adapters ship under `rath.backend.local` and
-`rath.backend.opensandbox` (extra).
+## LLM 请求接口
 
-## LLM client
+[`RathOpenAIChatClient`](llm.md) 使用环境配置（`python-dotenv`）做同步聊天补全。[`DefaultSessionLoopExecutor`](workflow_agent.md) 包装该客户端，实现 `SessionLoopExecutor`，并把对外声明的工具 schema 桥接到沙箱分发。
 
-[`RathOpenAIChatClient`](llm) performs synchronous chat completions using environment-backed
-settings (`python-dotenv`). [`DefaultSessionLoopExecutor`](workflow_agent) wraps the client,
-implements `SessionLoopExecutor`, and bridges tool schemas to sandbox dispatch.
+**下一篇：** [会话](session.md)

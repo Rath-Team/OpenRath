@@ -34,27 +34,34 @@ source_suffix = {
 }
 
 master_doc = "index"
-language = "en"
+language = "zh_CN"
 
 html_theme = "pydata_sphinx_theme"
-html_title = f"{project} documentation"
+html_title = f"{project} 文档"
 html_theme_options = {
     "show_nav_level": 2,
     "navigation_depth": 4,
     "collapse_navigation": False,
     "pygments_light_style": "default",
     "pygments_dark_style": "native",
-    # Uncomment when the canonical GitHub URL is fixed:
-    # "github_url": "https://github.com/ORG/OpenRath",
-    # "use_edit_page_button": True,
+    "github_url": "https://github.com/Rath-Team/OpenRath",
+    "use_edit_page_button": True,
 }
 
 html_context = {
     "default_mode": "auto",
+    "github_user": "Rath-Team",
+    "github_repo": "OpenRath",
+    "github_version": "main",
+    "doc_path": "docs/source",
 }
 
+# 不生成通用索引 / 模块索引页（与首页去掉「索引与表格」一致）
+html_use_index = False
+html_domain_indices = False
+
 intersphinx_mapping = {
-    "python": ("https://docs.python.org/3", None),
+    "python": ("https://docs.python.org/zh-cn/3", None),
 }
 
 myst_enable_extensions = ["colon_fence", "deflist"]

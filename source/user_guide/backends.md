@@ -1,51 +1,54 @@
-# Backends and sandboxes
+# 沙箱后端
 
-## Mental model
+读完 [会话与数据块](session.md) 后，下一层是**工具调用实际运行之处**：`Backend` 颁发 `BackendSandbox` 句柄并执行 `FlowToolCall` 载荷。理解沙箱后，继续 [工具与 ToolTable](tools.md)，查看线上工具名如何解析为这些调用。
 
-Think of `BackendSandbox` as an opaque **runtime handle** issued by a `Backend`
-implementation—similar to selecting `cuda` vs `cpu`, OpenRath selects `local` vs `opensandbox`.
+## 心智模型
 
-Tool execution always flows:
+把 `BackendSandbox` 看成由 `Backend` 实现颁发的**不透明运行时句柄**——类似选择 `cuda` 与 `cpu`，OpenRath 在 `local` 与 `opensandbox` 等之间选择。
+
+工具执行路径恒为：
 
 ```
 FlowToolCall → Backend.dispatch(sandbox, call) → ToolResult | bool
 ```
 
-(`FlowToolFilesExists` collapses to `bool`.)
+（`FlowToolFilesExists` 坍缩为 `bool`。）
 
-## Registry API
+## 注册表 API
 
-`rath.backend` exposes:
+`rath.backend` 暴露：
 
-| Function | Role |
-|----------|------|
-| `register(name, backend_cls)` | Plug in new backends |
-| `get(name)` | Resolve backend singleton |
-| `list_names()` / `preferred()` | Discovery helpers |
-| `set_default(name)` / `current()` | Default backend selection |
+| 函数 | 作用 |
+|------|------|
+| `register(name, backend_cls)` | 注册新后端 |
+| `get(name)` | 解析后端单例 |
+| `list_names()` / `preferred()` | 发现辅助 |
+| `set_default(name)` / `current()` | 默认后端选择 |
 
-Local backend imports eagerly (`import rath.backend.local`). OpenSandbox imports attempt optional extra loading and silently skip when dependencies are absent.
+本地后端会急切加载（`import rath.backend.local`）。OpenSandbox 会在可选依赖缺失时尝试加载并不报错跳过。
 
-## Local backend
+## 本地后端
 
-`LocalBackend` runs commands against the host filesystem via subprocess semantics paired with `anyio.Path`.
-Ideal for development parity tests (`tests/backends/test_local.py`).
+`LocalBackend` 借助 `anyio.Path` 在主机文件系统上以子进程语义执行命令，适合作开发/一致性测试（如 `tests/backends/test_local.py`）。
 
-## OpenSandbox backend
+## OpenSandbox 后端
 
-Installing `[opensandbox]` enables `rath.backend.opensandbox.OpenSandboxBackend`, which talks to a deployed OpenSandbox server.
-Configure domains/API keys via environment variables (see `.env.example`).
+安装 `[opensandbox]` 后可使用 `rath.backend.opensandbox.OpenSandboxBackend`，与已部署的 OpenSandbox 服务通信。域名与 API 密钥等通过环境变量配置（见 `.env.example`）。
 
-Capabilities (`Capabilities`, `IsolationLevel`) describe isolation guarantees; streams/events integrate with `anyio`.
+`Capabilities`、`IsolationLevel` 描述隔离级别；流/事件与 `anyio` 集成。
 
-## Streams and futures
+## 流与 Future
 
-`Stream`, `Event`, and `Future` wrap sandbox-scoped async primitives so concurrent tool orchestration can mirror CUDA stream idioms without tying OpenRath to a specific GPU stack.
+`Stream`、`Event`、`Future` 封装沙箱范围内的异步原语，便于并发编排类比 CUDA stream 的用法，而不把 OpenRath 绑死在某一 GPU 栈上。
 
-## Errors
+## 错误
 
-Common exceptions:
+常见异常：
 
-- `BackendSandboxClosed` — handle reuse after teardown.
-- `UnsupportedBackendTool` — backend cannot execute provided call category.
-- `BackendNotFound` — registry lookup failure.
+- `BackendSandboxClosed` — 拆除后仍复用句柄。
+- `UnsupportedBackendTool` — 后端无法执行给定类别的调用。
+- `BackendNotFound` — 注册表查找失败。
+
+---
+
+**下一篇：** [工具](tools.md)

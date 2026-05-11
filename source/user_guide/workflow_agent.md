@@ -1,50 +1,51 @@
-# Workflow and AgentParam
+# 工作流
+
+[工具与 ToolTable](tools.md) 把模型可见的名字接到实现上。**Workflow** 装载 [`AgentParam`](workflow_agent.md) 并实现 `forward`；下面的 `run_session_loop` 则是交替补全与工具轮次的同步内核。读完本章后请看 [LLM 客户端与配置](llm.md)，了解 `Provider` 与 `RathOpenAIChatClient` 如何接入。
 
 ## Workflow
 
-`Workflow` subclasses organize multi-agent orchestration:
+`Workflow` 子类组织多智能体编排：
 
-1. Instantiate agent params by assigning `AgentParam` instances to attributes (`self.planner`, …).
-2. Implement `forward(self, session: Session) -> Session` (blocking).
+1. 将 `AgentParam` 赋给属性以实例化各智能体参数（如 `self.planner`）。
+2. 实现 `forward(self, session: Session) -> Session`（阻塞）。
 
-Calling `workflow(session)` delegates to `forward`. `named_agents()` enumerates
-registered `(name, agent)` pairs sorted by name, mirroring `nn.Module.named_children()`
-style ergonomics.
+调用 `workflow(session)` 会委托给 `forward`。`named_agents()` 按名排序枚举已注册的 `(name, agent)`，用法接近 `nn.Module.named_children()`。
 
-`repr(workflow)` indents nested `AgentParam`/`Session` previews similarly to nested modules.
+`repr(workflow)` 会缩进嵌套的 `AgentParam`/`Session` 预览，类似嵌套模块。
 
-### Calling `run_session_loop`
+### 调用 `run_session_loop`
 
-Use `run_session_loop` from `rath.session`: pass the user `Session`, `agent_session` and
-`agent_provider` taken from your `AgentParam` (and optional `executor`, `tools`,
-`max_tool_rounds`).
+从 `rath.session` 使用 `run_session_loop`：传入用户 `Session`、`agent_session` 与来自 `AgentParam` 的 `agent_provider`（可选 `executor`、`tools`、`max_tool_rounds`）。
 
 ## AgentParam
 
-`AgentParam` bundles:
+`AgentParam` 打包：
 
-| Field | Purpose |
-|-------|---------|
-| `agent_session` | Frozen-ish instructions (`Session`) concatenated **ahead** of user chunks inside `run_session_loop`. |
-| `provider` | `Provider` dataclass carrying OpenAI-style sampling knobs (`model`, `temperature`, `tool_choice`, …). |
+| 字段 | 用途 |
+|------|------|
+| `agent_session` | 在 `run_session_loop` 内拼在用户分块**之前**的指令型 `Session`。 |
+| `provider` | 携带 OpenAI 风格采样参数的 `Provider`（`model`、`temperature`、`tool_choice` 等）。 |
 
-`AgentParam.data` exposes a read-only mapping view over both fields for debugging.
+`AgentParam.data` 提供两字段的只读映射视图，便于调试。
 
-`AgentParam` **does not** own transports (`complete`) or sandbox dispatch—those stay inside a
-`SessionLoopExecutor`.
+`AgentParam` **不**拥有传输层（`complete`）或沙箱分发——这些在 `SessionLoopExecutor` 内。
 
-## Session loop kernel
+## 会话循环内核
 
-`run_session_loop(user_session, agent_session, *, agent_provider, executor=None, max_tool_rounds=16)`
+`run_session_loop(user_session, agent_session, *, agent_provider, executor=None, max_tool_rounds=16)` **同步**运行：
 
-runs synchronously:
+- 将 `chunk_table_to_messages(agent_session)` 与演化的用户会话行拼接为消息。
+- 通过 `executor.complete(RathLLMChatRequest(...))` 请求补全。
+- 经 `global_tool_table().resolve(...)` 解析每个工具调用：**沙箱** 工具走 `executor.dispatch_tool(session_snapshot, FlowToolCall)`；**进程内** `@tool` 在进程内执行并将结果序列化给模型。
+- 追加 assistant 分块与序列化后的工具反馈，直到无工具或达到轮次上限。
 
-- Builds messages by concatenating `chunk_table_to_messages(agent_session)` with the evolving user-session rows.
-- Issues completions via `executor.complete(RathLLMChatRequest(...))`.
-- Resolves each tool call via `global_tool_table().resolve(...)`: **sandbox** tools use `executor.dispatch_tool(session_snapshot, FlowToolCall)`; **inline** `@tool` functions run in-process and results are serialized for the model.
-- Appends assistant chunks plus serialized tool feedback chunks until no tools remain or rounds exhaust.
+若省略 `executor`，OpenRath 会构造 `DefaultSessionLoopExecutor(RathOpenAIChatClient())`，使用 `.env` / 环境变量中的默认同步客户端。
 
-When `executor` is omitted, OpenRath constructs `DefaultSessionLoopExecutor(RathOpenAIChatClient())`
-wrapping the default synchronous chat client configured via `.env` / environment variables.
+### 可运行示例
 
-See the repository file `example/workflow_usage.py` for a minimal pattern.
+- [`example/session_usage.py`](https://github.com/Rath-Team/OpenRath/blob/main/example/session_usage.py) — 端到端 `run_session_loop`、本地沙箱与 Provider。
+- [`tests/flow/test_workflow_agent.py`](https://github.com/Rath-Team/OpenRath/blob/main/tests/flow/test_workflow_agent.py) — 最小 `Workflow` 子类与 `named_agents()`。
+
+---
+
+**下一篇：** [LLM 请求接口](llm.md)

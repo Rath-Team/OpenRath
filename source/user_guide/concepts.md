@@ -1,39 +1,25 @@
-# Design overview
+# 设计概览
 
-OpenRath adopts a **metaphor consistent with PyTorch-style ergonomics** without
-being a wrapper around PyTorch itself:
+OpenRath 采用与 **PyTorch 式易用性**一致的隐喻，但并不包装 PyTorch 本体：
 
-- **Stateful tape** — A [`Session`](session.md) holds ordered conversation chunks
-  (system, user, assistant, tool results). Think of it as the primary carrier object
-  you thread through a workflow.
-- **Composition** — A [`Workflow`](workflow_agent.md) aggregates named [`AgentParam`](workflow_agent.md)
-  instances via attribute assignment, similar to submodules on `nn.Module`.
-- **Functional tool payloads** — Structured calls (`FlowToolCall`) are built with
-  small factories under `rath.flow.tool`, analogous to `torch.nn.functional` style helpers.
-- **Backends** — Sandboxes (`BackendSandbox`) and concurrency helpers (`Stream`,
-  `Event`) mirror the idea of selecting a **device** or runtime for execution.
+- **有状态磁带** — [`Session`](session.md) 保存有序的会话分块（system、user、assistant、tool 结果等），是贯穿工作流的主要对象。
+- **组合** — [`Workflow`](workflow_agent.md) 通过属性赋值聚合具名的 [`AgentParam`](workflow_agent.md)，类似 `nn.Module` 的子模块。
+- **函数式工具载荷** — 结构化调用（`FlowToolCall`）由 `rath.flow.tool` 下的小工厂构造，类比 `torch.nn.functional` 风格。
+- **后端** — 沙箱（`BackendSandbox`）与并发辅助（`Stream`、`Event`）类似为执行选择**设备**或运行时。
 
-This mental model is descriptive: OpenRath does **not** embed autograd or tensors.
+该模型仅用于帮助理解：OpenRath **不包含** autograd 或张量。
 
-## Stable versus experimental
+若需对照大型项目如何区分叙述文与 API 参考，可见 [PyTorch 文档](https://docs.pytorch.org/docs/stable/index.html)。
 
-Documentation follows the same rough split as [PyTorch documentation](https://docs.pytorch.org/docs/stable/index.html):
+## 分层
 
-**Stable** areas include core dataclasses (`Session`, `AgentParam`, `Provider`),
-`run_session_loop`, `Workflow`, the `FlowToolCall` hierarchy, and `Backend.dispatch`.
+| 层次 | 包 | 职责 |
+|------|-----|------|
+| 会话运行时 | `rath.session` | 分块、谱系、注册表、会话循环 |
+| 执行 | `rath.backend` | 沙箱句柄、分发、结果、流 |
+| Flow 门面 | `rath.flow` | `Workflow`、`AgentParam`、工具表辅助 |
+| LLM I/O | `rath.llm` | 兼容 OpenAI 的请求/响应、客户端 |
 
-**Experimental** areas include remote sandbox binding details, optional extras wiring,
-and any hooks marked provisional in source docstrings—verify behavior against tests
-when upgrading.
+经验法则：**`rath.flow.tool` 定义工具调用值**；**`rath.backend` 在沙箱上执行它们**。`rath.flow.tool` **不** import `rath.backend`。
 
-## Layering
-
-| Layer | Packages | Responsibility |
-|-------|-----------|----------------|
-| Flow façade | `rath.flow` | `Workflow`, `AgentParam`, tool table helpers |
-| Session runtime | `rath.session` | Chunks, lineage, registry, session loop |
-| LLM I/O | `rath.llm` | OpenAI-compatible requests/responses, client |
-| Execution | `rath.backend` | Sandbox handles, dispatch, results, streams |
-
-Import rule of thumb: **`rath.flow.tool` defines tool call values**; **`rath.backend`**
-executes them on a sandbox. `rath.flow.tool` does **not** import `rath.backend`.
+**下一篇：** [主要组件](main_components.md)

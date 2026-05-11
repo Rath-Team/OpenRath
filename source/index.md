@@ -1,66 +1,40 @@
-# OpenRath documentation
+(openrath-documentation)=
+# OpenRath 文档
 
-OpenRath is an open-source Python framework for **dynamic multi-agent workflows**
-with a deliberately **torch-inspired API surface**: composable modules
-(`Workflow`), attachable configuration (`AgentParam`), a tape-like conversation state
-(`Session`), structured tool calls (`FlowToolCall`) dispatched through sandbox
-**backends**, and an OpenAI-compatible **LLM** client path.
+OpenRath 是面向动态多智能体工作流的 Python 框架，采用类似 Torch 的 API 设计，让大规模 Agent 的模块化开发成为可能。
 
-Features described in this documentation are classified by release status:
-
-**Stable (API-stable):** Symbols and behaviors we intend to keep compatible across
-minor releases, subject to normal semver caveats for `0.y.z`. Breaking changes,
-when unavoidable, should be called out in release notes ahead of time.
-
-**Experimental (API-unstable):** Areas under active iteration—layout of optional
-extras, edge cases around remote sandboxes, or hooks that may gain parameters as
-the runtime hardens. Expect APIs and performance characteristics to evolve.
-
-## Install OpenRath
-
-* [Installation](install.md) — supported Python versions, `pip` / `uv`, and optional extras.
-
-## User Guide
-
-* [User Guide](user_guide/index.md)
-  * [Design overview](user_guide/concepts.md)
-  * [OpenRath main components](user_guide/main_components.md)
-  * [Sessions and chunks](user_guide/session.md)
-  * [Workflow and AgentParam](user_guide/workflow_agent.md)
-  * [Tools and ToolTable](user_guide/tools.md)
-  * [Backends and sandboxes](user_guide/backends.md)
-  * [LLM client and settings](user_guide/llm.md)
-
-## Reference API
-
-* [Python API overview](reference/index.md)
-
-## Developer Notes
-
-* [Notes](notes/index.md)
-
-## Examples
-
-* [Examples index](examples/index.md)
-
-## Community
-
-* [Community](community/index.md)
-
-## Indices and tables
-
-* {ref}`genindex`
-* {ref}`modindex`
+* [安装](install.md)
+* [用户指南](user_guide/index.md)
+  * [设计概览](user_guide/concepts.md)
+  * [主要组件](user_guide/main_components.md)
+  * [会话](user_guide/session.md)
+  * [沙箱后端](user_guide/backends.md)
+  * [工具](user_guide/tools.md)
+  * [工作流](user_guide/workflow_agent.md)
+  * [LLM 请求接口](user_guide/llm.md)
+* [API 参考](reference/index.md)
+  * [`rath`](reference/rath.md)
+  * [`rath.session`](reference/session.md)
+  * [`rath.backend`](reference/backend.md)
+  * [`rath.flow`](reference/flow.md)
+  * [`rath.flow.tool`](reference/flow_tool.md)
+  * [`rath.llm`](reference/llm.md)
+  * [`rath.utils`](reference/utils.md)
+* [示例](examples/index.md)
+  * [如何使用 Session](examples/session_usage.md)
+  * [如何自定义工具](examples/custom_tool_usage.md)
+  * [如何绑定本地沙箱](examples/sandbox_backend_local.md)
+  * [如何绑定 OpenSandbox](examples/sandbox_backend_opensandbox.md)
 
 ```{toctree}
-:maxdepth: 3
-:caption: Site navigation
-:hidden:
+---
+maxdepth: 3
+caption: 站点导航
+hidden:
+---
 
 install
 user_guide/index
 reference/index
 examples/index
-notes/index
-community/index
 ```
