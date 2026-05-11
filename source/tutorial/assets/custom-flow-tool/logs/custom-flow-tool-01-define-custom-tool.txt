@@ -1,0 +1,18 @@
+$ class WordCountTool(FlowToolCall): ...
+
+name=word_count
+description=Count words and unique lowercase tokens in a short text.
+parameters={
+  "type": "object",
+  "properties": {
+    "text": {
+      "type": "string",
+      "description": "Text to count."
+    }
+  },
+  "required": [
+    "text"
+  ],
+  "additionalProperties": false
+}
+The tool executes in Python and returns a plain dict.

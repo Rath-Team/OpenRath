@@ -1,0 +1,16 @@
+$ sandbox.dispatch(flow_tool_files_read(...)); sandbox.dispatch(flow_tool_code_run(...))
+
+read result
+
+{
+  "data": "hello from OpenRath local backend\n"
+}
+
+code result
+
+{
+  "text": null,
+  "stdout": "HELLO FROM OPENRATH LOCAL BACKEND\n\n",
+  "stderr": "",
+  "error": null
+}

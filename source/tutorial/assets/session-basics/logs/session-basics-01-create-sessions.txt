@@ -1,0 +1,23 @@
+$ python docs/source/tutorial/scripts/run_tutorial_steps.py --section session-basics
+
+agent_session
+
+session_id=44e85df9-261c-4dbe-ab8b-89c0b2a6360c
+sandbox_backend=None
+sandbox_open=False
+lineage_operator=implicit
+chunks:
+  [0] system: {
+  "content": "You are a concise tutorial assistant."
+}
+
+user_session
+
+session_id=1e58e5c6-f976-4fbc-9e10-9b32e6a3c5a6
+sandbox_backend=None
+sandbox_open=False
+lineage_operator=implicit
+chunks:
+  [0] user: {
+  "content": "List files in the sandbox."
+}

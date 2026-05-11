@@ -1,0 +1,6 @@
+$ backend.close(sandbox)
+
+sandbox.closed=True
+handle_was=/var/folders/q1/zd2rr4m962z413y81j14zyxc0000gn/T/rath-local-rqtmgm_j
+handle_exists_after_close=False
+sandbox_count=0

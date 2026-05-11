@@ -1,0 +1,9 @@
+$ user.fork(); forked.detach()
+
+user.id=1e58e5c6-f976-4fbc-9e10-9b32e6a3c5a6
+forked.id=aecafba1-82c8-48e1-b7e1-61deee9b0422
+forked.parent_session_ids=['1e58e5c6-f976-4fbc-9e10-9b32e6a3c5a6']
+forked.lineage_operator=Session.fork
+detached.id=ab304c59-fc2a-4fe7-8072-6717fa942193
+detached.parent_session_ids=[]
+detached.lineage_operator=Session.detach

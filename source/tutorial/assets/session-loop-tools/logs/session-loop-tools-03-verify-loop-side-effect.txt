@@ -1,0 +1,8 @@
+$ global_system_tools()["run_shell_command"](out, {"cmd": "ls -1 && cat tutorial_loop.txt"})
+
+{
+  "exit_code": 0,
+  "stdout": "tutorial_loop.txt\ncreated by run_session_loop\n",
+  "stderr": "",
+  "elapsed_ms": 6.405000000086147
+}

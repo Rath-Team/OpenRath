@@ -1,0 +1,7 @@
+$ user.to("local"); with user: ...
+
+sandbox_backend=local
+handle_during_context=/var/folders/q1/zd2rr4m962z413y81j14zyxc0000gn/T/rath-local-qt8uim58
+handle_exists_during_context=True
+sandbox_after_context=None
+handle_exists_after_context=False
