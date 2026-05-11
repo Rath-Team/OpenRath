@@ -3,16 +3,14 @@
 
 模型可见工具接口、内置工具、工具表合并和 backend payload factory。
 
-## 源码（Source）
-
+## 源码
 | 模块 | 源码 |
 | --- | --- |
 | `rath.flow.tool.base` | `src/rath/flow/tool/base.py` |
 | `rath.flow.tool.system_tool` | `src/rath/flow/tool/system_tool.py` |
 | `rath.flow.tool.tool_table` | `src/rath/flow/tool/tool_table.py` |
 
-## 公共契约（Public Contract）
-
+## 公共契约
 ### `FlowToolCall`
 
 | 成员 | 类型 | 说明 |
@@ -22,8 +20,7 @@
 | `parameters` | `Mapping[str, Any]` | JSON Schema object。 |
 | `__call__(session, arguments)` | `Any` | runtime 执行入口。 |
 
-### 内置工具（Built-in Tools）
-
+### 内置工具
 | Tool | Name | 参数 | 行为 |
 | --- | --- | --- | --- |
 | `RunShellCommandTool` | `run_shell_command` | `{cmd: string}` | 调用 `BackendToolCommandRun`。 |
@@ -31,8 +28,7 @@
 
 `RunShellCommandTool` 会拒绝多行命令和超过 2048 字符的命令。`WriteWorkspaceFileTool` 要求 `content` 是 text。
 
-### 工具表（Tool Table）
-
+### 工具表
 | 函数 | 返回 | 行为 |
 | --- | --- | --- |
 | `global_system_tools()` | `dict[str, FlowToolCall]` | 返回进程内 singleton 内置工具表。 |
@@ -41,8 +37,7 @@
 
 用户工具名与内置工具名冲突时，`merge_tools_for_loop(...)` 抛 `ToolNameConflictError`。
 
-### 后端工具工厂（Backend Tool Factories）
-
+### 后端工具工厂
 | 函数 | 返回 |
 | --- | --- |
 | `flow_tool_command_run(cmd, env=None, cwd=None, stdin=None, timeout=None)` | `BackendToolCommandRun` |
@@ -52,8 +47,7 @@
 | `flow_tool_files_exists(path)` | `BackendToolFilesExists` |
 | `flow_tool_code_run(code, language="python", timeout=None)` | `BackendToolCodeRun` |
 
-## 自动文档（Autodoc）
-
+## 自动文档
 ```{eval-rst}
 .. autoclass:: rath.flow.tool.FlowToolCall
    :members:
@@ -85,4 +79,4 @@
 .. autoexception:: rath.flow.tool.ToolNameConflictError
 ```
 
-[← API 参考](index.md)
+[← API Reference](index.md)

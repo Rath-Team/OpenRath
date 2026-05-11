@@ -3,8 +3,7 @@
 
 会话状态、chunk transcript、session loop、上下文压缩和 lineage graph。
 
-## 源码（Source）
-
+## 源码
 | 模块 | 源码 |
 | --- | --- |
 | `rath.session.session` | `src/rath/session/session.py` |
@@ -15,8 +14,7 @@
 | `rath.session.graph` | `src/rath/session/graph/` |
 | `rath.session.manager` | `src/rath/session/manager.py` |
 
-## 公共契约（Public Contract）
-
+## 公共契约
 ### `Session`
 
 | 字段 | 类型 | 含义 |
@@ -39,8 +37,7 @@
 | `session.fork()` | `Session` | 复制 chunk rows 与 sandbox target，parent 指向源 session。 |
 | `session.detach()` | `Session` | 复制 chunk rows 与 sandbox target，创建新的 lineage root。 |
 
-### Chunk 辅助函数（Chunk Helpers）
-
+### Chunk 辅助函数
 | 函数 | 返回 | 用途 |
 | --- | --- | --- |
 | `user_text_chunk(text)` | `ChunkRow` | 创建 user row。 |
@@ -49,8 +46,7 @@
 | `tool_feedback_chunk(tool_call_id, name, body)` | `ChunkRow` | 创建 tool result row。 |
 | `chunk_table_to_messages(tab)` | `tuple[RathLLMMessage, ...]` | 转成 chat completion messages。 |
 
-### 循环（Loop）
-
+### 循环
 ```python
 run_session_loop(
     user_session: Session,
@@ -74,8 +70,7 @@ run_session_loop(
 
 返回的 `Session` 以 user rows 为起点，追加 assistant rows 和 `tool_result` rows。输出 session 的 lineage parents 是 user session 和 agent session。
 
-### 压缩（Compress）
-
+### 压缩
 ```python
 run_session_compress(
     user_session: Session,
@@ -90,8 +85,7 @@ run_session_compress(
 
 返回 user-only session。compress request 使用 `tools=None` 和 `tool_choice="none"`；模型返回 tool calls 时抛 `RuntimeError`。
 
-### 异常与边界行为（Exceptions And Edge Behavior）
-
+### 异常与边界行为
 | 位置 | 行为 |
 | --- | --- |
 | `Session.require_sandbox()` | 无 backend target 时抛 `RuntimeError`。 |
@@ -99,8 +93,7 @@ run_session_compress(
 | `run_session_loop(...)` | tool arguments 非 JSON、未知工具、工具执行异常会写入 JSON error `tool_result`。 |
 | `run_session_compress(...)` | 空模型内容、tool calls、异常 finish reason 会抛 `RuntimeError`。 |
 
-## 自动文档（Autodoc）
-
+## 自动文档
 ```{eval-rst}
 .. autoclass:: rath.session.Session
    :members:
@@ -127,4 +120,4 @@ run_session_compress(
 .. autofunction:: rath.session.detach_session
 ```
 
-[← API 参考](index.md)
+[← API Reference](index.md)

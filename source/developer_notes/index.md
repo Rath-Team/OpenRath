@@ -1,11 +1,9 @@
-# 开发者笔记（Developer Notes）
-
+# Developer Notes
 Developer Notes 解释 OpenRath 的核心组件和运行边界。这里面向想要扩展 OpenRath、读源码、写自定义 workflow 或接入新 backend 的开发者。
 
-本页回答：阅读源码时应该先看哪些组件入口，以及每个组件和源码、测试之间如何对应。
+本页整理核心组件入口，以及组件、源码、测试之间的对应关系。
 
-## 组件地图（Component Map）
-
+## 组件地图
 | 组件 | 负责内容 | 入口 |
 | --- | --- | --- |
 | `Session` | 上下文表、backend placement、session graph。 | [Session](session.md) |
@@ -15,9 +13,8 @@ Developer Notes 解释 OpenRath 的核心组件和运行边界。这里面向想
 | `Workflow` | 可组合的 agent workflow 模块。 | [Workflow](workflow.md) |
 | `LLM` | request 构造、OpenAI-compatible client、executor 替换点。 | [LLM](llm.md) |
 
-## 阅读顺序（Reading Order）
-
-| 目标 | 推荐顺序 |
+## 阅读顺序
+| 目标 | 阅读顺序 |
 | --- | --- |
 | 理解运行路径 | `Session` → `Sandbox` → `Tool` |
 | 写单 agent | `AgentParam` → `Workflow` → `LLM` |
@@ -25,8 +22,7 @@ Developer Notes 解释 OpenRath 的核心组件和运行边界。这里面向想
 | 写自定义工具 | `Tool` → `Sandbox` → `Session` |
 | 接新模型网关 | `LLM` → `AgentParam` |
 
-## 源码与测试（Source And Tests）
-
+## 源码与测试
 | 组件 | 主要源码 | 主要测试 |
 | --- | --- | --- |
 | `Session` | `src/rath/session/session.py`, `loop.py`, `compress.py`, `graph/` | `tests/session/`, `tests/integration/test_session_*_real.py` |
@@ -41,7 +37,7 @@ Developer Notes 只描述当前源码已经实现的行为。Roadmap、troublesh
 ```{toctree}
 ---
 maxdepth: 2
-caption: 开发者笔记
+caption: Developer Notes
 ---
 
 session

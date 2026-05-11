@@ -1,15 +1,13 @@
-# API 参考（API Reference）
-
+# API Reference
 本节按真实包结构整理 public API。每个页面包含三类信息：
 
 | 信息 | 用途 |
 | --- | --- |
-| 源码（Source） | 对应源码文件，方便直接跳回实现。 |
-| 公共契约（Public contract） | 常用签名、参数、返回值和异常。 |
-| 自动文档（Autodoc） | 从当前源码导入的 class/function 文档。 |
+| 源码 | 对应源码文件，方便直接跳回实现。 |
+| 公共契约 | 常用签名、参数、返回值和异常。 |
+| 自动文档 | 从当前源码导入的 class/function 文档。 |
 
-## 包结构（Packages）
-
+## 包结构
 | 包 | 内容 |
 | --- | --- |
 | [`rath`](rath.md) | 包级入口。 |
@@ -23,7 +21,7 @@
 ```{toctree}
 ---
 maxdepth: 2
-caption: API 参考
+caption: API Reference
 ---
 
 rath

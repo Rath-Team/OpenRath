@@ -71,7 +71,7 @@ forked = session.fork()
 detached = session.detach()
 ```
 
-两者都会复制 `chunk_table`，也都会复制 sandbox target（backend 名称和 open spec），但不会复制已经打开的 sandbox handle。
+两者都会复制 `chunk_table`，也都会复制 sandbox target，包括 backend 名称和 open spec，但不会复制已经打开的 sandbox handle。
 
 差异在 lineage：
 

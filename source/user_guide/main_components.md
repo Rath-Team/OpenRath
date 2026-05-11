@@ -23,7 +23,7 @@
 
 ## `rath.flow.tool`
 
-`FlowToolCall` 是 session loop 的模型可见工具抽象。它不是 `BackendTool` 的别名，而是更高一层：
+`FlowToolCall` 是 session loop 的模型可见工具抽象，层级高于 `BackendTool`：
 
 - `FlowToolCall.name` 进入 LLM tool schema；
 - `FlowToolCall.parameters` 是 JSON Schema；

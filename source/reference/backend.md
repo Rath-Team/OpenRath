@@ -3,8 +3,7 @@
 
 后端抽象、sandbox handle、backend tool payload、执行结果、注册表和 stream。
 
-## 源码（Source）
-
+## 源码
 | 模块 | 源码 |
 | --- | --- |
 | `rath.backend.abc` | `src/rath/backend/abc.py` |
@@ -15,10 +14,8 @@
 | `rath.backend.opensandbox` | `src/rath/backend/opensandbox.py` |
 | `rath.backend.stream` | `src/rath/backend/stream.py` |
 
-## 公共契约（Public Contract）
-
-### 后端接口（Backend Interface）
-
+## 公共契约
+### 后端接口
 | API | 返回 | 说明 |
 | --- | --- | --- |
 | `Backend.is_available()` | `bool` | 静态可用性检查。 |
@@ -28,8 +25,7 @@
 | `backend.close(sandbox)` | `None` | 关闭并释放资源。 |
 | `backend.dispatch(sandbox, call)` | `ToolResult` \| `bool` | 执行 payload。 |
 
-### 沙箱规格（Sandbox Spec）
-
+### 沙箱规格
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | `image` | `str` \| `None` | backend 可选择使用的镜像名。 |
@@ -38,8 +34,7 @@
 | `timeout` | `timedelta` \| `None` | sandbox 生命周期或创建超时语义。 |
 | `working_dir` | `str` \| `None` | local 工作目录或 OpenSandbox host bind 来源。 |
 
-### 后端工具载荷（Backend Tool Payloads）
-
+### 后端工具载荷
 | Payload | 字段 | 返回 |
 | --- | --- | --- |
 | `BackendToolCommandRun` | `cmd`, `env`, `cwd`, `stdin`, `timeout` | `CommandResult` 或 `ToolExecutionFailure` |
@@ -49,8 +44,7 @@
 | `BackendToolFilesExists` | `path` | `bool` |
 | `BackendToolCodeRun` | `code`, `language`, `timeout` | `CodeResult` 或 `ToolExecutionFailure` |
 
-### 注册表（Registry）
-
+### 注册表
 | 函数 | 行为 |
 | --- | --- |
 | `register(name)` | 注册 backend class 的装饰器。 |
@@ -61,8 +55,7 @@
 | `preferred(names)` | 返回第一个可用 backend 实例。 |
 | `set_default(name)` / `current()` | 设置和获取默认 backend。 |
 
-### 异常（Exceptions）
-
+### 异常
 | 异常 | 触发位置 |
 | --- | --- |
 | `BackendNotFound` | `get(...)` / `get_class(...)` 找不到 backend。 |
@@ -70,15 +63,13 @@
 | `UnsupportedBackendTool` | backend 实现不支持某种 payload。 |
 | `RuntimeError` | OpenSandbox SDK 缺失时直接打开 opensandbox backend。 |
 
-## 内置后端（Built-in Backends）
-
+## 内置后端
 | Backend | 行为 |
 | --- | --- |
 | `local` | host-side subprocess + filesystem workspace；导入 `rath.backend` 后自动注册。 |
 | `opensandbox` | optional SDK backend；容器 root 为 `/workspace`，`working_dir` 会请求 host bind。 |
 
-## 自动文档（Autodoc）
-
+## 自动文档
 ```{eval-rst}
 .. autoclass:: rath.backend.Backend
    :members:
@@ -139,4 +130,4 @@
 .. autofunction:: rath.backend.preferred
 ```
 
-[← API 参考](index.md)
+[← API Reference](index.md)

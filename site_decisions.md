@@ -10,7 +10,7 @@
 - 对标 PyTorch 这类成熟开源项目：清楚的学习路径、教程入口、API 入口、版本感、可信工程气质。
 - 展示页可以更产品化，但不能变成空泛营销页。
 - 第一版 site 不依赖定制插图。先用文字、代码块、表格、真实 tutorial 链接和日志链接把信息架构跑通；图片作为下一阶段视觉增强内容。
-- 站点文案采用正向定义式表达。优先写“OpenRath 是什么、提供什么、适用于什么场景”，避免使用“不是 X，而是 Y”这类对比句式。必要的边界说明放在“当前边界 / 适用范围 / 暂不承诺”中，用事实列出。
+- 站点文案采用正向定义式表达。优先写“OpenRath 是什么、提供什么、适用于什么场景”，少用否定式对比。必要的边界说明放在“当前边界 / 适用范围 / 暂不承诺”中，用事实列出。
 
 ## 决策记录格式
 
@@ -43,10 +43,10 @@
 | D12 | LLM provider 怎么讲 | OpenAI-compatible default client + replaceable SessionLoopExecutor | 已决策 |
 | D13 | 示例路径 | Tutorials 页面统一承载 tutorials + examples | 已决策 |
 | D14 | 可信度证据 | 源码/API/确定性教程为主，测试说明为辅 | 已决策 |
-| D15 | 视觉风格 | 工程化、清爽、像 docs 而不是营销 landing | 待决策 |
+| D15 | 视觉风格 | 工程文档站为主体，保留克制的精致感 | 已决策 |
 | D16 | 是否做交互 demo | 第一版不做复杂交互，先静态 HTML | 待决策 |
-| D17 | 导航结构 | Home / Tutorials / Developer Notes / API Reference / GitHub | 待决策 |
-| D18 | 语言策略 | README 英文，站点中文优先，可预留英文化 | 待决策 |
+| D17 | 导航结构 | 顶部导航使用 Installation / Tutorials / Developer Notes / API Reference | 已决策，已修订 |
+| D18 | 语言策略 | 正式站点正文中文优先，导航和少数固定入口可用英文 | 已决策，已修订 |
 | D19 | 未完成功能如何呈现 | Roadmap/Experimental 明确标注 | 待决策 |
 | D20 | 首页最终目标 | 让新读者 3 分钟理解并愿意跑 tutorial | 待决策 |
 
@@ -591,7 +591,7 @@ Showcase 当前内容：
 - B. 强调执行位置与生命周期。
 - C. 弱化 sandbox，只讲 tools。
 
-最终决策：采用分层表达。OpenRath 要强调 backend/sandbox 是工具副作用发生的位置与执行边界，但不能把当前默认 `local` backend 说成强安全隔离。项目长期可以参考 OpenSandbox 和 Anthropic sandbox 这类执行环境设计，但 OpenRath 的目标不是“超越 Docker”，而是在 agent runtime 中提供清晰、可替换、可演进的执行 backend 抽象。
+最终决策：采用分层表达。OpenRath 要强调 backend/sandbox 是工具副作用发生的位置与执行边界。当前默认 `local` backend 表达为本地执行位置，不表达为强安全隔离。项目长期可以参考 OpenSandbox 和 Anthropic sandbox 这类执行环境设计；OpenRath 在 agent runtime 中提供清晰、可替换、可演进的执行 backend 抽象。
 
 分层表达：
 
@@ -887,7 +887,14 @@ Tutorials
 - B. 工程文档站。
 - C. 研究项目主页。
 
-当前倾向：B。首页可以有清晰价值表达，但整体应像成熟开源文档，而不是广告页。
+最终决策：B。首页可以有清晰价值表达，但整体应像成熟开源文档。当前视觉方向保留：工程化、清爽、代码优先、低饱和强调色、克制留白，后续只做细节 polish，不重做视觉体系。
+
+补充原则：
+
+- 第一版不依赖复杂插画或强交互来建立高级感，主要靠排版、代码块、清晰层级和稳定导航建立可信度。
+- Homepage 可以保留更强的第一屏表达，但正文页面保持文档站气质，避免营销式卡片堆叠。
+- 代码示例是核心视觉证据，tutorial 中优先展示代码与简洁输出，而不是大量截图。
+- 后续若加入图片资产，应服务于解释抽象或展示运行模型，不能盖过代码和文档结构。
 
 ### D16. 是否做交互 demo
 
@@ -907,7 +914,13 @@ Tutorials
 - B. Home / Docs / Examples / Roadmap / GitHub。
 - C. Docs-first 单站点导航，侧边栏再展开 Tutorials 和 Developer Notes。
 
-当前倾向：A。它直接反映当前站点结构：快速上手进入 `Tutorials`，核心组件进入 `Developer Notes`，查接口进入 `API Reference`。
+最终决策：A 的收紧版。顶部导航使用四个英文入口：`Installation`、`Tutorials`、`Developer Notes`、`API Reference`。不在导航里使用中文栏目名和英文栏目名并列的混排格式。
+
+补充原则：
+
+- `Developer Notes` 直接保留英文，因为“开发者笔记”作为正式栏目名显得笨拙。
+- `API Reference` 直接保留英文，因为这是开发者文档里的稳定栏目名。
+- 正式页面可以在正文中解释中文含义，但标题和导航避免中英括号并列。
 
 ### D18. 语言策略
 
@@ -917,7 +930,17 @@ Tutorials
 - B. 全英文。
 - C. 中文站点优先，保留英文 README 与未来英文站点空间。
 
-当前倾向：C。当前用户目标和文档主体是中文，但开源项目长期需要英文入口。
+最终决策：采用中英文双站点策略。当前先完成中文站，英文站后续从稳定中文站翻译过去。正式中文站正文中文优先，英文用于栏目名、API/class 名、代码概念和少数稳定技术术语。标题里不把中文名称和英文别名并列；中文就中文，英文就英文。
+
+补充原则：
+
+- Homepage 的核心定位句可以保留英文，但正文解释以中文为主。
+- 顶部导航使用英文四项，降低“开发者笔记”这类中文直译带来的生硬感。
+- Developer Notes 内部组件页可以直接使用 `Session`、`Sandbox`、`Tool`、`Agent Param`、`Workflow`、`LLM` 作为页面标题。
+- 正文小标题优先中文；如果是 class、package 或 API 名，则直接使用英文原名。
+- `docs/source` 是当前中文站的唯一正式 source tree。
+- 英文站后续单独维护为独立 source tree，不在中文站标题里通过括号提前维护英文名。
+- 翻译英文站之前，先把中文站的结构、内容准确性、端到端验证和视觉 polish 做完。
 
 ### D19. 未完成功能如何呈现
 
@@ -958,11 +981,14 @@ Tutorials
 - D07：正式文档入口修订为 `Install / Tutorials / Developer Notes / API Reference`；`Examples` 合并进入 `Tutorials`，`Developer Notes` 承担核心组件深度说明。
 - D08：`docs/source/showcase/` 保留为内部 site 文案素材库，不进入正式 site 主导航。
 - D09：sandbox/backend 采用分层表达；强调显式执行位置和可替换 backend，不夸大 local 安全性，也不把 OpenRath 说成 Docker 替代品。
-- D10：工具系统采用 `FlowToolCall`、backend-facing payload、Session loop 记录三层表达；全站文案采用正向定义式表达，避免“不是 X，而是 Y”句式。
+- D10：工具系统采用 `FlowToolCall`、backend-facing payload、Session loop 记录三层表达；全站文案采用正向定义式表达，少用否定式对比。
 - D11：`Session` 采用 chunk transcript、sandbox placement、lineage carrier 三层表达；首页短句为 `Sessions carry state, placement, and lineage.`。
 - D12：LLM 层采用 OpenAI-compatible 默认客户端 + 可替换 `SessionLoopExecutor` 表达；当前默认路径是同步 non-streaming chat completions。
 - D13：`Tutorials` 作为统一学习入口，内部承载 step-by-step tutorials 和 runnable examples；不把 generated assets 或依赖标签系统作为正式页面结构。
 - D14：可信度证据采用源码对应、API Reference 和 deterministic tutorials 为主，测试覆盖说明为辅；截图、日志和 generated assets 保留为内部验证材料或附录素材。
+- D15：视觉风格采用工程文档站为主体，保留克制的精致感。当前视觉方向整体可接受，后续只做细节 polish，不重做视觉体系。
+- D17：顶部导航使用 `Installation`、`Tutorials`、`Developer Notes`、`API Reference` 四个英文入口；正式站点不使用中英括号混排栏目名。
+- D18：采用中英文双站点策略；当前先完成中文站，英文站后续从稳定中文站翻译过去。中文站标题不维护英文括号别名。
 
 ## 变更记录
 

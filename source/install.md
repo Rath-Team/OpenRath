@@ -1,6 +1,6 @@
-# 安装
+# Installation
 
-OpenRath 支持 CPython `3.10` 到 `3.13`。根据你的目标选择安装路径：
+OpenRath 支持 CPython `3.10` 到 `3.13`。根据使用目标选择安装路径：
 
 | 目标 | 使用路径 |
 | --- | --- |
@@ -9,15 +9,14 @@ OpenRath 支持 CPython `3.10` 到 `3.13`。根据你的目标选择安装路径
 | 想使用容器 sandbox backend | [启动并连接 OpenSandbox](#launch-and-connect-opensandbox) |
 
 (install-openrath-from-pypi)=
-## 从 PyPI 安装 OpenRath（Install OpenRath from PyPI）
-
+## 从 PyPI 安装 OpenRath
 这是面向使用者的安装方式。它安装 OpenRath 的核心 runtime：`Session`、`Workflow`、`FlowToolCall`、local backend 和默认 OpenAI-compatible LLM client。
 
 ```bash
 pip install openrath
 ```
 
-如果你使用 `uv` 管理项目环境：
+使用 `uv` 管理项目环境时：
 
 ```bash
 uv add openrath
@@ -31,8 +30,7 @@ uv add openrath
 | `pydantic` | tool schema、request/response 和配置类型。 |
 | `python-dotenv` | 从 `.env` 加载 LLM 与 backend 配置。 |
 
-### 配置 LLM（Configure LLM settings）
-
+### 配置 LLM
 真实 LLM workflow 需要 OpenAI-compatible 配置。OpenRath 会先尝试读取当前项目根目录的 `.env`，再读取进程环境变量。
 
 ```bash
@@ -47,14 +45,14 @@ export OPENAI_DEFAULT_MODEL=gpt-5.5
 | `OPENAI_BASE_URL` | OpenAI-compatible endpoint。 |
 | `OPENAI_DEFAULT_MODEL` | 当 `Provider(model=None)` 时使用的默认模型。 |
 
-如果你同时克隆了 OpenRath 仓库，可以先运行不依赖 OpenSandbox 的 examples：
+同时克隆 OpenRath 仓库时，可以先运行不依赖 OpenSandbox 的 examples：
 
 ```bash
 python example/session_usage.py
 python example/sandbox_backend_local.py
 ```
 
-如果你是通过 PyPI 在自己的项目中使用 OpenRath，可以直接从你的项目代码里导入：
+通过 PyPI 在自己的项目中使用 OpenRath 时，可以直接导入：
 
 ```python
 from rath import flow
@@ -66,8 +64,7 @@ out = agent(user)
 ```
 
 (install-from-source-for-development)=
-## 从源码安装开发环境（Install from source for development）
-
+## 从源码安装开发环境
 这是面向开发者的安装方式。使用它来修改 OpenRath 源码、运行测试、构建 docs，或调试 examples。
 
 ```bash
@@ -76,7 +73,7 @@ cd OpenRath
 uv sync --group dev --group docs
 ```
 
-如果你不用 `uv`，可以使用 editable install：
+不用 `uv` 时，可以使用 editable install：
 
 ```bash
 pip install -e .
@@ -118,19 +115,17 @@ uv run sphinx-build -M html docs/source docs/_build
 生成结果位于 `docs/_build/html/`。
 
 (launch-and-connect-opensandbox)=
-## 启动并连接 OpenSandbox（Launch and connect OpenSandbox）
-
+## 启动并连接 OpenSandbox
 OpenSandbox 是可选 backend。它适合需要容器执行环境的 workflow。OpenRath 通过 `Session.to("opensandbox", spec=...)` 连接它；默认 local backend 不需要这一步。
 
-### 安装 OpenSandbox extra（Install OpenSandbox extra）
-
-如果你从 PyPI 使用：
+### 安装 OpenSandbox extra
+从 PyPI 使用时：
 
 ```bash
 pip install "openrath[opensandbox]"
 ```
 
-如果你在源码开发环境中使用：
+在源码开发环境中使用时：
 
 ```bash
 uv sync --extra opensandbox
@@ -144,9 +139,8 @@ uv sync --extra opensandbox
 | `opensandbox-code-interpreter` | code interpreter client。 |
 | `opensandbox-server` | 本地启动 OpenSandbox API server。 |
 
-### 启动服务（Start the server）
-
-本地开发推荐使用仓库脚本。它会检查 Docker、同步 optional dependency、生成 `.sandbox.toml`，然后启动 `opensandbox-server`。
+### 启动服务
+本地开发通常使用仓库脚本启动。脚本会检查 Docker、同步 optional dependency、生成 `.sandbox.toml`，把当前 OpenRath 项目目录加入 host bind allowlist，然后启动 `opensandbox-server`。在 macOS + Colima 环境里，若 `DOCKER_HOST` 没有设置但 Colima socket 存在，脚本会自动导出 `DOCKER_HOST=unix://${HOME}/.colima/default/docker.sock`。
 
 macOS / Linux:
 
@@ -168,15 +162,14 @@ SANDBOX_INIT_EXAMPLE=docker bash scripts/launch_opensandbox.sh
 
 可选值包括 `docker`、`docker-zh`、`k8s`、`k8s-zh`。
 
-### 检查服务状态（Health Check）
-
+### 检查服务状态
 OpenSandbox server 启动后，先检查 control plane 是否响应。`/health` 是 OpenSandbox server 的免鉴权健康检查路径。
 
 ```bash
 curl -fsS http://127.0.0.1:8080/health
 ```
 
-如果你没有安装 `curl`，可以使用 Python 做同样的检查：
+没有安装 `curl` 时，可以使用 Python 做同样的检查：
 
 ```bash
 python - <<'PY'
@@ -190,8 +183,7 @@ PY
 
 健康检查只说明 OpenSandbox API server 已经在本地响应。容器 runtime、workspace bind 和 OpenRath client 配置还需要通过后面的 example 验证。
 
-### 连接 OpenRath 与 OpenSandbox（Connect OpenRath to OpenSandbox）
-
+### 连接 OpenRath 与 OpenSandbox
 在运行 OpenRath 的环境中设置客户端变量：
 
 ```bash
@@ -213,8 +205,7 @@ export OPEN_SANDBOX_API_KEY=...
 | `OPENSANDBOX_SERVER_API_KEY` | OpenSandbox server 侧 API key。 |
 | `RATH_OPENSANDBOX_STRICT_WORKSPACE_BIND` | 设为 `1` 时，host bind 失败不降级为空 workspace。 |
 
-### 验证 backend（Verify the backend）
-
+### 验证 backend
 确认 server 在本地监听后，运行 OpenSandbox example：
 
 ```bash
@@ -230,8 +221,7 @@ user = Session.from_user_message("List the workspace.")
 user = user.to("opensandbox", spec=".")
 ```
 
-`spec="."` 会请求把当前目录绑定到容器内 `/workspace`。该 host path 必须对 OpenSandbox server 所在机器可见，并且需要被 `.sandbox.toml` 的 storage allowlist 允许。若 host bind 被拒绝，OpenRath 默认会重试为空 workspace；设置 `RATH_OPENSANDBOX_STRICT_WORKSPACE_BIND=1` 可以关闭这个降级。
+`spec="."` 会请求把当前目录绑定到容器内 `/workspace`。该 host path 必须对 OpenSandbox server 所在机器可见，并且需要被 `.sandbox.toml` 的 storage allowlist 允许。仓库脚本会自动 allowlist 当前项目目录；绑定其他目录时，需要手动把对应前缀加入 `allowed_host_paths`。若 host bind 被拒绝，OpenRath 默认会重试为空 workspace；设置 `RATH_OPENSANDBOX_STRICT_WORKSPACE_BIND=1` 可以关闭这个降级。
 
-## 本地沙箱路径说明（Local sandbox path note）
-
-`Session.to("local", spec="...")` 会把字符串 `spec` 当作 `BackendSandboxSpec(working_dir=...)`。当前 `LocalBackend.close(...)` 会删除它管理的 working directory；因此正式调试时更建议使用临时目录或可重建目录。若绑定项目根目录，只适合明确知道生命周期的短期实验。
+## 本地沙箱路径说明
+`Session.to("local", spec="...")` 会把字符串 `spec` 当作 `BackendSandboxSpec(working_dir=...)`。当前 `LocalBackend.close(...)` 会删除它管理的 working directory；正式调试时使用临时目录或可重建目录更稳妥。若绑定项目根目录，只适合明确知道生命周期的短期实验。

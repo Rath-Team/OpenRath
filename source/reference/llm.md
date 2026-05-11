@@ -3,8 +3,7 @@
 
 OpenAI-compatible 请求/响应类型、同步客户端、配置加载和 response normalization。
 
-## 源码（Source）
-
+## 源码
 | 模块 | 源码 |
 | --- | --- |
 | `rath.llm.provider` | `src/rath/llm/provider.py` |
@@ -15,8 +14,7 @@ OpenAI-compatible 请求/响应类型、同步客户端、配置加载和 respon
 | `rath.llm.openai_create_kwargs` | `src/rath/llm/openai_create_kwargs.py` |
 | `rath.llm.openai_normalize` | `src/rath/llm/openai_normalize.py` |
 
-## 公共契约（Public Contract）
-
+## 公共契约
 ### `Provider`
 
 `Provider` 保存 loop 需要的 model、sampling、tool 和 provider-specific 参数。它不包含 messages 和 tools；这两项由 session loop 构造。
@@ -29,8 +27,7 @@ OpenAI-compatible 请求/响应类型、同步客户端、配置加载和 respon
 | tools/output | `tool_choice`, `parallel_tool_calls`, `response_format` |
 | OpenAI options | `reasoning_effort`, `verbosity`, `metadata`, `user`, `store`, `service_tier`, `extra_create_args` |
 
-### 设置（Settings）
-
+### 设置
 | 函数/类型 | 行为 |
 | --- | --- |
 | `RathLLMSettings` | `api_key`、`base_url`、`default_model`。 |
@@ -39,8 +36,7 @@ OpenAI-compatible 请求/响应类型、同步客户端、配置加载和 respon
 
 `OPENAI_API_KEY` 为空时，`load_rath_llm_settings(...)` 抛 `ValueError`。
 
-### 客户端（Client）
-
+### 客户端
 ```python
 client = RathOpenAIChatClient()
 response = client.complete(request)
@@ -48,8 +44,7 @@ response = client.complete(request)
 
 `RathOpenAIChatClient.complete(...)` 调用 `openai.OpenAI().chat.completions.create(...)`，并把 provider response normalize 成 `RathLLMChatResponse`。
 
-### 请求与响应 DTO（Request/Response DTO）
-
+### 请求与响应 DTO
 | 类型 | 说明 |
 | --- | --- |
 | `RathLLMMessage` | chat `messages[]` 元素。 |
@@ -61,8 +56,7 @@ response = client.complete(request)
 | `RathLLMToolCallPart` / `RathLLMToolCallFunction` | tool call 结构。 |
 | `RathLLMTokenUsage` | usage 统计。 |
 
-### 创建参数（Create Kwargs）
-
+### 创建参数
 `to_create_kwargs(req, default_model=...)` 会把内部 request 转成 OpenAI SDK kwargs。
 
 | 行为 | 说明 |
@@ -72,8 +66,7 @@ response = client.complete(request)
 | stream | `stream=True` 会抛 `ValueError`，最终 kwargs 强制 `stream=False`。 |
 | extra args | `req.extra_create_args` 最后 merge。 |
 
-## 自动文档（Autodoc）
-
+## 自动文档
 ```{eval-rst}
 .. autoclass:: rath.llm.Provider
    :members:
@@ -118,4 +111,4 @@ response = client.complete(request)
    :members:
 ```
 
-[← API 参考](index.md)
+[← API Reference](index.md)
