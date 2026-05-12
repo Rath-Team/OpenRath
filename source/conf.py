@@ -7,7 +7,7 @@ import re
 from pathlib import Path
 
 from sphinx.search import SearchLanguage
-from sphinx.search._stopwords.en import ENGLISH_STOPWORDS
+from sphinx.search.en import english_stopwords
 
 # Docstrings reference the installed package; allow local src/ without install.
 _root = Path(__file__).resolve().parents[2]
@@ -61,7 +61,7 @@ class OpenRathMixedSearch(SearchLanguage):
 
     lang = "openrath_zh"
     language_name = "OpenRathMixed"
-    stopwords = ENGLISH_STOPWORDS
+    stopwords = english_stopwords
     _latin_re = re.compile(r"[A-Za-z0-9_]+")
     _cjk_re = re.compile(r"[\u3400-\u9fff]+")
     _synonyms = {
