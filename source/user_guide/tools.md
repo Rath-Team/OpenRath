@@ -4,16 +4,16 @@
 
 ## FlowToolCall 体系
 
-`rath.flow.tool` 定义不可变的结构化调用（`FlowToolCall`，即 `BackendTool` 的别名）：
+`rath.flow.tool` 中的 ``flow_tool_*`` 辅助函数接收已绑定沙箱的 :class:`~rath.session.session.Session`，构造对应的不可变 ``BackendTool`` 载荷并调用 ``Session.require_sandbox().dispatch``，返回后端结果类型（如 :class:`~rath.backend.results.CommandResult`、:class:`~rath.backend.results.FileContent` 等）。
 
-| 工厂函数 | 典型用途 |
+| 辅助函数 | 典型用途 |
 |----------|----------|
-| `flow_tool_command_run` | 在沙箱内执行 Shell/命令 |
+| `flow_tool_command_run(session, cmd, …)` | 在沙箱内执行 Shell/命令 |
 | `flow_tool_files_read` / `flow_tool_files_write` | 文件读写 |
 | `flow_tool_files_list` / `flow_tool_files_exists` | 目录探测 |
 | `flow_tool_code_run` | 在支持时由解释器执行代码 |
 
-这与**函数式** API 一致：产出供后端消费的纯值。
+这与**会话沙箱**上的快捷调用一致：先 ``Session.to("local", …)`` 等绑定后端，再传入 ``session`` 与路径或命令参数即可。
 
 ## 全局 ToolTable
 
