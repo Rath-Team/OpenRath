@@ -33,6 +33,6 @@
 
 ## LLM 请求接口
 
-[`RathOpenAIChatClient`](llm.md) 使用环境配置（`python-dotenv`）做同步聊天补全。[`DefaultSessionLoopExecutor`](workflow_agent.md) 包装该客户端，实现 `SessionLoopExecutor`，并把对外声明的工具 schema 桥接到沙箱分发。
+[`RathOpenAIChatClient`](llm.md) 由 [`Provider`](llm.md) 构造并执行同步聊天补全。[`DefaultSessionLoopExecutor`](workflow_agent.md) 包装该客户端，实现 `SessionLoopExecutor`，并把对外声明的工具 schema 桥接到沙箱分发。
 
 **下一篇：** [会话](session.md)

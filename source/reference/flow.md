@@ -20,9 +20,9 @@
 
 * `Agent`：`Workflow` 的便捷子类（示例中常用 `flow.Agent(...)` 快速搭建循环）。
 
-## `rath.flow.session_compressor`
+## `rath.flow.compressor`
 
-* `SessionCompressor`：对会话历史做压缩/整理的辅助（与 `run_session_compress` 等配合使用，见 `rath.session`）。
+* `Compressor`：对会话历史做压缩/整理的辅助（与 `run_session_compress` 等配合使用，见 `rath.session`）。
 
 ---
 

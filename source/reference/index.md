@@ -21,7 +21,7 @@
 
 ## 工作流
 
-* [`rath.flow`](flow.md) — 包级再导出、`Workflow`、`AgentParam`、`Agent`、`SessionCompressor` 等编排模块。
+* [`rath.flow`](flow.md) — 包级再导出、`Workflow`、`AgentParam`、`Agent`、`Compressor` 等编排模块。
 
 ## LLM
 

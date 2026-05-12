@@ -24,7 +24,7 @@
 | 字段 | 用途 |
 |------|------|
 | `agent_session` | 在 `run_session_loop` 内拼在用户分块**之前**的指令型 `Session`。 |
-| `provider` | 携带 OpenAI 风格采样参数的 `Provider`（`model`、`temperature`、`tool_choice` 等）。 |
+| `provider` | 携带模型、采样与端点信息的 `Provider`（`model`、`temperature`、`api_key`、`base_url`、`tool_choice` 等）。 |
 
 `AgentParam.data` 提供两字段的只读映射视图，便于调试。
 
@@ -39,7 +39,7 @@
 - 经 `global_tool_table().resolve(...)` 解析每个工具调用：**沙箱** 工具走 `executor.dispatch_tool(session_snapshot, FlowToolCall)`；**进程内** `@tool` 在进程内执行并将结果序列化给模型。
 - 追加 assistant 分块与序列化后的工具反馈，直到无工具或达到轮次上限。
 
-若省略 `executor`，OpenRath 会构造 `DefaultSessionLoopExecutor(RathOpenAIChatClient())`，使用 `.env` / 环境变量中的默认同步客户端。
+若省略 `executor`，OpenRath 会构造 `DefaultSessionLoopExecutor(RathOpenAIChatClient(agent_provider))`；此时 `agent_provider.api_key` 必须非空（或传入自定义执行器）。
 
 ### 可运行示例
 

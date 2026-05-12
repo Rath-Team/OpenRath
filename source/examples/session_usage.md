@@ -11,7 +11,7 @@
 python example/session_usage.py
 ```
 
-`__main__` 中需要可用的 **LLM** 凭据（如 `OPENAI_API_KEY` 等，见 `.env.example`）以及 `flow.Provider` 中配置的模型名。
+`__main__` 中通过 `example/_openai_provider.py` 的 `provider_from_env()` 与显式 `model` 构造 `Provider`，因此需可用的 **LLM** 进程环境变量（至少 `OPENAI_API_KEY`）；详见[安装](../install.md)。
 
 ## 要点
 

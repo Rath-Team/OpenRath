@@ -1,11 +1,11 @@
 (pkg-utils)=
 # `rath.utils`
 
-通用工具子包；当前与文档构建最相关的是环境变量装载。
+通用工具子包；当前提供仓库路径解析。
 
 ## `rath.utils.env`
 
-LLM 与运行配置共用的环境变量读取（常与 `python-dotenv` 配合）。
+- `project_root_with_pyproject()`：定位含 `pyproject.toml` 的仓库根（与包布局相关）。
 
 ---
 

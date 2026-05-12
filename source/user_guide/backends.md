@@ -33,7 +33,7 @@ FlowToolCall → Backend.dispatch(sandbox, call) → ToolResult | bool
 
 ## OpenSandbox 后端
 
-安装 `[opensandbox]` 后可使用 `rath.backend.opensandbox.OpenSandboxBackend`，与已部署的 OpenSandbox 服务通信。域名与 API 密钥等通过环境变量配置（见 `.env.example`）。
+安装 `[opensandbox]` 后可使用 `rath.backend.opensandbox.OpenSandboxBackend`，与已部署的 OpenSandbox 服务通信。域名与 API 密钥等通过**进程环境变量**配置（例如 `OPEN_SANDBOX_DOMAIN`）。
 
 `Capabilities`、`IsolationLevel` 描述隔离级别；流/事件与 `anyio` 集成。
 

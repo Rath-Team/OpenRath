@@ -14,7 +14,7 @@ uv sync
 # 或: pip install -e .
 ```
 
-运行时依赖极少：`openai` 与 `python-dotenv`。
+运行时依赖极少：`openai` 与 `pydantic`。
 
 ## 可选：OpenSandbox 后端
 
@@ -27,17 +27,19 @@ uv pip install -e ".[opensandbox]"
 
 会拉取 `opensandbox`、`opensandbox-code-interpreter`、`opensandbox-server`。你仍须在本机运行兼容的沙箱服务并完成配置。
 
-## 环境变量
+## 环境变量（自助配置）
 
-将 `.env.example` 复制为 `.env`，至少配置：
+OpenRath **不会**读取仓库中的 `.env` 文件。请在 Shell、IDE 启动配置或容器编排中自行导出变量，或在代码里构造 `rath.llm.Provider`。
+
+常见 **OpenAI 兼容**网关变量：
 
 | 变量 | 作用 |
 |------|------|
-| `OPENAI_API_KEY` | OpenAI 或兼容网关的 API 密钥 |
-| `OPENAI_BASE_URL` | Chat Completions 基址（默认 OpenAI v1 风格） |
-| `OPENAI_DEFAULT_MODEL` | 代码未指定 `model` 时的默认模型 ID |
+| `OPENAI_API_KEY` | API 密钥（必填才能使用默认 `RathOpenAIChatClient`） |
+| `OPENAI_BASE_URL` | Chat Completions 基址（可选） |
+| `OPENAI_DEFAULT_MODEL` | 可自行读入并传给 `Provider.model`（可选） |
 
-OpenSandbox 客户端相关变量见 `.env.example`（如 `OPEN_SANDBOX_DOMAIN`、`OPEN_SANDBOX_API_KEY` 及服务端密钥镜像）。
+OpenSandbox 客户端常用：`OPEN_SANDBOX_DOMAIN`、`OPEN_SANDBOX_API_KEY` 等（依你的部署文档）。
 
 ## 构建本文档
 

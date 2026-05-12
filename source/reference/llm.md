@@ -13,7 +13,7 @@ OpenAI 兼容的聊天客户端、请求/响应数据类与 Provider。用户指
 
 ## `rath.llm.provider`
 
-`Provider` 冻结数据类（模型 ID、温度、`tool_choice` 等）。
+`Provider` 冻结数据类：端点 `base_url` / `api_key`、模型 ID、采样与 `tool_choice` 等。在应用中请自行从环境或配置构造 `Provider`（仓库内示例见 `example/_openai_provider.py`）。
 
 ## `rath.llm.chat_request` / `rath.llm.chat_response`
 

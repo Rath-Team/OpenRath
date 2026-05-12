@@ -9,7 +9,7 @@
 python example/sandbox_backend_opensandbox.py
 ```
 
-需安装 **`.[opensandbox]`** extra，运行中的 OpenSandbox 服务及环境变量（见 `.env.example`），且 `backend.get("opensandbox").is_available()` 为真。
+需安装 **`.[opensandbox]`** extra，运行中的 OpenSandbox 服务，并在环境中配置 `OPEN_SANDBOX_DOMAIN`（及部署所需的密钥）；且 `backend.get("opensandbox").is_available()` 为真。
 
 ## 要点
 
