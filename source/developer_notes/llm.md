@@ -10,7 +10,6 @@ OpenRath 默认使用 OpenAI-compatible chat client。高级集成可以替换 `
 | --- | --- |
 | `src/rath/llm/provider.py` | `Provider` request options。 |
 | `src/rath/llm/client.py` | `RathOpenAIChatClient`。 |
-| `src/rath/llm/settings.py` | `.env` 与环境变量加载。 |
 | `src/rath/llm/chat_request.py` | request dataclasses。 |
 | `src/rath/llm/chat_response.py` | normalized response dataclasses。 |
 | `src/rath/llm/openai_create_kwargs.py` | internal request 到 OpenAI SDK kwargs 的转换。 |
@@ -99,7 +98,7 @@ run_session_loop
   -> provider_into_chat_request(messages, tools, Provider, default_tool_choice="auto")
   -> DefaultSessionLoopExecutor.complete(req)
   -> RathOpenAIChatClient.complete(req)
-  -> to_create_kwargs(req, default_model=settings.default_model)
+  -> to_create_kwargs(req, default_model=client.provider.model)
   -> openai.OpenAI(...).chat.completions.create(**kwargs)
   -> normalize_chat_completion(completion)
 ```
@@ -110,7 +109,7 @@ compress 路径使用同一套 client 和 request/response DTO，但传入 `tool
 
 | 行为 | 当前实现 |
 | --- | --- |
-| missing API key | `load_rath_llm_settings(...)` 抛 `ValueError`。 |
+| missing API key | `RathOpenAIChatClient` 构造时 `Provider.api_key` 为空会抛 `ValueError`。 |
 | missing model | `to_create_kwargs(...)` 在 `req.model` 与 default model 都为空时抛 `ValueError`。 |
 | streaming | `extra_create_args["stream"] is True` 时抛 `ValueError`，最终 kwargs 设置 `stream=False`。 |
 | tool argument parsing | `normalize_chat_completion(...)` 尝试 JSON parse arguments，并记录 parse error flag。 |

@@ -33,7 +33,7 @@ Developer Notes 解释 OpenRath 的核心组件和运行边界。这里面向想
 | `Sandbox` | `src/rath/backend/abc.py`, `local.py`, `opensandbox.py` | `tests/backends/`, `tests/conformance/`, `tests/unit/test_registry.py` |
 | `Tool` | `src/rath/flow/tool/`, `src/rath/backend/tool_types.py` | `tests/session/test_tool_registry.py`, `tests/flow/test_flow_tool_user_subclass.py`, `tests/unit/test_flow_tool.py` |
 | `AgentParam` | `src/rath/flow/agent_param.py`, `src/rath/flow/agent.py` | `tests/flow/test_workflow_agent.py`, `tests/test_import.py` |
-| `Workflow` | `src/rath/flow/workflow.py`, `agent.py`, `session_compressor.py` | `tests/flow/test_workflow_agent.py` |
+| `Workflow` | `src/rath/flow/workflow.py`, `agent.py`, `compressor.py` | `tests/flow/test_workflow_agent.py` |
 | `LLM` | `src/rath/llm/`, `src/rath/session/provider_builtin.py` | `tests/llm/`, `tests/session/test_llm_message_wire.py` |
 
 Developer Notes 只描述当前源码已经实现的行为。Roadmap、troubleshooting 和完整应用教程会在后续审计阶段单独补。

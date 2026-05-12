@@ -10,7 +10,7 @@
 | `rath.flow.workflow` | `src/rath/flow/workflow.py` |
 | `rath.flow.agent_param` | `src/rath/flow/agent_param.py` |
 | `rath.flow.agent` | `src/rath/flow/agent.py` |
-| `rath.flow.session_compressor` | `src/rath/flow/session_compressor.py` |
+| `rath.flow.compressor` | `src/rath/flow/compressor.py` |
 
 ## 公共契约（Public Contract）
 
@@ -36,7 +36,7 @@
 | Class | 构造参数 | 行为 |
 | --- | --- | --- |
 | `Agent` | `system_prompt`, `model`, `tools=None` | 创建 agent session 和 provider，`forward(...)` 调用 `run_session_loop(...)`。 |
-| `SessionCompressor` | `compress_instruction`, `model` | `forward(...)` 调用 `run_session_compress(...)`。 |
+| `Compressor` | `compress_instruction`, `provider`, `chunk_print=None` | `forward(...)` 调用 `run_session_compress(...)`。 |
 
 `Agent.register_tool(tool)` 会按 name 去重添加工具；`Agent.unregister_tool(tool_name)` 会移除同名工具。
 
@@ -61,7 +61,7 @@
 .. autoclass:: rath.flow.Agent
    :members:
 
-.. autoclass:: rath.flow.SessionCompressor
+.. autoclass:: rath.flow.Compressor
    :members:
 ```
 

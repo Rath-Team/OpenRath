@@ -69,18 +69,19 @@ agent.unregister_tool("tool_name")
 
 维护工具列表。`register_tool` 对同名工具是幂等的；如果列表里已有同名工具，它不会重复加入。
 
-## SessionCompressor
+## `Compressor`（会话压缩）
 
-`SessionCompressor` 也是 `Workflow`。它把输入 session 交给 `run_session_compress`，产出压缩后的 user-only session。
+`Compressor` 是 `Workflow` 子类，把输入 session 交给 `run_session_compress`，得到仅含 user 分块的压缩后 session。
 
 ```python
-from rath.flow import SessionCompressor
+from rath.flow import Compressor
+from rath.llm import Provider
 
-compressor = SessionCompressor(
+compressor = Compressor(
     compress_instruction="Summarize the transcript faithfully.",
-    model="gpt-5.5",
+    provider=Provider(api_key="sk-...", model="gpt-4o"),
 )
-compressed = compressor(out_session)
+compressed = compressor.forward(out_session)
 ```
 
 ## run_session_loop 生命周期
@@ -96,10 +97,10 @@ compressed = compressor(out_session)
 7. 若无 tool calls，追加 assistant chunk 并返回；
 8. 最多执行 `max_tool_rounds` 轮工具调用。
 
-默认执行器是：
+默认执行器是（`provider` 与传入 `run_session_loop` 的 `agent_provider` 相同）：
 
 ```python
-DefaultSessionLoopExecutor(RathOpenAIChatClient())
+DefaultSessionLoopExecutor(RathOpenAIChatClient(provider))
 ```
 
 如果需要缓存、替换模型网关、mock 测试或批处理，可以实现同名协议方法：`complete(...)`、`dispatch_tool(...)`、`tool_schemas()`。

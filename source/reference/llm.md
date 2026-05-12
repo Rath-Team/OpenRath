@@ -1,7 +1,7 @@
 (pkg-llm)=
 # `rath.llm`
 
-OpenAI-compatible 请求/响应类型、同步客户端、配置加载和 response normalization。
+OpenAI-compatible 请求/响应类型、同步客户端与 response normalization。
 
 ## 源码（Source）
 
@@ -9,7 +9,6 @@ OpenAI-compatible 请求/响应类型、同步客户端、配置加载和 respon
 | --- | --- |
 | `rath.llm.provider` | `src/rath/llm/provider.py` |
 | `rath.llm.client` | `src/rath/llm/client.py` |
-| `rath.llm.settings` | `src/rath/llm/settings.py` |
 | `rath.llm.chat_request` | `src/rath/llm/chat_request.py` |
 | `rath.llm.chat_response` | `src/rath/llm/chat_response.py` |
 | `rath.llm.openai_create_kwargs` | `src/rath/llm/openai_create_kwargs.py` |
@@ -21,6 +20,8 @@ OpenAI-compatible 请求/响应类型、同步客户端、配置加载和 respon
 
 `Provider` 保存 loop 需要的 model、sampling、tool 和 provider-specific 参数。它不包含 messages 和 tools；这两项由 session loop 构造。
 
+可显式构造，或从环境变量自行读取后填入 `api_key` / `base_url` / `model`（本库不再提供统一的 settings 加载函数）。
+
 | 字段类别 | 字段 |
 | --- | --- |
 | model | `model` |
@@ -29,24 +30,16 @@ OpenAI-compatible 请求/响应类型、同步客户端、配置加载和 respon
 | tools/output | `tool_choice`, `parallel_tool_calls`, `response_format` |
 | OpenAI options | `reasoning_effort`, `verbosity`, `metadata`, `user`, `store`, `service_tier`, `extra_create_args` |
 
-### 设置（Settings）
-
-| 函数/类型 | 行为 |
-| --- | --- |
-| `RathLLMSettings` | `api_key`、`base_url`、`default_model`。 |
-| `load_rath_llm_settings(dotenv_path=None)` | 加载 `.env` 后读取环境变量。 |
-| `rath_llm_default_dotenv_path()` | 返回项目根目录下 `.env`。 |
-
-`OPENAI_API_KEY` 为空时，`load_rath_llm_settings(...)` 抛 `ValueError`。
-
 ### 客户端（Client）
 
 ```python
-client = RathOpenAIChatClient()
+from rath.llm import Provider, RathOpenAIChatClient
+
+client = RathOpenAIChatClient(Provider(api_key="sk-..."))
 response = client.complete(request)
 ```
 
-`RathOpenAIChatClient.complete(...)` 调用 `openai.OpenAI().chat.completions.create(...)`，并把 provider response normalize 成 `RathLLMChatResponse`。
+`RathOpenAIChatClient` 构造时必须传入含非空 `api_key` 的 `Provider` 。`complete(...)` 调用 `openai.OpenAI(...).chat.completions.create(...)`，并把 provider 返回值 normalize 成 `RathLLMChatResponse`。
 
 ### 请求与响应 DTO（Request/Response DTO）
 
@@ -80,11 +73,6 @@ response = client.complete(request)
 
 .. autoclass:: rath.llm.RathOpenAIChatClient
    :members:
-
-.. autoclass:: rath.llm.RathLLMSettings
-   :members:
-
-.. autofunction:: rath.llm.load_rath_llm_settings
 
 .. autofunction:: rath.llm.to_create_kwargs
 

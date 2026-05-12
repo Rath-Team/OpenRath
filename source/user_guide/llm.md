@@ -49,20 +49,17 @@ RathLLMFunctionTool(
 
 ## 默认客户端
 
-`RathOpenAIChatClient` 做两件事：
+`RathOpenAIChatClient` 需要传入已配置好的 `Provider`（至少含非空 `api_key` ）。应用可自行从环境变量组装 `Provider`；`OPENAI_BASE_URL` / `OPENAI_DEFAULT_MODEL` 等与 `Provider` 字段对应。
 
-1. 从 `.env` / 环境变量加载 `RathLLMSettings`；
-2. 把 `RathLLMChatRequest` 转成 `client.chat.completions.create(**kwargs)`。
-
-环境变量：
+环境变量（常见做法，非客户端自动加载）：
 
 | 变量 | 必需 | 作用 |
 | --- | --- | --- |
-| `OPENAI_API_KEY` | 是 | 构造 `openai.OpenAI(api_key=...)`。 |
-| `OPENAI_BASE_URL` | 否 | 非空时传给 `OpenAI(base_url=...)`。 |
-| `OPENAI_DEFAULT_MODEL` | 否 | 请求未指定 model 时使用。 |
+| `OPENAI_API_KEY` | 是 | 填入 `Provider(api_key=...)`。 |
+| `OPENAI_BASE_URL` | 否 | 非空时填入 `Provider.base_url`。 |
+| `OPENAI_DEFAULT_MODEL` | 否 | 填入 `Provider.model`。 |
 
-如果 `OPENAI_API_KEY` 为空，`load_rath_llm_settings()` 会抛 `ValueError`。
+若 `api_key` 为空，`RathOpenAIChatClient` 构造会抛 `ValueError`。
 
 ## 响应归一化
 

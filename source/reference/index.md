@@ -15,10 +15,10 @@
 | [`rath`](rath.md) | 包级入口。 |
 | [`rath.session`](session.md) | `Session`、chunk、loop、compress、lineage、registry。 |
 | [`rath.backend`](backend.md) | 后端抽象、沙箱、工具载荷、结果、注册表、stream。 |
-| [`rath.flow`](flow.md) | `Workflow`、`AgentParam`、`Agent`、`SessionCompressor`。 |
+| [`rath.flow`](flow.md) | `Workflow`、`AgentParam`、`Agent`、`Compressor`。 |
 | [`rath.flow.tool`](flow_tool.md) | `FlowToolCall`、内置系统工具、后端工具工厂、schema 合并。 |
 | [`rath.llm`](llm.md) | `Provider`、请求/响应类型、OpenAI-compatible client。 |
-| [`rath.utils`](utils.md) | `.env` 和项目根路径辅助。 |
+| [`rath.utils`](utils.md) | 项目根路径与测试用环境变量辅助。 |
 
 ```{toctree}
 ---
