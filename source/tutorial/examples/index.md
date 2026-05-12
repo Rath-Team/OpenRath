@@ -11,6 +11,7 @@ These pages map to the `example/` scripts and subdirectories in the repository. 
 | 4 | [OpenSandbox Backend](sandbox_backend_opensandbox.md) | `example/sandbox_backend_opensandbox.py` | OpenSandbox backend, workspace binding, and service health checks. |
 | 5 | [Trading Agents](trading_agents.md) | `example/trading_agents/` | Multi-role workflow, external data tools, and session-level parallel branches. |
 | 6 | [Engineering Agents](engineering_agents.md) | `example/engineering_agents/` | Nested workflows, engineering task decomposition, and parallelizable subtasks. |
+| 7 | [Research Transformer](research_transformer.md) | `example/research_transformer/` on `main` | Academic writing pipeline with branch workflows, per-role providers, compression, and an optional image tool. |
 
 ## Before running
 All examples that call a real LLM need an OpenAI-compatible gateway. The docs do not store real keys; manage API keys through shell environment variables or a local `.env` file:
@@ -44,4 +45,5 @@ sandbox_backend_local
 sandbox_backend_opensandbox
 trading_agents
 engineering_agents
+research_transformer
 ```

@@ -2,7 +2,7 @@
 # OpenRath
 
 <div class="or-home-hero">
-  <h2>A PyTorch-inspired runtime for LLM agent workflows</h2>
+  <p class="or-slogan">A opensource, torch-like api framework for dynamic multi-agent workflow.</p>
   <p>OpenRath brings PyTorch-style composability to agent workflows: use Session for state, FlowToolCall for callable tool capabilities, and Backend for controlled execution placement.</p>
   <p class="or-cta">
     <a class="or-button or-button-primary" href="tutorial/index.html">Start Tutorials</a>
@@ -56,6 +56,7 @@ agent workflows use the same `Session`, `FlowToolCall`, `Workflow`, and
 | --- | --- |
 | [Trading Agents](tutorial/examples/trading_agents.md) | A sequential research workflow with analyst, bear/bull researchers, trader, risk, and PM roles. |
 | [Engineering Agents](tutorial/examples/engineering_agents.md) | A nested engineering workflow with lead, feature squad, backend pair, frontend, and QA roles. |
+| [Research Transformer](tutorial/examples/research_transformer.md) | An academic writing pipeline with branch workflows, repeated layers, compression, and optional image tooling. |
 
 ## PyTorch Mental Model
 
