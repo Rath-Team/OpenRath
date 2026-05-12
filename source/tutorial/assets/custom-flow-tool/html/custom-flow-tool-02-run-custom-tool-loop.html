@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f7fb;
+      color: #172033;
+    }
+    body {
+      margin: 0;
+      padding: 36px;
+    }
+    .frame {
+      width: 1080px;
+      min-height: 640px;
+      border: 1px solid #d6dce8;
+      border-radius: 8px;
+      background: #ffffff;
+      box-shadow: 0 8px 30px rgba(23, 32, 51, 0.10);
+      overflow: hidden;
+    }
+    .bar {
+      display: flex;
+      gap: 7px;
+      align-items: center;
+      padding: 12px 16px;
+      background: #edf1f8;
+      border-bottom: 1px solid #d6dce8;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 999px;
+      background: #c5ccd8;
+    }
+    .title {
+      margin-left: 8px;
+    }
+    .terminal {
+      margin: 0;
+      padding: 22px;
+      background: #111827;
+      color: #e5e7eb;
+      font: 15px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      min-height: 570px;
+    }
+    .prompt {
+      color: #93c5fd;
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <div class="bar">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="title">run custom tool loop</span>
+    </div>
+    <pre class="terminal"><span class="prompt">$ run_session_loop(..., tools=[WordCountTool()], executor=scripted)</span>
+
+[0] user
+{
+  &quot;content&quot;: &quot;Count the words in this sentence.&quot;
+}
+[1] assistant
+{
+  &quot;content&quot;: null,
+  &quot;tool_calls&quot;: [
+    {
+      &quot;id&quot;: &quot;call_word_count&quot;,
+      &quot;type&quot;: &quot;function&quot;,
+      &quot;function&quot;: {
+        &quot;name&quot;: &quot;word_count&quot;,
+        &quot;arguments&quot;: &quot;{\&quot;text\&quot;: \&quot;Session carries state and tools produce structured results.\&quot;}&quot;
+      }
+    }
+  ]
+}
+[2] tool_result
+{
+  &quot;tool_call_id&quot;: &quot;call_word_count&quot;,
+  &quot;name&quot;: &quot;word_count&quot;,
+  &quot;content&quot;: &quot;{\&quot;word_count\&quot;: 8, \&quot;unique_words\&quot;: 8, \&quot;session_backend\&quot;: \&quot;local\&quot;}&quot;
+}
+[3] assistant
+{
+  &quot;content&quot;: &quot;The text has 8 words and 8 unique words.&quot;,
+  &quot;tool_calls&quot;: null
+}</pre>
+  </div>
+</body>
+</html>

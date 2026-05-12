@@ -1,17 +1,28 @@
 (pkg-rath)=
 # `rath`
 
-顶层命名空间，对子系统做集中入口式导出。
+包级入口位于 `src/rath/__init__.py`。包根只暴露高层模块，不把 session/backend/flow 的全部符号提升到根命名空间。
 
-## 说明
+## 公共契约（Public Contract）
 
-访问 `import rath` 时：
+| 名称 | 来源 | 说明 |
+| --- | --- | --- |
+| `backend` | eager import | 后端公共 API。 |
+| `flow` | eager import | workflow 与 agent API。 |
+| `session` | lazy import through `__getattr__` | 首次访问 `rath.session` 时导入。 |
 
-* **`rath.backend`**、`rath.flow`** — 常规 eager 导出。
-* **`rath.session`** — **惰性加载**：首次访问 `rath.session` 时再导入，避免不必要依赖与导入顺序问题。
+推荐显式导入：
 
-业务代码建议按需使用子模块（如 `from rath.session import Session`），与阅读 [用户指南](../user_guide/index.md) 的顺序一致。
+```python
+from rath import flow
+from rath.backend import get
+from rath.session import Session, run_session_loop
+```
 
----
+## 自动文档（Autodoc）
+
+```{eval-rst}
+.. automodule:: rath
+```
 
 [← API 参考](index.md)

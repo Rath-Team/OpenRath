@@ -1,59 +1,123 @@
-# 工作流
+# 工作流与 Agent
 
-[工具与 ToolTable](tools.md) 把模型可见的名字接到实现上。**Workflow** 装载 [`AgentParam`](workflow_agent.md) 并实现 `forward`；下面的 `run_session_loop` 则是交替补全与工具轮次的同步内核。读完本章后请看 [LLM 客户端与配置](llm.md)，了解 `Provider` 与 `RathOpenAIChatClient` 如何接入。
+`Workflow` 是一个可调用对象：输入 `Session`，输出 `Session`。它本身不发请求；真实 LLM 请求通常由 `run_session_loop` 完成。
 
 ## Workflow
 
-`Workflow` 子类组织多智能体编排：
+继承 `Workflow` 并实现 `forward(self, session) -> Session`：
 
-1. 将 `AgentParam` 赋给属性以实例化各智能体参数（如 `self.planner`）。
-2. 实现 `forward(self, session: Session) -> Session`（阻塞）。
+```python
+from rath.flow import Workflow, AgentParam, Provider
+from rath.session import Session, run_session_loop
 
-调用 `workflow(session)` 会委托给 `forward`。`named_agents()` 按名排序枚举已注册的 `(name, agent)`，用法接近 `nn.Module.named_children()`。
 
-`repr(workflow)` 会缩进嵌套的 `AgentParam`/`Session` 预览，类似嵌套模块。
+class SingleAgentWorkflow(Workflow):
+    def __init__(self) -> None:
+        super().__init__()
+        self.agent = AgentParam(
+            agent_session=Session.from_agent_prompt("You are concise."),
+            provider=Provider(model="gpt-5.5"),
+        )
 
-### 调用 `run_session_loop`
+    def forward(self, session: Session) -> Session:
+        return run_session_loop(
+            user_session=session,
+            agent_session=self.agent.agent_session,
+            agent_provider=self.agent.provider,
+        )
+```
 
-从 `rath.session` 使用 `run_session_loop`：传入用户 `Session`、`agent_session` 与来自 `AgentParam` 的 `agent_provider`（可选 `executor`、`tools`、`max_tool_rounds`、`chunk_print`）。
+把 `AgentParam` 赋值到属性时，`Workflow.__setattr__` 会把它登记到内部 `_agents`。`named_agents()` 会按名称排序返回这些 agent 参数。
 
 ## AgentParam
 
-`AgentParam` 打包：
+`AgentParam` 只有两个字段：
 
-| 字段 | 用途 |
-|------|------|
-| `agent_session` | 在 `run_session_loop` 内拼在用户分块**之前**的指令型 `Session`。 |
-| `provider` | 携带模型、采样与端点信息的 `Provider`（`model`、`temperature`、`api_key`、`base_url`、`tool_choice` 等）。 |
+| 字段 | 作用 |
+| --- | --- |
+| `agent_session` | agent 侧 prompt/context，进入 LLM messages 时排在 user session 历史之前。 |
+| `provider` | 模型名、采样参数、tool choice 等 OpenAI-style 配置。 |
 
-`AgentParam.data` 提供两字段的只读映射视图，便于调试。
+它刻意不持有 HTTP client、executor、sandbox 或 memory store。这样同一个 agent 参数可以被不同执行器复用。
 
-`AgentParam` **不**拥有传输层（`complete`）或沙箱分发——这些在 `SessionLoopExecutor` 内。
+## Agent
 
-## 会话循环内核
+`rath.flow.Agent` 是 `Workflow` 的薄封装：
 
-`run_session_loop(user_session, agent_session, *, agent_provider, executor=None, max_tool_rounds=16, chunk_print=None)` **同步**运行：
+```python
+import rath.flow as flow
 
-- 将 `chunk_table_to_messages(agent_session)` 与演化的用户会话行拼接为消息。
-- 通过 `executor.complete(RathLLMChatRequest(...))` 请求补全。
-- 经 `global_tool_table().resolve(...)` 解析每个工具调用：**沙箱** 工具走 `executor.dispatch_tool(session_snapshot, FlowToolCall)`；**进程内** `@tool` 在进程内执行并将结果序列化给模型。
-- 追加 assistant 分块与序列化后的工具反馈，直到无工具或达到轮次上限。
+agent = flow.Agent(
+    system_prompt="You are a helpful assistant.",
+    model="gpt-5.5",
+)
 
-传入 ``chunk_print``（推荐使用 :func:`~rath.session.sink_chunk_print` 包一层
-``print`` 或其它单参数写入函数，对**每个新追加的** assistant / tool-result 分块调用
-``hook(row, index, out)``）时，只在对应分块写入 ``out.chunk_table`` 之后调用一次，
-便于逐行观察，而不会每次打印整张表。
+out_session = agent(user_session)
+```
 
-``run_session_compress(..., chunk_print=...)`` 在压缩结果会话建好、沙箱重绑之后，
-对**唯一**产出的 user 分块调用 ``hook(row, 0, out)`` 一次。
+构造时会创建：
 
-若省略 `executor`，OpenRath 会构造 `DefaultSessionLoopExecutor(RathOpenAIChatClient(agent_provider))`；此时 `agent_provider.api_key` 必须非空（或传入自定义执行器）。
+- `self.agent = AgentParam(Session.from_agent_prompt(system_prompt), Provider(model=model))`
+- `self.tools = list(tools or [])`
 
-### 可运行示例
+调用时进入 `run_session_loop(...)`。可以通过：
 
-- [`example/session_usage.py`](https://github.com/Rath-Team/OpenRath/blob/main/example/session_usage.py) — 端到端 `run_session_loop`、本地沙箱与 Provider。
-- [`tests/flow/test_workflow_agent.py`](https://github.com/Rath-Team/OpenRath/blob/main/tests/flow/test_workflow_agent.py) — 最小 `Workflow` 子类与 `named_agents()`。
+```python
+agent.register_tool(tool)
+agent.unregister_tool("tool_name")
+```
 
----
+维护工具列表。`register_tool` 对同名工具是幂等的；如果列表里已有同名工具，它不会重复加入。
+
+## SessionCompressor
+
+`SessionCompressor` 也是 `Workflow`。它把输入 session 交给 `run_session_compress`，产出压缩后的 user-only session。
+
+```python
+from rath.flow import SessionCompressor
+
+compressor = SessionCompressor(
+    compress_instruction="Summarize the transcript faithfully.",
+    model="gpt-5.5",
+)
+compressed = compressor(out_session)
+```
+
+## run_session_loop 生命周期
+
+`run_session_loop` 的关键行为：
+
+1. 合并内置工具与 `tools=[...]` 用户工具；
+2. 从 `user_session` 取走 sandbox，并绑定到输出 session；
+3. 注册 user、agent、output 三个 session；
+4. 把 `agent_session` messages 拼在用户历史之前；
+5. 调用 `executor.complete(req)`；
+6. 若 assistant 返回 tool calls，执行工具并追加 `tool_result`；
+7. 若无 tool calls，追加 assistant chunk 并返回；
+8. 最多执行 `max_tool_rounds` 轮工具调用。
+
+默认执行器是：
+
+```python
+DefaultSessionLoopExecutor(RathOpenAIChatClient())
+```
+
+如果需要缓存、替换模型网关、mock 测试或批处理，可以实现同名协议方法：`complete(...)`、`dispatch_tool(...)`、`tool_schemas()`。
+
+## 自定义执行器的最小接口
+
+```python
+class MyExecutor:
+    def complete(self, req):
+        ...
+
+    def dispatch_tool(self, session, tool, arguments):
+        return tool(session, arguments)
+
+    def tool_schemas(self):
+        return ()
+```
+
+`tool_schemas()` 返回空元组时，loop 会用本轮合并后的 `FlowToolCall` 列表自动生成 schema。
 
 **下一篇：** [LLM 请求接口](llm.md)

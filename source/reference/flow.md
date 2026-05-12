@@ -1,29 +1,68 @@
 (pkg-flow)=
 # `rath.flow`
 
-`rath.flow` 包：对编排相关类型的再导出，以及 `Workflow`、`AgentParam` 等子模块。用户指南：[Workflow 与 AgentParam](../user_guide/workflow_agent.md)。
+工作流组合层。`Workflow` 负责组织 `Session -> Session` 变换，`AgentParam` 保存 agent-side session 与 provider，预设 workflow 封装常用路径。
 
-## `rath.flow`
+## 源码（Source）
 
-自子模块再导出 `Workflow`、`Provider`、`AgentParam` 等，便于 `import rath.flow as flow` 单入口写法。
+| 模块 | 源码 |
+| --- | --- |
+| `rath.flow.workflow` | `src/rath/flow/workflow.py` |
+| `rath.flow.agent_param` | `src/rath/flow/agent_param.py` |
+| `rath.flow.agent` | `src/rath/flow/agent.py` |
+| `rath.flow.session_compressor` | `src/rath/flow/session_compressor.py` |
 
-## `rath.flow.workflow`
+## 公共契约（Public Contract）
 
-* `Workflow` 基类：`forward(session)`、`named_agents()`、`__call__` 委托。
-* 与 `rath.session.run_session_loop` 的典型配合方式。
+### `Workflow`
 
-## `rath.flow.agent_param`
+| 方法 | 返回 | 行为 |
+| --- | --- | --- |
+| `forward(session)` | `Session` | 子类实现的执行逻辑。 |
+| `__call__(session)` | `Session` | 调用 `forward(session)`。 |
+| `named_agents()` | `tuple[tuple[str, AgentParam], ...]` | 返回 attribute 注册的 agent params。 |
 
-* `AgentParam`：`agent_session`（系统/开发者分块）与 `provider`（采样与路由字段）的绑定体。
+当 `AgentParam` 作为 attribute 赋值给 workflow 时，`Workflow.__setattr__` 会将其加入 `_agents`。
 
-## `rath.flow.agent`
+### `AgentParam`
 
-* `Agent`：`Workflow` 的便捷子类（示例中常用 `flow.Agent(...)` 快速搭建循环）。
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| `agent_session` | `Session` | agent/system transcript。 |
+| `provider` | `Provider` | model 和请求参数。 |
 
-## `rath.flow.compressor`
+### 预设工作流（Preset Workflows）
 
-* `Compressor`：对会话历史做压缩/整理的辅助（与 `run_session_compress` 等配合使用，见 `rath.session`）。
+| Class | 构造参数 | 行为 |
+| --- | --- | --- |
+| `Agent` | `system_prompt`, `model`, `tools=None` | 创建 agent session 和 provider，`forward(...)` 调用 `run_session_loop(...)`。 |
+| `SessionCompressor` | `compress_instruction`, `model` | `forward(...)` 调用 `run_session_compress(...)`。 |
 
----
+`Agent.register_tool(tool)` 会按 name 去重添加工具；`Agent.unregister_tool(tool_name)` 会移除同名工具。
+
+### 可运行工作流示例（Runnable Workflow Examples）
+
+| Example | 路径 | 说明 |
+| --- | --- | --- |
+| Trading Agents | `example/trading_agents/` | 顺序多角色 workflow，包含 analyst、researchers、trader、risk/PM 和一个市场数据工具。 |
+| Engineering Agents | `example/engineering_agents/` | 嵌套 workflow，展示 lead、feature squad、backend pair、frontend、QA 的分层组合。 |
+
+这些例子使用 public `Workflow`、`AgentParam`、`Provider` 和 `run_session_loop(...)`，适合作为 multi-agent 组合的源码参考。
+
+## 自动文档（Autodoc）
+
+```{eval-rst}
+.. autoclass:: rath.flow.Workflow
+   :members:
+
+.. autoclass:: rath.flow.AgentParam
+   :members:
+
+.. autoclass:: rath.flow.Agent
+   :members:
+
+.. autoclass:: rath.flow.SessionCompressor
+   :members:
+```
 
 [← API 参考](index.md)

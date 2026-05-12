@@ -1,25 +1,30 @@
 # 设计概览
 
-OpenRath 采用与 **PyTorch 式易用性**一致的隐喻，但并不包装 PyTorch 本体：
+OpenRath 的核心判断是：Agent 工作流的状态不应该只存在于一段 prompt 字符串里，而应该成为一个可传递、可派生、可绑定执行环境的对象。这个对象就是 `Session`。
 
-- **有状态磁带** — [`Session`](session.md) 保存有序的会话分块（system、user、assistant、tool 结果等），是贯穿工作流的主要对象。
-- **组合** — [`Workflow`](workflow_agent.md) 通过属性赋值聚合具名的 [`AgentParam`](workflow_agent.md)，类似 `nn.Module` 的子模块。
-- **函数式工具载荷** — 结构化调用（`FlowToolCall`）由 `rath.flow.tool` 下的小工厂构造，类比 `torch.nn.functional` 风格。
-- **后端** — 沙箱（`BackendSandbox`）与并发辅助（`Stream`、`Event`）类似为执行选择**设备**或运行时。
+## PyTorch 类比
 
-该模型仅用于帮助理解：OpenRath **不包含** autograd 或张量。
+OpenRath 借用 PyTorch 的表达方式，但并不包装 PyTorch。
 
-若需对照大型项目如何区分叙述文与 API 参考，可见 [PyTorch 文档](https://docs.pytorch.org/docs/stable/index.html)。
+| PyTorch 中的直觉 | OpenRath 中的对应 | 真实代码 |
+| --- | --- | --- |
+| Tensor 承载数据 | Session 承载对话分块和 sandbox placement | `rath.session.Session` |
+| Module 组织参数和 forward | Workflow 组织 `AgentParam` 并实现 `forward` | `rath.flow.Workflow` |
+| device 决定执行位置 | Backend 决定工具在哪种 sandbox 中执行 | `rath.backend.Backend` |
+| functional API 构造操作 | `flow_tool_*` 工厂构造后端工具载荷 | `rath.flow.tool.flow_tool_command_run` 等 |
 
-## 分层
+边界也很重要：OpenRath 没有 tensor、autograd、optimizer，也不做模型训练框架。它处理的是 LLM agent 的状态、工具和执行环境。
 
-| 层次 | 包 | 职责 |
-|------|-----|------|
-| 会话运行时 | `rath.session` | 分块、谱系、注册表、会话循环 |
-| 执行 | `rath.backend` | 沙箱句柄、分发、结果、流 |
-| Flow 门面 | `rath.flow` | `Workflow`、`AgentParam`、工具表辅助 |
-| LLM I/O | `rath.llm` | 兼容 OpenAI 的请求/响应、客户端 |
+## 真实运行路径
 
-经验法则：**`rath.flow.tool` 定义工具调用值**；**`rath.backend` 在沙箱上执行它们**。`rath.flow.tool` **不** import `rath.backend`。
+`run_session_loop` 每一轮都会把 `agent_session.chunk_table` 放在用户侧历史之前，然后请求聊天补全。若模型返回工具调用，循环会找到同名 `FlowToolCall`，执行后把结果作为 `tool_result` chunk 追加回会话。若模型不再请求工具，循环追加最终 assistant chunk 并返回新的 `Session`。
+
+## 设计原则
+
+1. `Session` 是一等对象：工作流输入输出都是 `Session`，而不是裸字符串。
+2. 执行环境显式绑定：工具必须通过 `BackendSandbox` 执行，或者作为用户自定义 `FlowToolCall` 在 Python 进程内执行。
+3. LLM 客户端可替换：`SessionLoopExecutor` 是协议，默认实现只是同步 OpenAI-compatible 调用。
+4. 工具 schema 和工具执行绑定在一起：一个 `FlowToolCall` 同时提供 `name`、`description`、`parameters` 和 `__call__`。
+5. 谱系只做轻量记录：`parent_session_ids` 等字段用于调试和追踪，不是数据库或持久化系统。
 
 **下一篇：** [主要组件](main_components.md)

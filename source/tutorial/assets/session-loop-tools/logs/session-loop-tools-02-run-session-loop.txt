@@ -1,0 +1,51 @@
+$ run_session_loop(user_session, agent_session, executor=scripted)
+
+[0] user
+{
+  "content": "Create a file, then read it back."
+}
+[1] assistant
+{
+  "content": null,
+  "tool_calls": [
+    {
+      "id": "call_write",
+      "type": "function",
+      "function": {
+        "name": "write_workspace_file",
+        "arguments": "{\"path\": \"tutorial_loop.txt\", \"content\": \"created by run_session_loop\\n\"}"
+      }
+    }
+  ]
+}
+[2] tool_result
+{
+  "tool_call_id": "call_write",
+  "name": "write_workspace_file",
+  "content": "{\"bytes_written\": 28}"
+}
+[3] assistant
+{
+  "content": null,
+  "tool_calls": [
+    {
+      "id": "call_shell",
+      "type": "function",
+      "function": {
+        "name": "run_shell_command",
+        "arguments": "{\"cmd\": \"pwd && cat tutorial_loop.txt\"}"
+      }
+    }
+  ]
+}
+[4] tool_result
+{
+  "tool_call_id": "call_shell",
+  "name": "run_shell_command",
+  "content": "{\"exit_code\": 0, \"stdout\": \"/private/var/folders/q1/zd2rr4m962z413y81j14zyxc0000gn/T/rath-local-2punn3pk\\ncreated by run_session_loop\\n\", \"stderr\": \"\", \"elapsed_ms\": 5.36445800025831}"
+}
+[5] assistant
+{
+  "content": "done: file created and read back",
+  "tool_calls": null
+}

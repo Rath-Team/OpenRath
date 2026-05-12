@@ -1,28 +1,121 @@
 (pkg-llm)=
 # `rath.llm`
 
-OpenAI 兼容的聊天客户端、请求/响应数据类与 Provider。用户指南：[LLM 客户端与配置](../user_guide/llm.md)。
+OpenAI-compatible 请求/响应类型、同步客户端、配置加载和 response normalization。
 
-## `rath.llm`
+## 源码（Source）
 
-包级导出：`RathOpenAIChatClient`、`Provider`、请求/响应类型等。
+| 模块 | 源码 |
+| --- | --- |
+| `rath.llm.provider` | `src/rath/llm/provider.py` |
+| `rath.llm.client` | `src/rath/llm/client.py` |
+| `rath.llm.settings` | `src/rath/llm/settings.py` |
+| `rath.llm.chat_request` | `src/rath/llm/chat_request.py` |
+| `rath.llm.chat_response` | `src/rath/llm/chat_response.py` |
+| `rath.llm.openai_create_kwargs` | `src/rath/llm/openai_create_kwargs.py` |
+| `rath.llm.openai_normalize` | `src/rath/llm/openai_normalize.py` |
 
-## `rath.llm.client`
+## 公共契约（Public Contract）
 
-同步 HTTP 补全：`RathOpenAIChatClient`。
+### `Provider`
 
-## `rath.llm.provider`
+`Provider` 保存 loop 需要的 model、sampling、tool 和 provider-specific 参数。它不包含 messages 和 tools；这两项由 session loop 构造。
 
-`Provider` 冻结数据类：端点 `base_url` / `api_key`、模型 ID、采样与 `tool_choice` 等。在应用中请自行从环境或配置构造 `Provider`（仓库内示例见 `example/_openai_provider.py`）。
+| 字段类别 | 字段 |
+| --- | --- |
+| model | `model` |
+| sampling | `temperature`, `top_p`, `max_completion_tokens`, `max_tokens`, `stop`, `n`, `seed` |
+| penalties | `frequency_penalty`, `presence_penalty`, `logit_bias` |
+| tools/output | `tool_choice`, `parallel_tool_calls`, `response_format` |
+| OpenAI options | `reasoning_effort`, `verbosity`, `metadata`, `user`, `store`, `service_tier`, `extra_create_args` |
 
-## `rath.llm.chat_request` / `rath.llm.chat_response`
+### 设置（Settings）
 
-`RathLLMChatRequest`、`RathLLMChatResponse` 及消息/工具线协议对齐结构。
+| 函数/类型 | 行为 |
+| --- | --- |
+| `RathLLMSettings` | `api_key`、`base_url`、`default_model`。 |
+| `load_rath_llm_settings(dotenv_path=None)` | 加载 `.env` 后读取环境变量。 |
+| `rath_llm_default_dotenv_path()` | 返回项目根目录下 `.env`。 |
 
-## `rath.llm.openai_create_kwargs` / `openai_normalize`
+`OPENAI_API_KEY` 为空时，`load_rath_llm_settings(...)` 抛 `ValueError`。
 
-与 OpenAI Python SDK / 网关之间的参数归一化辅助。
+### 客户端（Client）
 
----
+```python
+client = RathOpenAIChatClient()
+response = client.complete(request)
+```
+
+`RathOpenAIChatClient.complete(...)` 调用 `openai.OpenAI().chat.completions.create(...)`，并把 provider response normalize 成 `RathLLMChatResponse`。
+
+### 请求与响应 DTO（Request/Response DTO）
+
+| 类型 | 说明 |
+| --- | --- |
+| `RathLLMMessage` | chat `messages[]` 元素。 |
+| `RathLLMFunctionTool` | function-style tool schema。 |
+| `RathLLMChatRequest` | OpenAI-compatible request kwargs。 |
+| `RathLLMChatResponse` | normalized non-streaming response。 |
+| `RathLLMChatChoice` | 单个 choice。 |
+| `RathLLMAssistantMessage` | assistant message，包括 tool calls。 |
+| `RathLLMToolCallPart` / `RathLLMToolCallFunction` | tool call 结构。 |
+| `RathLLMTokenUsage` | usage 统计。 |
+
+### 创建参数（Create Kwargs）
+
+`to_create_kwargs(req, default_model=...)` 会把内部 request 转成 OpenAI SDK kwargs。
+
+| 行为 | 说明 |
+| --- | --- |
+| model selection | 使用 `req.model`，否则使用 `default_model`；都为空时抛 `ValueError`。 |
+| tool schema | `RathLLMFunctionTool` 转成 `{"type": "function", "function": ...}`。 |
+| stream | `stream=True` 会抛 `ValueError`，最终 kwargs 强制 `stream=False`。 |
+| extra args | `req.extra_create_args` 最后 merge。 |
+
+## 自动文档（Autodoc）
+
+```{eval-rst}
+.. autoclass:: rath.llm.Provider
+   :members:
+
+.. autoclass:: rath.llm.RathOpenAIChatClient
+   :members:
+
+.. autoclass:: rath.llm.RathLLMSettings
+   :members:
+
+.. autofunction:: rath.llm.load_rath_llm_settings
+
+.. autofunction:: rath.llm.to_create_kwargs
+
+.. autofunction:: rath.llm.normalize_chat_completion
+
+.. autoclass:: rath.llm.RathLLMChatRequest
+   :members:
+
+.. autoclass:: rath.llm.RathLLMMessage
+   :members:
+
+.. autoclass:: rath.llm.RathLLMFunctionTool
+   :members:
+
+.. autoclass:: rath.llm.RathLLMChatResponse
+   :members:
+
+.. autoclass:: rath.llm.RathLLMChatChoice
+   :members:
+
+.. autoclass:: rath.llm.RathLLMAssistantMessage
+   :members:
+
+.. autoclass:: rath.llm.RathLLMToolCallPart
+   :members:
+
+.. autoclass:: rath.llm.RathLLMToolCallFunction
+   :members:
+
+.. autoclass:: rath.llm.RathLLMTokenUsage
+   :members:
+```
 
 [← API 参考](index.md)

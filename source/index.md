@@ -1,40 +1,78 @@
 (openrath-documentation)=
-# OpenRath 文档
+# OpenRath
 
-OpenRath 是面向动态多智能体工作流的 Python 框架，采用类似 Torch 的 API 设计，让大规模 Agent 的模块化开发成为可能。
+<div class="or-home-hero">
+  <h2>A PyTorch-inspired runtime for LLM agent workflows</h2>
+  <p>OpenRath brings PyTorch-style composability to agents: explicit sessions for state, structured tools for callable capabilities, and backends for controlled execution.</p>
+  <p class="or-cta">
+    <a class="or-button or-button-primary" href="tutorial/index.html">Start with Tutorials</a>
+    <a class="or-button" href="developer_notes/index.html">Developer Notes</a>
+    <a class="or-button or-button-muted" href="https://github.com/Rath-Team/OpenRath">GitHub</a>
+  </p>
+</div>
 
-* [安装](install.md)
-* [用户指南](user_guide/index.md)
-  * [设计概览](user_guide/concepts.md)
-  * [主要组件](user_guide/main_components.md)
-  * [会话](user_guide/session.md)
-  * [沙箱后端](user_guide/backends.md)
-  * [工具](user_guide/tools.md)
-  * [工作流](user_guide/workflow_agent.md)
-  * [LLM 请求接口](user_guide/llm.md)
-* [API 参考](reference/index.md)
-  * [`rath`](reference/rath.md)
-  * [`rath.session`](reference/session.md)
-  * [`rath.backend`](reference/backend.md)
-  * [`rath.flow`](reference/flow.md)
-  * [`rath.flow.tool`](reference/flow_tool.md)
-  * [`rath.llm`](reference/llm.md)
-  * [`rath.utils`](reference/utils.md)
-* [示例](examples/index.md)
-  * [如何使用 Session](examples/session_usage.md)
-  * [如何自定义工具](examples/custom_tool_usage.md)
-  * [如何绑定本地沙箱](examples/sandbox_backend_local.md)
-  * [如何绑定 OpenSandbox](examples/sandbox_backend_opensandbox.md)
+```python
+from rath import flow
+from rath.session import Session
+
+agent = flow.Agent(
+    system_prompt="Use tools when helpful.",
+    model="gpt-5.5",
+)
+
+user = Session.from_user_message(
+    "Create a file, then read it back."
+).to("local")
+
+out = agent(user)
+```
+
+The tutorials use scripted LLM responses for deterministic runs. Real agents use the same `Session`, `FlowToolCall`, `Workflow`, and `Backend` abstractions with your configured model provider.
+
+## Where To Start
+
+| Path | Use it for | Start here |
+| --- | --- | --- |
+| Install | Set up OpenRath, LLM credentials, and optional sandbox backends. | [Install](install.md) |
+| Tutorials | Learn from runnable code, then adapt full examples, including multi-agent workflows. | [Tutorials](tutorial/index.md) |
+| Developer Notes | Understand the core runtime components and their boundaries. | [Developer Notes](developer_notes/index.md) |
+| API Reference | Look up public modules, signatures, and integration points. | [API Reference](reference/index.md) |
+
+## Core Model
+
+| Concept | Role |
+| --- | --- |
+| `Session` | Carries chunk transcript, backend placement, and lineage metadata. |
+| `FlowToolCall` | Exposes a JSON schema to the model and a Python callable to the runtime. |
+| `Backend` | Opens sandboxes and executes command, file, and code payloads. |
+| `Workflow` | Composes agents and session transformations as Python modules. |
+| `Provider` | Stores model and request options for OpenAI-compatible chat completions. |
+
+## Runnable Workflows
+
+| Example | What it shows |
+| --- | --- |
+| [Trading Agents](tutorial/examples/trading_agents.md) | A sequential research workflow: analyst, bear/bull researchers, trader, and risk/PM. |
+| [Engineering Agents](tutorial/examples/engineering_agents.md) | A nested engineering workflow: lead, feature squad, backend pair, frontend, and QA. |
+
+## PyTorch Mental Model
+
+| PyTorch | OpenRath |
+| --- | --- |
+| Tensor carries data | `Session` carries agent state |
+| Module composes computation | `Workflow` / `Agent` composes behavior |
+| device controls placement | `Backend` controls execution placement |
+| callable modules expose reusable interfaces | `FlowToolCall` exposes tools |
 
 ```{toctree}
 ---
 maxdepth: 3
-caption: 站点导航
+caption: OpenRath
 hidden:
 ---
 
 install
-user_guide/index
+tutorial/index
+developer_notes/index
 reference/index
-examples/index
 ```

@@ -1,0 +1,6 @@
+$ ScriptedSessionLoopExecutor([...tool calls..., stop])
+
+response[0] -> write_workspace_file(path='tutorial_loop.txt')
+response[1] -> run_shell_command(cmd='pwd && cat tutorial_loop.txt')
+response[2] -> final assistant answer
+No network or real API key is used in this tutorial run.

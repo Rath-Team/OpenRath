@@ -1,46 +1,96 @@
 # LLM 请求接口
 
-[Workflow 与 AgentParam](workflow_agent.md) 在 `run_session_loop` 中贯穿 `Provider`。本章说明该数据类本身，以及在未注入自定义执行器时循环如何从 `Provider` 构造默认的 OpenAI 兼容客户端。
+OpenRath 的 LLM 层是薄封装：内部类型跟 OpenAI chat completions 线协议接近，默认客户端调用 `openai.OpenAI`。
 
 ## Provider
 
-`rath.llm.Provider` 是冻结数据类，描述除演化的 `messages` / `tools` 载荷外的**全部**内容——亦即 `run_session_loop` 合并进 `RathLLMChatRequest` 的 kwargs，外加默认 HTTP 客户端所需字段。
+`Provider` 是冻结 dataclass，用来保存除 `messages` / `tools` 外的 OpenAI-style 参数。
 
-典型字段：
+常用字段：
 
 | 字段 | 含义 |
-|------|------|
-| `base_url` | OpenAI 兼容网关基址（可选） |
-| `api_key` | API 密钥；在使用默认执行器且未自定义 `executor` 时必填 |
-| `model`、 `temperature`、`top_p`、`max_tokens` 等 | 模型 ID 与 OpenAI SDK 风格采样参数 |
-| `tool_choice`、`parallel_tool_calls` | 工具调用策略提示 |
+| --- | --- |
+| `model` | 模型名；为 `None` 时使用 `OPENAI_DEFAULT_MODEL`。 |
+| `temperature` / `top_p` | 采样参数。 |
+| `max_tokens` / `max_completion_tokens` | 输出长度限制。 |
+| `tool_choice` | 工具选择策略；未设置时 loop 默认 `"auto"`，压缩默认 `"none"`。 |
+| `parallel_tool_calls` | 是否允许并行工具调用，透传给 provider。 |
+| `response_format` | JSON mode 等响应格式配置。 |
+| `reasoning_effort` / `verbosity` | 兼容支持这些字段的 provider。 |
+| `extra_create_args` | 透传额外参数。 |
 
-可混用 `flow.Provider(...)` 与 `rath.llm.Provider(...)`（`flow.AgentParam` 引用同一类型）。
+示例：
 
-框架不在库内提供「从环境自动构造 `Provider`」的 API。请在应用里用 `os.environ`（或你的配置系统）读取 `OPENAI_API_KEY`（必填）、`OPENAI_BASE_URL`、`OPENAI_DEFAULT_MODEL`，再实例化 `Provider`；仓库内 `example/_openai_provider.py` 可作为示例拷贝。
+```python
+from rath.flow import Provider
 
-## RathOpenAIChatClient
+provider = Provider(
+    model="gpt-5.5",
+    temperature=0.2,
+    max_tokens=1000,
+)
+```
 
-`RathOpenAIChatClient(provider)` 包装**同步**的 OpenAI 兼容 HTTP 调用（实现内部遵循 openai-python 用法）。`provider.api_key` 必填；`provider.base_url` 非空时传入 SDK。
+## 请求类型
 
-当前 Rath **未**在框架层强制 HTTP 超时——若策略需要硬时限，请在外层包裹调用。
+`RathLLMMessage` 表示 `messages[]` 中的一项，支持 `system`、`user`、`assistant`、`tool`、`developer` 等角色字符串。
 
-## 请求与响应
+`RathLLMFunctionTool` 表示 function-style tool schema：
 
-`rath.llm.chat_request` / `chat_response` 存放为循环规范化提供方载荷的数据类（`RathLLMChatRequest`、`RathLLMChatResponse`、消息/工具结构）。
+```python
+RathLLMFunctionTool(
+    name="run_shell_command",
+    description="Run one shell command inside the active sandbox workspace.",
+    parameters={...},
+)
+```
 
-类型有意跟踪 OpenAI 线协议，以便更换网关时改动面集中。
+`RathLLMChatRequest` 汇总 messages、tools、tool_choice 和 Provider 参数。
 
-## 接入点
+## 默认客户端
 
-`DefaultSessionLoopExecutor` 将 `RathOpenAIChatClient` 适配到 `SessionLoopExecutor` 协议：
+`RathOpenAIChatClient` 做两件事：
 
-- `complete(req)` 发起聊天补全；
-- `dispatch_tool(session, call)` 将 Flow 调用转发到 `session` 所附沙箱；
-- `tool_schemas()` 暴露模型侧期望的注册信息。
+1. 从 `.env` / 环境变量加载 `RathLLMSettings`；
+2. 把 `RathLLMChatRequest` 转成 `client.chat.completions.create(**kwargs)`。
 
-需要追踪、缓存、批处理或换厂商时，替换 `executor=` 即可，而保持 `run_session_loop` 不变。
+环境变量：
 
----
+| 变量 | 必需 | 作用 |
+| --- | --- | --- |
+| `OPENAI_API_KEY` | 是 | 构造 `openai.OpenAI(api_key=...)`。 |
+| `OPENAI_BASE_URL` | 否 | 非空时传给 `OpenAI(base_url=...)`。 |
+| `OPENAI_DEFAULT_MODEL` | 否 | 请求未指定 model 时使用。 |
+
+如果 `OPENAI_API_KEY` 为空，`load_rath_llm_settings()` 会抛 `ValueError`。
+
+## 响应归一化
+
+`RathLLMChatResponse` 封装 provider 返回：
+
+- `primary_choice`：当前 loop 使用的首选 choice；
+- `message.content`：普通 assistant 文本；
+- `message.tool_calls`：工具调用列表；
+- `usage`：如 provider 返回 token usage，则保留。
+
+工具 arguments 会尝试 JSON parse。parse 失败时，`arguments_parsed=None` 且 `arguments_parse_error=True`，随后 session loop 会把错误作为 tool result 反馈给模型。
+
+## 替换客户端
+
+不要直接改 `run_session_loop`。实现 `SessionLoopExecutor` 协议即可替换：
+
+```python
+class MyExecutor:
+    def complete(self, req):
+        return my_gateway(req)
+
+    def dispatch_tool(self, session, tool, arguments):
+        return tool(session, arguments)
+
+    def tool_schemas(self):
+        return ()
+```
+
+测试中也使用这一方式构造 scripted executor，避免真实 LLM 请求。
 
 **下一篇：** [示例](../examples/index.md)

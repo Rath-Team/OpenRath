@@ -1,54 +1,112 @@
 # 沙箱后端
 
-读完 [会话与数据块](session.md) 后，下一层是**工具调用实际运行之处**：`Backend` 颁发 `BackendSandbox` 句柄并执行 `FlowToolCall` 载荷。理解沙箱后，继续 [工具与 ToolTable](tools.md)，查看线上工具名如何解析为这些调用。
+后端负责真正执行工具。OpenRath 把“模型看到的工具”与“沙箱执行的工具载荷”分开：模型调用 `FlowToolCall`，而后端执行 `BackendTool`。
 
-## 心智模型
+## Backend 抽象
 
-把 `BackendSandbox` 看成由 `Backend` 实现颁发的**不透明运行时句柄**——类似选择 `cuda` 与 `cpu`，OpenRath 在 `local` 与 `opensandbox` 等之间选择。
+每个后端需要实现：
 
-工具执行路径恒为：
+| 方法 | 作用 |
+| --- | --- |
+| `is_available()` | 静态可用性检查，要求便宜、无网络探测。 |
+| `capabilities()` | 返回 `Capabilities`，描述隔离级别和能力。 |
+| `supported_calls()` | 返回支持的 `BackendTool` 类型集合。 |
+| `open(spec=None)` | 打开 sandbox，返回 `BackendSandbox`。 |
+| `close(sandbox)` | 关闭 sandbox。 |
+| `dispatch(sandbox, call)` | 执行后端工具载荷。 |
 
+`BackendSandbox` 是运行时句柄，持有 `backend`、`handle`、`spec` 和 `closed` 标记。它也提供 `dispatch(call)` 与 `stream(...)`。
+
+## 注册表
+
+公共注册 API 位于 `rath.backend`：
+
+```python
+from rath.backend import get, list_names, preferred
+
+print(list_names())
+backend = get("local")
+backend = preferred(["opensandbox", "local"])
 ```
-FlowToolCall → Backend.dispatch(sandbox, call) → ToolResult | bool
+
+当前 `rath.backend.__init__` 会自动导入 `local`，并在可选依赖存在时尝试导入 `opensandbox`。
+
+## 后端工具载荷
+
+`BackendTool` 是后端层消费的数据类：
+
+| 类型 | 返回 |
+| --- | --- |
+| `BackendToolCommandRun` | `CommandResult` |
+| `BackendToolFilesRead` | `FileContent` |
+| `BackendToolFilesWrite` | `FileWriteResult` |
+| `BackendToolFilesList` | `FileEntries` |
+| `BackendToolFilesExists` | `bool` |
+| `BackendToolCodeRun` | `CodeResult` |
+
+可以通过 `rath.flow.tool` 的工厂直接构造这些载荷：
+
+```python
+from rath.backend import get
+from rath.flow.tool import flow_tool_command_run
+
+backend = get("local")
+with backend.open() as sandbox:
+    result = sandbox.dispatch(flow_tool_command_run("echo hello"))
+    print(result.stdout)
 ```
 
-（`FlowToolFilesExists` 坍缩为 `bool`。）
+## `local` 后端
 
-## 注册表 API
+`LocalBackend` 始终可用，使用主机子进程和主机文件系统：
 
-`rath.backend` 暴露：
+- 命令通过 `subprocess.run(...)` 执行；
+- 相对路径解析到 sandbox working directory；
+- `BackendToolCodeRun(language="python")` 会以 Python 子进程方式执行；
+- `FileEntries` 会按名称排序，便于稳定测试。
 
-| 函数 | 作用 |
-|------|------|
-| `register(name, backend_cls)` | 注册新后端 |
-| `get(name)` | 解析后端单例 |
-| `list_names()` / `preferred()` | 发现辅助 |
-| `set_default(name)` / `current()` | 默认后端选择 |
+如果 `open(spec=None)`，本地后端会创建一个临时目录。若 `spec.working_dir` 存在，则直接使用该目录。
 
-本地后端会急切加载（`import rath.backend.local`）。OpenSandbox 会在可选依赖缺失时尝试加载并不报错跳过。
+注意：当前 `close(...)` 会 `shutil.rmtree(sandbox.handle)`，因此把真实项目目录绑定为 working directory 时要特别谨慎。
 
-## 本地后端
+## `opensandbox` 后端
 
-`LocalBackend` 借助 `anyio.Path` 在主机文件系统上以子进程语义执行命令，适合作开发/一致性测试（如 `tests/backends/test_local.py`）。
+`OpenSandboxBackend` 是可选后端，需要 SDK、code interpreter 依赖和服务端配置。默认镜像为：
 
-## OpenSandbox 后端
+```text
+opensandbox/code-interpreter:v1.0.2
+```
 
-安装 `[opensandbox]` 后可使用 `rath.backend.opensandbox.OpenSandboxBackend`，与已部署的 OpenSandbox 服务通信。域名与 API 密钥等通过**进程环境变量**配置（例如 `OPEN_SANDBOX_DOMAIN`）。
+默认 workspace root 是：
 
-`Capabilities`、`IsolationLevel` 描述隔离级别；流/事件与 `anyio` 集成。
+```text
+/workspace
+```
 
-## 流与 Future
+当 `BackendSandboxSpec(working_dir=...)` 存在时，后端会尝试把 host path 绑定到 `/workspace`。如果 OpenSandbox 服务拒绝 host bind，当前实现会在非 strict 模式下重试为空 workspace。设定：
 
-`Stream`、`Event`、`Future` 封装沙箱范围内的异步原语，便于并发编排类比 CUDA stream 的用法，而不把 OpenRath 绑死在某一 GPU 栈上。
+```bash
+RATH_OPENSANDBOX_STRICT_WORKSPACE_BIND=1
+```
 
-## 错误
+即可禁止自动降级。
 
-常见异常：
+## Stream / Event
 
-- `BackendSandboxClosed` — 拆除后仍复用句柄。
-- `UnsupportedBackendTool` — 后端无法执行给定类别的调用。
-- `BackendNotFound` — 注册表查找失败。
+`BackendSandbox.stream()` 返回一个绑定到单个 sandbox 的 FIFO worker。它提供：
 
----
+- `submit(call)`：提交后端工具载荷，返回 `Future`；
+- `synchronize()`：等待当前 stream 清空；
+- `record_event()` / `wait_event(...)`：跨 stream 同步；
+- `query()`：查看是否空闲。
+
+这个接口适合以后做更复杂的并发编排；当前它是线程队列封装，不是分布式调度器。
+
+## 错误与失败
+
+后端层的两类失败要区分：
+
+- 框架错误：例如未知后端会抛 `BackendNotFound`；
+- 工具执行失败：后端通常返回 `ToolExecutionFailure(kind, message, detail)`，让 session loop 可以把错误反馈给模型。
 
 **下一篇：** [工具](tools.md)

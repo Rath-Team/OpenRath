@@ -1,0 +1,8 @@
+$ sandbox.dispatch(flow_tool_command_run("pwd && find ..."))
+
+{
+  "exit_code": 0,
+  "stdout": "/private/var/folders/q1/zd2rr4m962z413y81j14zyxc0000gn/T/rath-local-rqtmgm_j\n./notes/hello.txt\nhello from OpenRath local backend\n",
+  "stderr": "",
+  "elapsed_ms": 8.719875000679167
+}

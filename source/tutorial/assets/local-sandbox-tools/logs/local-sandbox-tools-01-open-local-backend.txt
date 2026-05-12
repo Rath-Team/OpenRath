@@ -1,0 +1,15 @@
+$ backend = get("local"); sandbox = backend.open()
+
+backend.name=local
+backend.is_available=True
+sandbox.handle=/var/folders/q1/zd2rr4m962z413y81j14zyxc0000gn/T/rath-local-rqtmgm_j
+sandbox.closed=False
+sandbox_count=1
+capabilities={
+  "isolation": "process",
+  "supports_command": true,
+  "supports_filesystem": true,
+  "supports_code_interpreter": true,
+  "cold_start_ms_p50": 10,
+  "max_sandboxes": null
+}

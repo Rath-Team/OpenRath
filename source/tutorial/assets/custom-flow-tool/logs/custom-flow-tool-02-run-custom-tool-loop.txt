@@ -1,0 +1,31 @@
+$ run_session_loop(..., tools=[WordCountTool()], executor=scripted)
+
+[0] user
+{
+  "content": "Count the words in this sentence."
+}
+[1] assistant
+{
+  "content": null,
+  "tool_calls": [
+    {
+      "id": "call_word_count",
+      "type": "function",
+      "function": {
+        "name": "word_count",
+        "arguments": "{\"text\": \"Session carries state and tools produce structured results.\"}"
+      }
+    }
+  ]
+}
+[2] tool_result
+{
+  "tool_call_id": "call_word_count",
+  "name": "word_count",
+  "content": "{\"word_count\": 8, \"unique_words\": 8, \"session_backend\": \"local\"}"
+}
+[3] assistant
+{
+  "content": "The text has 8 words and 8 unique words.",
+  "tool_calls": null
+}

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f7fb;
+      color: #172033;
+    }
+    body {
+      margin: 0;
+      padding: 36px;
+    }
+    .frame {
+      width: 1080px;
+      min-height: 640px;
+      border: 1px solid #d6dce8;
+      border-radius: 8px;
+      background: #ffffff;
+      box-shadow: 0 8px 30px rgba(23, 32, 51, 0.10);
+      overflow: hidden;
+    }
+    .bar {
+      display: flex;
+      gap: 7px;
+      align-items: center;
+      padding: 12px 16px;
+      background: #edf1f8;
+      border-bottom: 1px solid #d6dce8;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 999px;
+      background: #c5ccd8;
+    }
+    .title {
+      margin-left: 8px;
+    }
+    .terminal {
+      margin: 0;
+      padding: 22px;
+      background: #111827;
+      color: #e5e7eb;
+      font: 15px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      min-height: 570px;
+    }
+    .prompt {
+      color: #93c5fd;
+    }
+  </style>
+</head>
+<body>
+  <div class="frame">
+    <div class="bar">
+      <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+      <span class="title">prepare scripted llm</span>
+    </div>
+    <pre class="terminal"><span class="prompt">$ ScriptedSessionLoopExecutor([...tool calls..., stop])</span>
+
+response[0] -&gt; write_workspace_file(path=&#x27;tutorial_loop.txt&#x27;)
+response[1] -&gt; run_shell_command(cmd=&#x27;pwd &amp;&amp; cat tutorial_loop.txt&#x27;)
+response[2] -&gt; final assistant answer
+No network or real API key is used in this tutorial run.</pre>
+  </div>
+</body>
+</html>
