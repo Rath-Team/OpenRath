@@ -1,22 +1,22 @@
 (pkg-utils)=
 # `rath.utils`
 
-当前公共工具集中在 `rath.utils.env`，用于定位项目根目录、加载 `.env` 和读取单个 dotenv value。
+The current public utilities are in `rath.utils.env`. They locate the project root, load `.env`, and read individual dotenv values.
 
-## 源码
-| 模块 | 源码 |
+## Source
+| Module | Source |
 | --- | --- |
 | `rath.utils.env` | `src/rath/utils/env.py` |
 
-## 公共契约
-| 函数 | 返回 | 行为 |
+## Public contract
+| Function | Returns | Behavior |
 | --- | --- | --- |
-| `project_root_with_pyproject()` | `Path` | 从当前文件向上寻找包含 `pyproject.toml` 的项目根。 |
-| `default_env_file_path()` | `Path` | 返回项目根目录下 `.env`。 |
-| `load_dotenv_if_present(path, override=False)` | `None` | 文件存在时调用 `python-dotenv` 加载。 |
-| `read_dotenv_value(env_path, key)` | `str` \| `None` | 从 `.env` 文件读取单个 key。 |
+| `project_root_with_pyproject()` | `Path` | Walks upward from the current file to find the project root containing `pyproject.toml`. |
+| `default_env_file_path()` | `Path` | Returns `.env` under the project root. |
+| `load_dotenv_if_present(path, override=False)` | `None` | Calls `python-dotenv` when the file exists. |
+| `read_dotenv_value(env_path, key)` | `str` \| `None` | Reads a single key from a `.env` file. |
 
-## 自动文档
+## Autodoc
 ```{eval-rst}
 .. autofunction:: rath.utils.env.project_root_with_pyproject
 

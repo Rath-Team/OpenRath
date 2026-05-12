@@ -1,20 +1,20 @@
 (example-custom-tool)=
-# 自定义工具示例
+# Custom Tool Usage
 
-对应脚本：`example/custom_tool_usage.py`。
+Script: `example/custom_tool_usage.py`.
 
-本示例把智谱 GLM-Image API 包装成 `FlowToolCall`，说明外部 HTTPS 服务如何变成模型可调用的工具。
+This script shows how to connect an external HTTPS service: wrap the Zhipu GLM-Image API as a `FlowToolCall`, let the model call it through the tool schema, and run the actual request in the Python runtime.
 
-## 覆盖内容
-| 主题 | 结果 |
+## What it covers
+| Topic | Result |
 | --- | --- |
-| schema 定义 | `ImageGenInput` 约束 prompt 和 size。 |
-| tool class | `ImageGenTool` 同时提供名称、说明、参数和执行逻辑。 |
-| 外部 API | 工具在 Python runtime 中发起 HTTPS 请求。 |
-| agent 注册 | `flow.Agent(..., tools=[ImageGenTool()])` 把工具交给 loop。 |
-| 结果回传 | API JSON 会作为工具返回值进入 `tool_result`。 |
+| schema definition | `ImageGenInput` constrains the prompt and size. |
+| tool class | `ImageGenTool` provides the name, description, parameters, and execution logic. |
+| external API | The tool sends the HTTPS request in the Python runtime. |
+| agent registration | `flow.Agent(..., tools=[ImageGenTool()])` passes the tool to the loop. |
+| returned result | The API JSON enters the session as a `tool_result`. |
 
-## 工具代码
+## Tool code
 ```python
 class ImageGenTool(FlowToolCall):
     @property
@@ -38,41 +38,57 @@ class ImageGenTool(FlowToolCall):
         return json.loads(raw)
 ```
 
-## 关键行解释
-| 行 | 解释 |
+## Key lines
+| Line | Explanation |
 | --- | --- |
-| `ImageGenInput.model_json_schema()` | 生成模型可见的 JSON Schema。 |
-| `model_validate(...)` | 校验模型返回的 arguments。 |
-| `urllib.request.Request(...)` | 在工具内部调用外部服务。 |
-| `return json.loads(raw)` | 返回普通 dict，loop 会序列化成 `tool_result`。 |
-| `tools=[ImageGenTool()]` | 让 agent 在 loop 中能看到 `image_gen`。 |
+| `ImageGenInput.model_json_schema()` | Generates the JSON Schema visible to the model. |
+| `model_validate(...)` | Validates the arguments returned by the model. |
+| `urllib.request.Request(...)` | Calls the external service inside the tool. |
+| `return json.loads(raw)` | Returns a plain dict, which the loop serializes into a `tool_result`. |
+| `tools=[ImageGenTool()]` | Makes `image_gen` available to the agent in the loop. |
 
-## 运行
+## Run
 ```bash
 export ZHIPU_API_KEY=...
 python example/custom_tool_usage.py
 ```
 
-也可以使用 `OPENAI_API_KEY` 作为 fallback。真实 key 应保存在环境变量、本地 `.env` 或密钥管理系统中，不写入教程、脚本或仓库提交。
+You can also use `OPENAI_API_KEY` as a fallback. Store real keys in environment variables, a local `.env`, or a secrets manager, not in tutorials, scripts, or commits.
 
-## 观察结果
-| 位置 | 看什么 |
+## Successful output
+The script prints a `Session(...)`. On success, the chunk table contains one `image_gen` tool call and its `tool_result`; the final assistant reply references the image URL or generation summary returned by the tool.
+
+```text
+Session(
+  chunks=[
+    [0] user: 'Generate a simple cartoon cat on a sofa...'
+    [1] assistant: tools=[image_gen(...)]
+    [2] tool_result: name='image_gen', body='{"created": ... , "data": ...}'
+    [3] assistant: text='Generated image: https://...'
+  ]
+)
+```
+
+The current tool only returns the API JSON. It does not download image files. Seeing a URL does not mean a local file was saved.
+
+## What to inspect
+| Location | What to check |
 | --- | --- |
-| stdout | 输出 session 里应包含工具调用后的 assistant 回复。 |
-| tool result | 应包含图像 API 返回的 JSON。 |
-| 最终回复 | agent 应从工具结果中提取图片 URL 或说明。 |
+| stdout | The output session should include the assistant reply after the tool call. |
+| tool result | Should contain the JSON returned by the image API. |
+| final reply | The agent should extract the image URL or summary from the tool result. |
 
-脚本里的 user prompt 提到了保存图片文件，但当前 `ImageGenTool` 只返回 API JSON；如果要真的下载图片，需要再实现一个下载或文件写入工具。
+The user prompt in the script mentions saving an image file, but the current `ImageGenTool` only returns API JSON. To actually download the image, add a download or file-writing tool.
 
-## 常见问题
-| 现象 | 检查方向 |
+## Troubleshooting
+| Symptom | Check |
 | --- | --- |
-| `Set ZHIPU_API_KEY or OPENAI_API_KEY` | 没有配置图像 API key。 |
-| HTTP error | 检查 key、额度、模型名和图片尺寸。 |
-| 模型不调用工具 | 检查 system prompt 是否明确要求调用 `image_gen`。 |
-| 返回 JSON 里没有 URL | 先打印 tool result，确认外部 API 返回结构。 |
+| `Set ZHIPU_API_KEY or OPENAI_API_KEY` | No image API key is configured. |
+| HTTP error | Check the key, quota, model name, and image size. |
+| Model does not call the tool | Check whether the system prompt clearly asks for `image_gen`. |
+| Returned JSON has no URL | Print the tool result first and confirm the external API response shape. |
 
-## 练习
-1. 给 `ImageGenInput` 增加 `style` 参数，并拼接进 prompt。
-2. 把工具改成只返回 `data[0].url`，减少模型需要解析的内容。
-3. 增加一个文件下载工具，把 URL 下载到 sandbox workspace。
+## Exercises
+1. Add a `style` parameter to `ImageGenInput` and append it to the prompt.
+2. Change the tool to return only `data[0].url`, reducing what the model must parse.
+3. Add a file download tool that downloads the URL into the sandbox workspace.

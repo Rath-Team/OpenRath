@@ -1,17 +1,17 @@
-# 本地沙箱工具
+# Local Sandbox Tools
 
-本教程绕过 LLM，直接启动 `LocalBackend` 并调用后端工具，用来说明文件、命令和代码 payload 如何进入本地 workspace 执行。
+Before involving a model, look at where tools actually execute. This page opens `LocalBackend` directly, dispatches file, command, and code payloads by hand, and shows how they operate around the same local workspace.
 
-## 覆盖内容
-| 主题 | 结果 |
+## Coverage
+| Topic | Result |
 | --- | --- |
-| backend registry | `get("local")` 如何取得本地后端。 |
-| sandbox handle | local sandbox 对应一个工作目录。 |
-| backend payload | 文件、命令、代码执行都通过 `BackendTool*` 数据类表达。 |
-| structured result | 每次 dispatch 都返回结构化对象。 |
-| lifecycle | `backend.close(sandbox)` 会关闭 sandbox，并可能清理工作目录。 |
+| Backend registry | How `get("local")` returns the local Backend. |
+| Sandbox handle | A local sandbox maps to one working directory. |
+| Backend payload | File, command, and code execution are represented by `BackendTool*` data classes. |
+| Structured result | Each dispatch returns a structured object. |
+| Lifecycle | `backend.close(sandbox)` closes the sandbox and may clean up the working directory. |
 
-## 步骤 1：打开 local backend
+## Step 1: Open the Local Backend
 ```python
 from rath.backend import get
 
@@ -23,21 +23,21 @@ print(backend.capabilities())
 print(sandbox.handle)
 ```
 
-关键行：
+Key lines:
 
-| 行 | 解释 |
+| Line | Explanation |
 | --- | --- |
-| `get("local")` | 从 backend registry 里取出本地后端实例。 |
-| `backend.open()` | 创建一个 `BackendSandbox` handle。 |
-| `sandbox.handle` | local backend 管理的 workspace 路径。 |
+| `get("local")` | Gets the local Backend instance from the Backend registry. |
+| `backend.open()` | Creates a `BackendSandbox` handle. |
+| `sandbox.handle` | The workspace path managed by the local Backend. |
 
-观察结果：
+Observed behavior:
 
-- `backend.name` 为 `local`。
-- `sandbox.handle` 为一个本地路径。
-- 如果没有传入 `working_dir`，local backend 会创建临时目录。
+- `backend.name` is `local`.
+- `sandbox.handle` is a local path.
+- If no `working_dir` is passed, the local Backend creates a temporary directory.
 
-## 步骤 2：写入并读取文件
+## Step 2: Write and Read a File
 ```python
 from rath.backend import BackendToolFilesRead, BackendToolFilesWrite
 
@@ -52,21 +52,21 @@ print(write_result)
 print(content)
 ```
 
-关键行：
+Key lines:
 
-| 行 | 解释 |
+| Line | Explanation |
 | --- | --- |
-| `BackendToolFilesWrite(...)` | 描述一次文件写入，不直接执行。 |
-| `sandbox.dispatch(...)` | 把 payload 交给当前 sandbox 执行。 |
-| `BackendToolFilesRead(...)` | 在同一个 workspace 里读取刚写入的文件。 |
+| `BackendToolFilesWrite(...)` | Describes a file write without executing it directly. |
+| `sandbox.dispatch(...)` | Sends the payload to the current sandbox for execution. |
+| `BackendToolFilesRead(...)` | Reads the file just written in the same workspace. |
 
-观察结果：
+Observed behavior:
 
-- 写入结果会包含写入字节数。
-- 读取结果会包含文件内容。
-- 相对路径 `hello.txt` 基于 `sandbox.handle` 解析。
+- The write result includes the number of bytes written.
+- The read result includes the file content.
+- The relative path `hello.txt` is resolved from `sandbox.handle`.
 
-## 步骤 3：运行 shell 命令
+## Step 3: Run a Shell Command
 ```python
 from rath.backend import BackendToolCommandRun
 
@@ -79,21 +79,21 @@ print(result.stdout.decode())
 print(result.stderr.decode())
 ```
 
-关键行：
+Key lines:
 
-| 行 | 解释 |
+| Line | Explanation |
 | --- | --- |
-| `BackendToolCommandRun(...)` | 描述一次 shell 命令执行。 |
-| `exit_code` | 让调用方判断命令是否成功。 |
-| `stdout` / `stderr` | 当前实现以 bytes 保存输出，读取时需要 decode。 |
+| `BackendToolCommandRun(...)` | Describes a shell command execution. |
+| `exit_code` | Lets the caller decide whether the command succeeded. |
+| `stdout` / `stderr` | The current implementation stores output as bytes, so callers need to decode it. |
 
-观察结果：
+Observed behavior:
 
-- `pwd` 输出的目录和 local sandbox workspace 对应。
-- `cat hello.txt` 能读到上一步写入的内容。
-- 命令失败时，应优先看 `exit_code` 和 `stderr`。
+- `pwd` prints the directory for the local sandbox workspace.
+- `cat hello.txt` can read the content written in the previous step.
+- When a command fails, check `exit_code` and `stderr` first.
 
-## 步骤 4：运行 Python code
+## Step 4: Run Python Code
 ```python
 from rath.backend import BackendToolCodeRun
 
@@ -106,38 +106,38 @@ print(result.stderr.decode())
 print(result.error)
 ```
 
-当前 local backend 会把 code 写成临时 Python 文件，再用当前 Python 解释器执行。它适合验证工具路径和脚本行为；涉及不可信代码时，应使用更严格的隔离后端。
+The current local Backend writes the code to a temporary Python file, then runs it with the current Python interpreter. This is useful for checking tool paths and script behavior. Use a stricter isolated Backend for untrusted code.
 
-## 步骤 5：关闭 sandbox
+## Step 5: Close the Sandbox
 ```python
 backend.close(sandbox)
 print(sandbox.closed)
 ```
 
-关键点：
+Key points:
 
-| 行为 | 说明 |
+| Behavior | Notes |
 | --- | --- |
-| `backend.close(sandbox)` | 关闭 sandbox handle。 |
-| local workspace cleanup | local backend 会清理它管理的目录。 |
-| bound directory risk | 绑定真实目录时确认目录可重建，降低误删重要内容的风险。 |
+| `backend.close(sandbox)` | Closes the sandbox handle. |
+| Local workspace cleanup | The local Backend cleans up directories it manages. |
+| Bound directory risk | When binding a real directory, make sure it can be recreated to reduce the risk of deleting important content. |
 
-## 常见问题
-| 现象 | 检查方向 |
+## Troubleshooting
+| Symptom | Check |
 | --- | --- |
-| `get("local")` 报错 | 确认 OpenRath 已安装，`rath.backend` 能正常 import。 |
-| 文件读不到 | 确认写入和读取发生在同一个 sandbox 上。 |
-| 命令没有输出 | 先打印 `exit_code` 和 `stderr.decode()`。 |
-| close 后继续 dispatch 报错 | sandbox 关闭后需要重新 `backend.open()`。 |
+| `get("local")` fails | Confirm OpenRath is installed and `rath.backend` imports correctly. |
+| File cannot be read | Confirm the write and read happen on the same sandbox. |
+| Command has no output | Print `exit_code` and `stderr.decode()` first. |
+| Dispatch fails after close | Re-run `backend.open()` after the sandbox is closed. |
 
-## 练习
-1. 把 `hello.txt` 改成 `notes/hello.txt`，观察目录是否会自动创建。
-2. 改写 shell 命令，让它列出 workspace 下的所有文件。
-3. 把 Python code 改成读取 `hello.txt` 并打印长度。
+## Exercises
+1. Change `hello.txt` to `notes/hello.txt` and observe whether the directory is created automatically.
+2. Rewrite the shell command so it lists all files under the workspace.
+3. Change the Python code so it reads `hello.txt` and prints its length.
 
-## 小结
+## Summary
 
-- `BackendTool*` payload 描述后端侧操作。
-- `BackendSandbox.dispatch(...)` 执行 payload 并返回结构化结果。
-- 文件、命令和代码 payload 围绕同一个 sandbox workspace 工作。
-- session loop 中的内置工具最终也会落到这一层 backend dispatch。
+- `BackendTool*` payloads describe Backend-side operations.
+- `BackendSandbox.dispatch(...)` executes a payload and returns a structured result.
+- File, command, and code payloads operate around the same sandbox workspace.
+- Built-in tools in the Session loop eventually run through this Backend dispatch layer.

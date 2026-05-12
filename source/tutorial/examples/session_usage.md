@@ -1,20 +1,20 @@
 (example-session-usage)=
-# Session 用法示例
+# Session Usage
 
-对应脚本：`example/session_usage.py`。
+Script: `example/session_usage.py`.
 
-本示例把几个基础原语放在同一个文件里：创建 agent session、创建 user session、`fork()`、`detach()`、绑定 local backend、运行 `run_session_loop(...)`，最后用 `run_session_compress(...)` 压缩上下文。
+This script connects the common session primitives in one path. Use it to check the mental model: create agent and user sessions, then observe how `fork()`, `detach()`, backend placement, loop, and compression change the output session.
 
-## 覆盖内容
-| 主题 | 结果 |
+## What it covers
+| Topic | Result |
 | --- | --- |
-| agent session | system prompt 作为单独 session 存在。 |
-| user session | 用户输入作为 user-side session 存在。 |
-| fork 与 detach | session 可以复制内容，也可以切断 lineage。 |
-| backend placement | `.to("local", spec="./")` 决定工具执行位置。 |
-| loop 与 compress | 一次 agent loop 之后可以继续压缩 session。 |
+| agent session | The system prompt exists as a separate session. |
+| user session | User input exists as a user-side session. |
+| fork and detach | A session can copy content or break lineage. |
+| backend placement | `.to("local", spec="./")` selects where tools run. |
+| loop and compression | A session can be compressed after an agent loop. |
 
-## 关键代码
+## Key code
 ```python
 from rath import flow
 from rath.session import Session, run_session_loop, run_session_compress
@@ -39,38 +39,64 @@ compressed = run_session_compress(
 )
 ```
 
-## 关键行解释
-| 行 | 解释 |
+## Key lines
+| Line | Explanation |
 | --- | --- |
-| `Session.from_agent_prompt(...)` | 创建 agent-side system session。 |
-| `Session.from_user_message(...)` | 创建 user-side session。 |
-| `.to("local", spec="./")` | 把当前项目目录作为 local workspace。 |
-| `run_session_loop(...)` | 拼接 agent session 和 user session，允许模型调用工具。 |
-| `run_session_compress(...)` | 把已有 transcript 压缩成新的 user-only session。 |
+| `Session.from_agent_prompt(...)` | Creates an agent-side system session. |
+| `Session.from_user_message(...)` | Creates a user-side session. |
+| `.to("local", spec="./")` | Uses the current project directory as the local workspace. |
+| `run_session_loop(...)` | Combines the agent session and user session, allowing the model to call tools. |
+| `run_session_compress(...)` | Compresses an existing transcript into a new user-only session. |
 
-## 运行
+## Run
 ```bash
 python example/session_usage.py
 ```
 
-该脚本需要真实 LLM 配置。模型名来自项目配置；缺省时使用脚本里的默认值。
+This script requires a real LLM configuration. The model name comes from project configuration; if it is missing, the script uses its default.
 
-## 观察结果
-| 位置 | 看什么 |
+## Successful output
+The script prints two `Session(...)` objects. The first is the full transcript after the loop. It usually contains user and assistant rows, plus any `tool_result` rows produced by model tool calls:
+
+```text
+Session(
+  id=...,
+  backend='local',
+  chunks=[
+    [0] user: 'Please use tool to summarize this workspace...'
+    [1] assistant: tools=[run_shell_command(...)]
+    [2] tool_result: name='run_shell_command', ...
+    [3] assistant: text='...'
+  ]
+)
+```
+
+The second session is the compressed result. It is usually shorter and mainly keeps the compressed user-side summary:
+
+```text
+Session(
+  chunks=[
+    [0] user: 'Summary: ...'
+  ]
+)
+```
+
+## What to inspect
+| Location | What to check |
 | --- | --- |
-| 第一次 `print(out_session)` | loop 后的 session，包含 assistant rows 和可能的 tool result rows。 |
-| 第二次 `print(out_session)` | compress 后的新 session，通常更短，并包含新的 user-side summary。 |
-| workspace | 如果模型调用内置工具，工具会在绑定目录中执行。 |
+| First `print(out_session)` | The post-loop session, with assistant rows and possible tool result rows. |
+| Second `print(out_session)` | The new compressed session, usually shorter and containing a new user-side summary. |
+| workspace | If the model calls built-in tools, they run in the bound directory. |
 
-## 常见问题
-| 现象 | 检查方向 |
+## Troubleshooting
+| Symptom | Check |
 | --- | --- |
-| LLM 请求失败 | 检查 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、模型名。 |
-| 工具无法访问文件 | 检查 `.to("local", spec="./")` 指向的目录。 |
-| compress 报空输出 | 检查模型是否返回了非空 assistant content。 |
-| 输出很长 | 这是 loop 的原始 transcript；压缩结果应在第二次输出中查看。 |
+| LLM request fails | Check `OPENAI_API_KEY`, `OPENAI_BASE_URL`, and the model name. |
+| Tools cannot access files | Check the directory passed to `.to("local", spec="./")`. |
+| Compression returns empty output | Check whether the model returned non-empty assistant content. |
+| Output is long | This is the raw loop transcript; inspect the second output for the compressed result. |
 
-## 练习
-1. 把 `spec="./"` 改成一个临时目录，观察模型能看到的文件变化。
-2. 在 loop 前调用 `fork()`，分别让两个 session 执行不同任务。
-3. 改写 compress prompt，让压缩结果保留 TODO 列表。
+## Exercises
+1. Change `spec="./"` to a temporary directory and observe which files the model can see.
+2. Call `fork()` before the loop and let the two sessions run different tasks.
+3. Rewrite the compression prompt so the compressed result keeps a TODO list.

@@ -1,34 +1,34 @@
 (example-sandbox-opensandbox)=
-# OpenSandbox 后端示例
+# OpenSandbox Backend
 
-对应脚本：`example/sandbox_backend_opensandbox.py`。
+Script: `example/sandbox_backend_opensandbox.py`.
 
-本示例展示同一段 agent 逻辑如何从 local backend 切到 OpenSandbox backend。核心入口仍然是 `Session.to(...)`，变化的是 backend 名称和服务端配置。
+The OpenSandbox path and local path use the same `Session.to(...)` entry point. The differences are the backend name, server connection configuration, and workspace bind strategy; the agent-side code stays the same.
 
-## 覆盖内容
-| 主题 | 结果 |
+## What it covers
+| Topic | Result |
 | --- | --- |
-| backend switch | `Session.to("opensandbox", spec=...)` 选择 OpenSandbox。 |
-| service dependency | OpenSandbox backend 需要外部服务可访问。 |
-| empty workspace | `spec=None` 对应容器内空的 `/workspace`。 |
-| workspace bind | `spec="."` 会尝试把 host path 绑定到容器 workspace。 |
-| strict mode | 绑定失败时可以选择重试空 workspace 或直接失败。 |
+| backend switch | `Session.to("opensandbox", spec=...)` selects OpenSandbox. |
+| service dependency | The OpenSandbox backend requires a reachable external service. |
+| empty workspace | `spec=None` maps to an empty `/workspace` in the container. |
+| workspace bind | `spec="."` attempts to bind the host path into the container workspace. |
+| strict mode | On bind failure, you can retry with an empty workspace or fail immediately. |
 
-## 前置条件
-1. 安装 OpenSandbox extra。
-2. 启动兼容 OpenSandbox API 的服务。
-3. 配置 OpenSandbox domain 和 API key。
-4. 需要 host path bind 时，服务端 `allowed_host_paths` 允许对应路径。
+## Prerequisites
+1. Install the OpenSandbox extra.
+2. Start a service compatible with the OpenSandbox API.
+3. Configure the OpenSandbox domain and API key.
+4. For host path binding, make sure the server `allowed_host_paths` permits the path.
 
-示例命令：
+Example commands:
 
 ```bash
 pip install -e ".[opensandbox]"
-export OPEN_SANDBOX_DOMAIN=http://127.0.0.1:8000
+export OPEN_SANDBOX_DOMAIN=127.0.0.1:8080
 export OPEN_SANDBOX_API_KEY=...
 ```
 
-先单独执行健康检查：
+Run a health check first:
 
 ```bash
 python - <<'PY'
@@ -40,7 +40,7 @@ print("capabilities:", b.capabilities())
 PY
 ```
 
-## 关键代码
+## Key code
 ```python
 user_session = Session.from_user_message(
     "List all files in the current directory. And summarize the result."
@@ -53,46 +53,57 @@ user_session = user_session.to("opensandbox", spec=".")
 out_session = agent(user_session)
 ```
 
-## workspace bind 行为
-| 写法 | 行为 |
+## Workspace bind behavior
+| Form | Behavior |
 | --- | --- |
-| `spec=None` | 创建不绑定 host path 的 OpenSandbox workspace。 |
-| `spec="."` | 尝试把当前目录绑定到容器 `/workspace`。 |
-| strict mode off | host bind 被拒绝时，后端可以回退为空 workspace。 |
-| strict mode on | host bind 被拒绝时直接失败。 |
+| `spec=None` | Creates an OpenSandbox workspace without binding a host path. |
+| `spec="."` | Attempts to bind the current directory to container `/workspace`. |
+| strict mode off | If the host bind is rejected, the backend can fall back to an empty workspace. |
+| strict mode on | If the host bind is rejected, the backend fails immediately. |
 
-仓库的 `scripts/launch_opensandbox.sh` 会把当前项目目录写入 `.sandbox.toml` 的 `allowed_host_paths`。手动启动 OpenSandbox，或把 `spec` 指向其他目录时，需要自己更新 allowlist。
+The repository `scripts/launch_opensandbox.sh` writes the current project directory into `.sandbox.toml` under `allowed_host_paths`. If you start OpenSandbox manually or point `spec` to another directory, update the allowlist yourself.
 
-如需严格失败：
+To fail strictly:
 
 ```bash
 export RATH_OPENSANDBOX_STRICT_WORKSPACE_BIND=1
 ```
 
-## 运行
+## Run
 ```bash
 python example/sandbox_backend_opensandbox.py
 ```
 
-该脚本同时需要真实 LLM 配置和 OpenSandbox 服务配置。
+This script needs both a real LLM configuration and OpenSandbox service configuration.
 
-## 观察结果
-| 阶段 | 看什么 |
+## Successful output
+Like the local backend example, the script first prints the initial backend target, then runs the empty workspace and bound workspace stages:
+
+```text
+None
+The /workspace directory is empty.
+The workspace contains files such as pyproject.toml, src/, tests/, docs/, ...
+```
+
+If the `spec="."` bind succeeds, the second output mentions files from the current repository. If the server rejects the host bind and strict mode is off, the second output may still look like an empty workspace; check `allowed_host_paths` in `.sandbox.toml`.
+
+## What to inspect
+| Stage | What to check |
 | --- | --- |
-| availability check | `backend.get("opensandbox").is_available()` 为真时才运行 main。 |
-| `spec=None` | agent 看到容器中的空 workspace。 |
-| `spec="."` | 服务允许 bind 时，agent 能看到绑定目录内容。 |
-| 回退行为 | 非 strict 模式下，bind 失败可能仍继续运行。 |
+| availability check | `main` runs only when `backend.get("opensandbox").is_available()` is true. |
+| `spec=None` | The agent sees an empty workspace in the container. |
+| `spec="."` | If the service allows the bind, the agent can see the bound directory. |
+| fallback behavior | In non-strict mode, execution may continue after bind failure. |
 
-## 常见问题
-| 现象 | 检查方向 |
+## Troubleshooting
+| Symptom | Check |
 | --- | --- |
-| backend unavailable | 检查 extra、OpenSandbox SDK、环境变量。 |
-| 服务连接失败 | 检查 `OPEN_SANDBOX_DOMAIN`、服务端端口、API key。 |
-| host bind 被拒绝 | 检查服务端 allowed host paths。 |
-| agent 看不到项目文件 | 确认 `spec="."` 阶段是否真的 bind 成功。 |
+| backend unavailable | Check the extra, OpenSandbox SDK, and environment variables. |
+| Service connection fails | Check `OPEN_SANDBOX_DOMAIN`, the server port, and the API key. |
+| host bind is rejected | Check the server allowed host paths. |
+| agent cannot see project files | Confirm that the `spec="."` stage actually bound the directory. |
 
-## 练习
-1. 把 `spec="."` 改成 `.workspace/opensandbox-demo`。
-2. 打开 strict mode，故意绑定一个未允许路径，观察错误。
-3. 对比 local backend 与 OpenSandbox backend 的 `tool_result` 输出差异。
+## Exercises
+1. Change `spec="."` to `.workspace/opensandbox-demo`.
+2. Enable strict mode, intentionally bind a disallowed path, and observe the error.
+3. Compare the `tool_result` output from the local backend and OpenSandbox backend.

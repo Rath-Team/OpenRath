@@ -1,44 +1,45 @@
 # Trading Agents
 
-对应目录：`example/trading_agents/`。
+Directory: `example/trading_agents/`.
 
-本示例展示 TradingAgents-style 的顺序多角色 workflow。它使用真实 LLM 配置，并把 Alpha Vantage quote API 包装成 `FlowToolCall`：analyst agent 先调用市场数据工具，随后同一个 `Session` 继续交给后续角色处理。
+Trading Agents demonstrates a research chain: the analyst first fetches an Alpha Vantage quote through a `FlowToolCall`, the bear and bull researchers form separate views, and the trader and risk PM continue working along the same `Session`.
 
-## 覆盖内容
-| 主题 | 结果 |
+## What it covers
+| Topic | Result |
 | --- | --- |
-| 顺序 multi-agent | 五个角色按固定顺序处理同一个 session。 |
-| agent identity | 每个角色都是一个 `AgentParam`，拥有自己的 system prompt。 |
-| 外部数据工具 | analyst 阶段独享 `AlphaVantageGlobalQuoteTool`。 |
-| session continuity | 后续角色读取前面角色留下的 assistant rows 和 tool results。 |
-| session-level parallel | analyst 输出后可以 fork 出 bear/bull 两条并行研究分支。 |
-| workspace output | 各角色被提示写入自己的报告文件。 |
+| sequential multi-agent | Five roles process the same session in a fixed order. |
+| agent identity | Each role is an `AgentParam` with its own system prompt. |
+| external data tool | Only the analyst stage receives `AlphaVantageGlobalQuoteTool`. |
+| session continuity | Later roles read the assistant rows and tool results left by earlier roles. |
+| session-level parallel | After the analyst output, the workflow can fork bear and bull research branches. |
+| workspace output | Each role is prompted to write its own report file. |
 
-## 目录结构
-| 文件 | 负责内容 |
+## Directory structure
+| File | Responsibility |
 | --- | --- |
-| `agents.py` | 定义 analyst、bear researcher、bull researcher、trader、risk PM 的 system prompts。 |
-| `tools.py` | 定义 `AlphaVantageGlobalQuoteTool`，暴露 `alpha_vantage_global_quote`。 |
-| `workflow.py` | 定义 `TradingAgentsWorkflow`，按顺序运行五个 agent。 |
-| `_env.py` | 加载 OpenAI-compatible LLM 配置，并要求显式设置 Alpha Vantage key。 |
-| `main.py` | CLI 入口，构造 user session、绑定 local backend、运行 workflow。 |
+| `agents.py` | Defines system prompts for the analyst, bear researcher, bull researcher, trader, and risk PM. |
+| `tools.py` | Defines `AlphaVantageGlobalQuoteTool` and exposes `alpha_vantage_global_quote`. |
+| `workflow.py` | Defines `TradingAgentsWorkflow`, which runs the five agents in order. |
+| `_env.py` | Loads OpenAI-compatible LLM configuration and requires an explicit Alpha Vantage key. |
+| `main.py` | CLI entry point that constructs the user session, binds the local backend, and runs the workflow. |
 
-## Agent 顺序
-| 顺序 | Agent | 行为 |
+## Agent order
+| Order | Agent | Behavior |
 | --- | --- | --- |
-| 1 | analyst | 调用 `alpha_vantage_global_quote`，形成市场数据和初步分析。 |
-| 2 | researcher_bear | 基于已有 session 提出风险和负面论点。 |
-| 3 | researcher_bull | 基于同一 session 提出正面论点。 |
-| 4 | trader | 整合研究内容，输出交易建议。 |
-| 5 | risk_pm | 审核 trader proposal，给出风险控制意见。 |
+| 1 | analyst | Calls `alpha_vantage_global_quote` and produces market data plus initial analysis. |
+| 2 | researcher_bear | Uses the existing session to develop risks and bearish arguments. |
+| 3 | researcher_bull | Uses the same session to develop bullish arguments. |
+| 4 | trader | Combines the research and produces a trading proposal. |
+| 5 | risk_pm | Reviews the trader proposal and gives risk-control guidance. |
 
-每一步都调用 `run_session_loop(...)`。输出 `Session` 会继续交给下一步，因此后续角色可以读取前面角色留下的 assistant chunks、tool results 和文件写入意图。
+Each step calls `run_session_loop(...)`. The output `Session` is passed to the next step, so later roles can read assistant chunks, tool results, and file-writing intent from earlier roles.
 
-## Session 级并行
-当前示例为了便于阅读，按顺序运行 bear researcher 和 bull researcher。实际 workflow 可以在 analyst 阶段之后 fork 两个 session，让两位 researcher 并行工作：
+## Session-level parallelism
+For readability, the current example runs the bear researcher and bull researcher sequentially. A real workflow can fork two sessions after the analyst stage and let the researchers run in parallel:
 
 ```python
 from concurrent.futures import ThreadPoolExecutor
+from rath.session import ChunkKind, Session
 
 
 market_tools = [AlphaVantageGlobalQuoteTool()]
@@ -71,10 +72,41 @@ with ThreadPoolExecutor(max_workers=2) as pool:
     bull_session = bull_future.result()
 ```
 
-这里的并行单位是 `Session`。`fork()` 会复制 analyst 阶段已经形成的 transcript 和 backend target，但不会复制已经打开的 sandbox handle。两个 researcher branch 会产生两条独立 lineage，后续 trader 阶段再由 workflow 显式决定如何汇总这两条 branch，例如提取两边最后的 assistant message，组成新的 user session 交给 trader。
+The parallel unit here is the `Session`. `fork()` copies the transcript and backend target produced by the analyst stage, but it does not copy an already-open sandbox handle. The two researcher branches produce independent lineages; the workflow must explicitly decide how the trader stage aggregates them.
 
-## Workflow 代码
-核心结构来自 `example/trading_agents/workflow.py`：
+One minimal aggregation approach is to extract the final assistant message from each branch, then build a new user session for the trader:
+
+```python
+def last_assistant_text(s: Session) -> str:
+    for row in reversed(s.chunk_table.rows):
+        if row.kind == ChunkKind.ASSISTANT and row.payload.get("content"):
+            return str(row.payload["content"])
+    return ""
+
+
+trader_input = Session.from_user_message(
+    "Compare the two research branches and produce one trading proposal.\n\n"
+    f"Bear branch:\n{last_assistant_text(bear_session)}\n\n"
+    f"Bull branch:\n{last_assistant_text(bull_session)}"
+).to("local")
+
+trader_session = run_session_loop(
+    trader_input,
+    self.trader.agent_session,
+    agent_provider=self.trader.provider,
+    tools=None,
+)
+```
+
+If both branches write report files, assign different workspaces to the branches. A direct `fork()` copies the original session backend target; when the original session is bound with `spec="."`, both branches may write into the same directory.
+
+```python
+bear_input = analyst_session.fork().to("local", spec=".workspace/trading-bear")
+bull_input = analyst_session.fork().to("local", spec=".workspace/trading-bull")
+```
+
+## Workflow code
+The core structure comes from `example/trading_agents/workflow.py`:
 
 ```python
 class TradingAgentsWorkflow(Workflow):
@@ -127,18 +159,18 @@ class TradingAgentsWorkflow(Workflow):
         )
 ```
 
-关键点：
+Key points:
 
-| 行 | 解释 |
+| Line | Explanation |
 | --- | --- |
-| `prov = Provider(model=model)` | 五个角色共享同一个模型配置。 |
-| `self.analyst = AgentParam(...)` | 赋值时被 `Workflow` 登记。 |
-| `market_tools = [AlphaVantageGlobalQuoteTool()]` | 市场数据工具只传给 analyst。 |
-| `s = run_session_loop(s, ...)` | 每个角色接收前一个角色输出的 session。 |
-| `tools=None` | 后续角色使用内置工具，不再暴露市场数据工具。 |
+| `prov = Provider(model=model)` | All five roles share the same model configuration. |
+| `self.analyst = AgentParam(...)` | Assignment registers the agent with the `Workflow`. |
+| `market_tools = [AlphaVantageGlobalQuoteTool()]` | The market data tool is passed only to the analyst. |
+| `s = run_session_loop(s, ...)` | Each role receives the output session from the previous role. |
+| `tools=None` | Later roles use built-in tools and no longer receive the market data tool. |
 
-## 工具代码
-`AlphaVantageGlobalQuoteTool` 继承 `FlowToolCall`：
+## Tool code
+`AlphaVantageGlobalQuoteTool` inherits from `FlowToolCall`:
 
 ```python
 class AlphaVantageGlobalQuoteTool(FlowToolCall):
@@ -154,12 +186,12 @@ class AlphaVantageGlobalQuoteTool(FlowToolCall):
         ...
 ```
 
-这个工具在 Python runtime 中发起 HTTPS 请求，并把结构化 dict 返回给 session loop。loop 会把返回值序列化为 `tool_result` chunk，供 analyst 的后续模型轮次使用。
+This tool sends the HTTPS request in the Python runtime and returns a structured dict to the session loop. The loop serializes the return value into a `tool_result` chunk for later analyst model turns.
 
-公开运行时需要用户显式设置自己的 Alpha Vantage key。这个 key 只用于演示外部数据工具，不属于 OpenRath runtime 的核心能力。
+Public runs require users to set their own Alpha Vantage key explicitly. This key is only used to demonstrate an external data tool; it is not part of the core OpenRath runtime.
 
-## 运行
-从仓库根目录运行：
+## Run
+Run from the repository root:
 
 ```bash
 export ALPHA_VANTAGE_API_KEY=...
@@ -169,7 +201,7 @@ python example/trading_agents/main.py \
   --workdir .workspace/trading-agents
 ```
 
-该例子还需要真实 OpenAI-compatible LLM 配置：
+This example also needs a real OpenAI-compatible LLM configuration:
 
 ```bash
 export OPENAI_API_KEY=...
@@ -177,26 +209,46 @@ export OPENAI_BASE_URL=...
 export OPENAI_DEFAULT_MODEL=...
 ```
 
-真实 key 应保存在环境变量、本地 `.env` 或密钥管理系统中，不写入脚本、文档或提交记录。
+Store real keys in environment variables, a local `.env`, or a secrets manager, not in scripts, docs, or commit history.
 
-## 观察结果
-| 位置 | 看什么 |
+## Successful output
+The script prints the final `Session(...)`. On success, the session shows the analyst's market data tool call and assistant rows appended by later roles:
+
+```text
+Session(
+  chunks=[
+    [0] user: 'Ticker: NVDA...'
+    [1] assistant: tools=[alpha_vantage_global_quote(...)]
+    [2] tool_result: name='alpha_vantage_global_quote', body='{"symbol": "NVDA", ...}'
+    [3] assistant: text='Analyst report...'
+    [4] assistant: text='Bear researcher...'
+    [5] assistant: text='Bull researcher...'
+    [6] assistant: text='Trader proposal...'
+    [7] assistant: text='Risk PM review...'
+  ]
+)
+```
+
+If the model calls file-writing tools, reports from each role also appear under `.workspace/trading-agents`. File names and contents depend on the prompt and model behavior.
+
+## What to inspect
+| Location | What to check |
 | --- | --- |
-| stdout | 最终输出 session，包含各角色追加的 assistant rows。 |
-| workspace | analyst、researcher、trader、risk PM 相关报告文件。 |
-| session chunks | analyst 的 tool call、tool result，以及后续角色如何沿用同一 session。 |
-| workflow repr | 直接登记的五个 `AgentParam`。 |
+| stdout | The final output session, including assistant rows appended by each role. |
+| workspace | Report files related to the analyst, researchers, trader, and risk PM. |
+| session chunks | The analyst tool call and tool result, plus how later roles continue the same session. |
+| workflow repr | The five directly registered `AgentParam` instances. |
 
-## 常见问题
-| 现象 | 检查方向 |
+## Troubleshooting
+| Symptom | Check |
 | --- | --- |
-| `ALPHA_VANTAGE_API_KEY is required` | 显式设置 `ALPHA_VANTAGE_API_KEY`。 |
-| Alpha Vantage rate limit | 换 ticker 或等待额度恢复。 |
-| LLM 请求失败 | 检查模型网关配置。 |
-| 后续角色没有参考 analyst 结果 | 打印 chunk table，确认 analyst 是否产生了 tool result 和报告内容。 |
-| workspace 没有报告文件 | 检查模型是否实际调用了写文件工具。 |
+| `ALPHA_VANTAGE_API_KEY is required` | Set `ALPHA_VANTAGE_API_KEY` explicitly. |
+| Alpha Vantage rate limit | Change the ticker or wait for quota recovery. |
+| LLM request fails | Check the model gateway configuration. |
+| Later roles do not reference analyst results | Print the chunk table and confirm that the analyst produced a tool result and report content. |
+| Workspace has no report files | Check whether the model actually called file-writing tools. |
 
-## 练习
-1. 只保留 analyst 和 risk PM 两个阶段，观察输出差异。
-2. 把 `AlphaVantageGlobalQuoteTool` 改成支持多个 ticker。
-3. 给 trader 阶段单独传入一个自定义风险计算工具。
+## Exercises
+1. Keep only the analyst and risk PM stages, then observe how the output changes.
+2. Modify `AlphaVantageGlobalQuoteTool` to support multiple tickers.
+3. Pass a custom risk calculation tool only to the trader stage.

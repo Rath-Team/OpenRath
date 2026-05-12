@@ -1,10 +1,10 @@
 (pkg-llm)=
 # `rath.llm`
 
-OpenAI-compatible 请求/响应类型、同步客户端、配置加载和 response normalization。
+OpenAI-compatible request/response types, synchronous client, configuration loading, and response normalization.
 
-## 源码
-| 模块 | 源码 |
+## Source
+| Module | Source |
 | --- | --- |
 | `rath.llm.provider` | `src/rath/llm/provider.py` |
 | `rath.llm.client` | `src/rath/llm/client.py` |
@@ -14,12 +14,12 @@ OpenAI-compatible 请求/响应类型、同步客户端、配置加载和 respon
 | `rath.llm.openai_create_kwargs` | `src/rath/llm/openai_create_kwargs.py` |
 | `rath.llm.openai_normalize` | `src/rath/llm/openai_normalize.py` |
 
-## 公共契约
+## Public contract
 ### `Provider`
 
-`Provider` 保存 loop 需要的 model、sampling、tool 和 provider-specific 参数。它不包含 messages 和 tools；这两项由 session loop 构造。
+`Provider` stores the model, sampling, tool, and provider-specific parameters required by the loop. It does not contain messages or tools; the session loop constructs those.
 
-| 字段类别 | 字段 |
+| Field category | Fields |
 | --- | --- |
 | model | `model` |
 | sampling | `temperature`, `top_p`, `max_completion_tokens`, `max_tokens`, `stop`, `n`, `seed` |
@@ -27,46 +27,46 @@ OpenAI-compatible 请求/响应类型、同步客户端、配置加载和 respon
 | tools/output | `tool_choice`, `parallel_tool_calls`, `response_format` |
 | OpenAI options | `reasoning_effort`, `verbosity`, `metadata`, `user`, `store`, `service_tier`, `extra_create_args` |
 
-### 设置
-| 函数/类型 | 行为 |
+### Settings
+| Function/type | Behavior |
 | --- | --- |
-| `RathLLMSettings` | `api_key`、`base_url`、`default_model`。 |
-| `load_rath_llm_settings(dotenv_path=None)` | 加载 `.env` 后读取环境变量。 |
-| `rath_llm_default_dotenv_path()` | 返回项目根目录下 `.env`。 |
+| `RathLLMSettings` | `api_key`, `base_url`, `default_model`. |
+| `load_rath_llm_settings(dotenv_path=None)` | Loads `.env`, then reads environment variables. |
+| `rath_llm_default_dotenv_path()` | Returns `.env` under the project root. |
 
-`OPENAI_API_KEY` 为空时，`load_rath_llm_settings(...)` 抛 `ValueError`。
+When `OPENAI_API_KEY` is empty, `load_rath_llm_settings(...)` raises `ValueError`.
 
-### 客户端
+### Client
 ```python
 client = RathOpenAIChatClient()
 response = client.complete(request)
 ```
 
-`RathOpenAIChatClient.complete(...)` 调用 `openai.OpenAI().chat.completions.create(...)`，并把 provider response normalize 成 `RathLLMChatResponse`。
+`RathOpenAIChatClient.complete(...)` calls `openai.OpenAI().chat.completions.create(...)` and normalizes the provider response to `RathLLMChatResponse`.
 
-### 请求与响应 DTO
-| 类型 | 说明 |
+### Request and response DTOs
+| Type | Description |
 | --- | --- |
-| `RathLLMMessage` | chat `messages[]` 元素。 |
-| `RathLLMFunctionTool` | function-style tool schema。 |
-| `RathLLMChatRequest` | OpenAI-compatible request kwargs。 |
-| `RathLLMChatResponse` | normalized non-streaming response。 |
-| `RathLLMChatChoice` | 单个 choice。 |
-| `RathLLMAssistantMessage` | assistant message，包括 tool calls。 |
-| `RathLLMToolCallPart` / `RathLLMToolCallFunction` | tool call 结构。 |
-| `RathLLMTokenUsage` | usage 统计。 |
+| `RathLLMMessage` | Chat `messages[]` element. |
+| `RathLLMFunctionTool` | Function-style tool schema. |
+| `RathLLMChatRequest` | OpenAI-compatible request kwargs. |
+| `RathLLMChatResponse` | Normalized non-streaming response. |
+| `RathLLMChatChoice` | Single choice. |
+| `RathLLMAssistantMessage` | Assistant message, including tool calls. |
+| `RathLLMToolCallPart` / `RathLLMToolCallFunction` | Tool call structure. |
+| `RathLLMTokenUsage` | Usage statistics. |
 
-### 创建参数
-`to_create_kwargs(req, default_model=...)` 会把内部 request 转成 OpenAI SDK kwargs。
+### Create arguments
+`to_create_kwargs(req, default_model=...)` converts the internal request to OpenAI SDK kwargs.
 
-| 行为 | 说明 |
+| Behavior | Description |
 | --- | --- |
-| model selection | 使用 `req.model`，否则使用 `default_model`；都为空时抛 `ValueError`。 |
-| tool schema | `RathLLMFunctionTool` 转成 `{"type": "function", "function": ...}`。 |
-| stream | `stream=True` 会抛 `ValueError`，最终 kwargs 强制 `stream=False`。 |
-| extra args | `req.extra_create_args` 最后 merge。 |
+| model selection | Uses `req.model`; otherwise uses `default_model`. Raises `ValueError` if both are empty. |
+| tool schema | Converts `RathLLMFunctionTool` to `{"type": "function", "function": ...}`. |
+| stream | `stream=True` raises `ValueError`; final kwargs force `stream=False`. |
+| extra args | Merges `req.extra_create_args` last. |
 
-## 自动文档
+## Autodoc
 ```{eval-rst}
 .. autoclass:: rath.llm.Provider
    :members:

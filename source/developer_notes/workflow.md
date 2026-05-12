@@ -1,33 +1,44 @@
 # Workflow
-`Workflow` 是 OpenRath 的组合层。它把一个或多个 agent 配置组织成可调用对象，并把运行逻辑表达为 `Session -> Session`。
+`Workflow` is OpenRath's composition layer. It organizes one or more agent configurations into a callable object and expresses runtime logic as `Session -> Session`.
 
-本页说明从单 agent 到 multi-agent 的组织方式、`AgentParam` 的登记规则、nested workflow 的组合方式，以及 session、sandbox、tool 使用痕迹在调用链中的传递。
+This page explains the structure from single-agent to multi-agent workflows, `AgentParam` registration rules, nested workflow composition, and how session, sandbox, and tool traces move through the call chain.
 
-## 概览
-OpenRath 的 workflow 接近 PyTorch module 的写法：
+The diagram below shows the intended mental model: a workflow is a callable
+module over `Session`, and its internal agents can fork, compose, and compress
+state explicitly.
 
-| PyTorch 直觉 | OpenRath 对应 |
+```{figure} ../_static/core-workflow.png
+:alt: Workflow composition overview
+
+`Workflow.forward(session) -> Session` keeps orchestration in ordinary Python
+while preserving session graph and sandbox traceability.
+```
+
+## Overview
+OpenRath workflows follow a pattern close to PyTorch modules:
+
+| PyTorch intuition | OpenRath equivalent |
 | --- | --- |
-| `Module.forward(x)` 定义计算 | `Workflow.forward(session)` 定义 agent 编排 |
-| 子 module 通过属性挂载 | `AgentParam` 通过属性赋值被登记 |
-| tensor 在 module 间传递 | `Session` 在 agent 和 workflow 间传递 |
-| module tree 可打印 | `repr(workflow)` 打印已登记 agent |
+| `Module.forward(x)` defines computation | `Workflow.forward(session)` defines agent orchestration |
+| Child modules are attached as attributes | `AgentParam` is registered by attribute assignment |
+| Tensors move between modules | `Session` moves between agents and workflows |
+| Module tree can be printed | `repr(workflow)` prints registered agents |
 
-`Workflow` 的职责很轻：收集直接挂载的 `AgentParam`，提供 `forward(...)` 约定，并让实例可以通过 `workflow(session)` 调用。执行顺序、分支、压缩、工具注入和子 workflow 调用都由开发者在普通 Python 代码里明确写出来。
+`Workflow` has a small job: collect directly attached `AgentParam` values, provide the `forward(...)` convention, and make instances callable through `workflow(session)`. Execution order, branching, compression, tool injection, and child workflow calls are written explicitly in normal Python code.
 
-## 源码地图
-| 文件 | 负责内容 |
+## Source map
+| File | Responsibility |
 | --- | --- |
-| `src/rath/flow/workflow.py` | `Workflow` base class、attribute registration、`named_agents()`、repr。 |
-| `src/rath/flow/agent_param.py` | 可被 workflow 登记的 `AgentParam`。 |
-| `src/rath/flow/agent.py` | `Agent` 预设 workflow，封装单 agent loop。 |
-| `src/rath/flow/session_compressor.py` | `SessionCompressor` 预设 workflow，封装压缩调用。 |
-| `src/rath/session/loop.py` | 执行 LLM loop、工具调用、sandbox 迁移和 lineage 写入。 |
-| `example/trading_agents/workflow.py` | 顺序 multi-agent workflow 示例。 |
-| `example/engineering_agents/workflows.py` | nested workflow 示例。 |
+| `src/rath/flow/workflow.py` | `Workflow` base class, attribute registration, `named_agents()`, repr. |
+| `src/rath/flow/agent_param.py` | `AgentParam` values that can be registered by a workflow. |
+| `src/rath/flow/agent.py` | `Agent` preset workflow wrapping one agent loop. |
+| `src/rath/flow/session_compressor.py` | `SessionCompressor` preset workflow wrapping compression. |
+| `src/rath/session/loop.py` | Runs the LLM loop, tool calls, sandbox transfer, and lineage writeback. |
+| `example/trading_agents/workflow.py` | Sequential multi-agent workflow example. |
+| `example/engineering_agents/workflows.py` | Nested workflow example. |
 
-## 最小 Workflow
-继承 `Workflow` 并实现 `forward(self, session) -> Session`：
+## Minimal Workflow
+Inherit from `Workflow` and implement `forward(self, session) -> Session`:
 
 ```python
 from rath.flow import Workflow
@@ -39,10 +50,10 @@ class IdentityWorkflow(Workflow):
         return session
 ```
 
-`Workflow.__call__(session)` 直接调用 `forward(session)`。base `forward(...)` 会抛 `NotImplementedError`，所以子类必须定义自己的运行逻辑。
+`Workflow.__call__(session)` directly calls `forward(session)`. The base `forward(...)` raises `NotImplementedError`, so subclasses must define their own runtime logic.
 
-## AgentParam 自动登记
-当 `AgentParam` 作为 attribute 赋值给 workflow 时，`Workflow.__setattr__` 会把它记录到 `_agents`：
+## AgentParam Auto-Registration
+When an `AgentParam` is assigned as a workflow attribute, `Workflow.__setattr__` records it in `_agents`:
 
 ```python
 from rath.flow import AgentParam, Provider, Workflow
@@ -58,17 +69,17 @@ class PlanningWorkflow(Workflow):
         )
 ```
 
-这段赋值产生两个结果：
+That assignment has two effects:
 
-| 结果 | 行为 |
+| Result | Behavior |
 | --- | --- |
-| Python attribute | 可以通过 `self.planner` 使用。 |
-| workflow registry | 可以通过 `named_agents()` 和 `repr(workflow)` 查看。 |
+| Python attribute | Usable through `self.planner`. |
+| workflow registry | Visible through `named_agents()` and `repr(workflow)`. |
 
-`named_agents()` 按 attribute name 排序返回 tuple。删除属性时，`Workflow.__delattr__` 会从 `_agents` 删除同名登记项。
+`named_agents()` returns a tuple sorted by attribute name. When an attribute is deleted, `Workflow.__delattr__` removes the matching registered item from `_agents`.
 
-## 单 agent 到 multi-agent
-最小可运行路径可以直接使用预设 `flow.Agent`：
+## Single-Agent To Multi-Agent
+The smallest runnable path can use the preset `flow.Agent` directly:
 
 ```python
 from rath import flow
@@ -81,7 +92,7 @@ agent = flow.Agent(
 out = agent(user_session)
 ```
 
-需要多个角色时，可以把每个角色写成 `AgentParam`，并在 `forward(...)` 中逐个调用 `run_session_loop(...)`：
+For multiple roles, define each role as an `AgentParam` and call `run_session_loop(...)` step by step in `forward(...)`:
 
 ```python
 from rath.flow import AgentParam, Provider, Workflow
@@ -114,27 +125,28 @@ class ReviewWorkflow(Workflow):
         )
 ```
 
-第一次 loop 的输出成为第二次 loop 的输入。session graph 会记录每次 loop 的父节点，sandbox handle 会从输入 session 迁移到输出 session。
+The first loop output becomes the second loop input. The session graph records the parents for each loop, and the sandbox handle moves from input session to output session.
 
-## 组合单位是 Session
-`Workflow` 之间的接口是 `Session`。这使几种组合方式保持一致：
+## Session Is The Composition Unit
+`Workflow` instances communicate through `Session`. That keeps several composition patterns consistent:
 
-| 组合方式 | 写法 | 适用场景 |
+| Pattern | Code shape | Use case |
 | --- | --- | --- |
-| 顺序调用 | `s = step_a(s); s = step_b(s)` | 角色按固定顺序工作。 |
-| 分叉探索 | `left = s.fork(); right = s.fork()` | 同一上下文派生多个候选路径。 |
-| session 级并行 | `left = pool.submit(...); right = pool.submit(...)` | 多个 fork session 同时进入不同 agent。 |
-| 脱离历史 | `clean = s.detach()` | 复用内容但切断 lineage。 |
-| 压缩上下文 | `compressor(s)` | 长会话进入下一阶段前缩短历史。 |
-| 嵌套 workflow | `s = self.child.forward(s)` | 把复杂流程拆成更小模块。 |
+| Sequential call | `s = step_a(s); s = step_b(s)` | Roles work in a fixed order. |
+| Branching exploration | `left = s.fork(); right = s.fork()` | Derive multiple candidate paths from the same context. |
+| Session-level parallelism | `left = pool.submit(...); right = pool.submit(...)` | Send multiple forked sessions to different agents at the same time. |
+| Detach from history | `clean = s.detach()` | Reuse content while cutting lineage. |
+| Compress context | `compressor(s)` | Shorten history before the next stage. |
+| Nested workflow | `s = self.child.forward(s)` | Split complex flows into smaller modules. |
 
-这些操作最终都围绕 session graph 工作。`fork()`、`detach()`、`run_session_loop(...)`、`run_session_compress(...)` 会在输出 session 上写入 lineage；tool result 会作为 chunk 留在 session table 里；sandbox lifecycle 由 session 持有和迁移。
+All of these operations still revolve around the session graph. `fork()`, `detach()`, `run_session_loop(...)`, and `run_session_compress(...)` write lineage to output sessions; tool results remain as chunks in the session table; sandbox lifecycle is owned and transferred by the session.
 
-## Session 级并行
-OpenRath 的 multi-agent 并行基于 session 分支，而不是特殊的调度 DSL。一个上游 agent 产出 session 后，可以通过 `fork()` 派生多个分支，再用普通 Python 并发工具把这些分支交给不同 agent。
+## Session-Level Parallelism
+OpenRath multi-agent parallelism is based on session branches, not a special scheduling DSL. After an upstream agent produces a session, use `fork()` to derive branches, then use normal Python concurrency tools to send those branches to different agents.
 
 ```python
 from concurrent.futures import ThreadPoolExecutor
+from rath.session import ChunkKind, Session
 
 
 def forward(self, session: Session) -> Session:
@@ -166,33 +178,57 @@ def forward(self, session: Session) -> Session:
         bear_session = bear_future.result()
         bull_session = bull_future.result()
 
-    # 当前 base Workflow 仍返回一个 Session。
-    # 分支聚合策略由 workflow 显式定义，例如提取两个分支的摘要后交给 trader。
-    return self._trade_from_branches(bear_session, bull_session)
+    def last_assistant_text(s: Session) -> str:
+        for row in reversed(s.chunk_table.rows):
+            if row.kind == ChunkKind.ASSISTANT and row.payload.get("content"):
+                return str(row.payload["content"])
+        return ""
+
+    trader_input = Session.from_user_message(
+        "Combine the two research branches.\n\n"
+        f"Bear branch:\n{last_assistant_text(bear_session)}\n\n"
+        f"Bull branch:\n{last_assistant_text(bull_session)}"
+    ).to("local")
+
+    return run_session_loop(
+        trader_input,
+        self.trader.agent_session,
+        agent_provider=self.trader.provider,
+        tools=None,
+    )
 ```
 
-这个模式有三个边界：
+This pattern has three boundaries:
 
-| 边界 | 说明 |
+| Boundary | Notes |
 | --- | --- |
-| lineage | 两个 fork session 都保留同一个 parent，后续 loop 输出会记录各自的 agent parent。 |
-| sandbox | `fork()` 复制 backend target，不复制 open handle；并行分支会按需打开自己的 sandbox handle。 |
-| 聚合 | 当前没有内置 merge primitive；workflow 需要显式决定如何把多个输出 session 汇总成下一步输入。 |
+| lineage | Both forked sessions keep the same parent, and later loop outputs record their own agent parent. |
+| sandbox | `fork()` copies the backend target but not the open handle; parallel branches open their own sandbox handles as needed. |
+| aggregation | There is no built-in merge primitive yet; the workflow must decide explicitly how to summarize multiple output sessions into the next input. The example above builds the trader input from the last assistant text in each branch. |
 
-因此，OpenRath 的并行单位是 session。工具 stream 并发属于 backend 层，`Provider.parallel_tool_calls` 属于 LLM tool-call 参数，二者和 session 级并行是不同层次。
+OpenRath's parallel unit is therefore the session. Tool stream concurrency belongs to the backend layer, and `Provider.parallel_tool_calls` belongs to LLM tool-call parameters; both are separate from session-level parallelism.
 
-## 预设 Workflow
-OpenRath 目前提供两个预设子类：
+If branches write to the workspace, assign different directories explicitly. `fork()` copies the backend target; when the source session uses `spec="."`, both forked branches may still target the same host directory. A safer pattern is to reset a branch-specific workspace after fork:
 
-| Class | 封装内容 | 适合场景 |
+```python
+auth_input = session.fork().to("local", spec=".workspace/auth-branch")
+data_input = session.fork().to("local", spec=".workspace/data-branch")
+```
+
+OpenSandbox follows the same rule: each branch can own an independent sandbox handle, but the host bind path still comes from `spec` and the server allowlist.
+
+## Preset Workflows
+OpenRath currently provides two preset subclasses:
+
+| Class | Wraps | Best for |
 | --- | --- | --- |
-| `Agent` | 一个 `AgentParam`、一个 tools list、一次 `run_session_loop(...)` | 单 agent 调用、快速接入工具。 |
-| `SessionCompressor` | 一个 `AgentParam`、一次 `run_session_compress(...)` | 把长 session 压缩成新的 user-side session。 |
+| `Agent` | One `AgentParam`, one tools list, one `run_session_loop(...)` | Single-agent calls and quick tool integration. |
+| `SessionCompressor` | One `AgentParam`, one `run_session_compress(...)` | Compressing a long session into a new user-side session. |
 
-`Agent` 的 `register_tool(...)` 会按工具名去重。`SessionCompressor` 会让模型输出一段新的 user message，压缩结果保留 session lineage，并继续持有输入 session 的 sandbox 配置和 handle。
+`Agent.register_tool(...)` deduplicates by tool name. `SessionCompressor` asks the model to produce a new user message; the compressed result keeps session lineage and continues to hold the input session's sandbox configuration and handle.
 
 ## Nested Workflow
-仓库里的 Engineering Agents 例子展示了 nested workflow：
+The Engineering Agents example in the repository shows nested workflows:
 
 ```python
 class EngineeringProjectWorkflow(Workflow):
@@ -214,10 +250,10 @@ class EngineeringProjectWorkflow(Workflow):
         return self._qa.forward(s)
 ```
 
-当前 base class 只登记直接赋值的 `AgentParam`。`self._squad` 和 `self._qa` 是普通 Python attribute，它们的执行由 `forward(...)` 显式调用。outer workflow 的 `repr(...)` 只展示直接登记的 agent；层级组合由源码结构和调用路径体现。
+The current base class registers only directly assigned `AgentParam` values. `self._squad` and `self._qa` are normal Python attributes, and `forward(...)` calls them explicitly. The outer workflow's `repr(...)` shows only directly registered agents; nested composition is visible through source structure and the call path.
 
-## Trading Agents 示例
-`example/trading_agents/workflow.py` 展示一个固定顺序的多角色流程：
+## Trading Agents Example
+`example/trading_agents/workflow.py` shows a fixed-order multi-role flow:
 
 ```text
 analyst
@@ -227,36 +263,36 @@ analyst
   risk_pm
 ```
 
-`analyst` 阶段注入 `AlphaVantageGlobalQuoteTool`，后续阶段读取已经进入 session 的 tool result 和 assistant 内容。外部数据工具可以只交给某一个角色使用，工具结果通过 session 传给后续角色。
+The `analyst` stage injects `AlphaVantageGlobalQuoteTool`; later stages read the tool result and assistant content already stored in the session. External data tools can be given to a single role, and their results pass to later roles through the session.
 
-外部行情 API 只用于演示工具能力。公开示例要求用户显式设置自己的 API key，防止默认 key 被误认为产品能力的一部分。
+The external market API is only for demonstrating tool capability. Public examples require users to set their own API key explicitly so a default key is not mistaken for a product capability.
 
-## Engineering Agents 示例
-`example/engineering_agents/workflows.py` 展示分层组合：
+## Engineering Agents Example
+`example/engineering_agents/workflows.py` shows hierarchical composition:
 
-| 层级 | Workflow | 执行内容 |
+| Level | Workflow | Execution |
 | --- | --- | --- |
-| L1 | `EngineeringProjectWorkflow` | lead plan -> feature squad -> QA。 |
-| L2 | `FeatureSquadWorkflow` | architect -> backend pair -> frontend。 |
-| L3 | `BackendPairWorkflow` | backend auth -> backend data。 |
-| QA | `QualityAssuranceWorkflow` | 基于完整 session 做测试和风险检查。 |
+| L1 | `EngineeringProjectWorkflow` | lead plan -> feature squad -> QA. |
+| L2 | `FeatureSquadWorkflow` | architect -> backend pair -> frontend. |
+| L3 | `BackendPairWorkflow` | backend auth -> backend data. |
+| QA | `QualityAssuranceWorkflow` | Tests and risk checks based on the full session. |
 
-该示例展示复杂工程任务的组织方式：每个 workflow 处理自己的局部顺序，父 workflow 把子 workflow 串起来，所有阶段共享同一条 session 传递链。
+The example shows how to organize complex engineering work: each workflow owns its local sequence, the parent workflow chains child workflows, and all stages share the same session-passing chain.
 
-## Tool 与 Sandbox 边界
-在 workflow 里，tool 和 sandbox 仍然通过 `run_session_loop(...)` 生效：
+## Tool And Sandbox Boundaries
+Inside a workflow, tools and sandbox still take effect through `run_session_loop(...)`:
 
-| 事项 | 发生位置 |
+| Item | Where it happens |
 | --- | --- |
-| 工具列表合并 | 每一次 `run_session_loop(...)` 开始时。 |
-| 工具调用记录 | 写入输出 session 的 `tool_result` chunk。 |
-| sandbox handle | 从输入 session `take_sandbox()`，再绑定到输出 session。 |
-| sandbox backend spec | 跟随输出 session 保存。 |
-| lineage | 输出 session 记录 user session 和 agent session 两个父节点。 |
+| Tool list merge | At the start of each `run_session_loop(...)`. |
+| Tool call record | Written to the output session as a `tool_result` chunk. |
+| sandbox handle | Taken from the input session with `take_sandbox()`, then bound to the output session. |
+| sandbox backend spec | Stored on the output session. |
+| lineage | Output session records both the user session and agent session as parents. |
 
-因此，一个 workflow 可以让不同角色使用不同工具；同一个 sandbox 可以随 session 穿过多个角色；后续 agent 能看到前面工具产生的结果。
+A workflow can therefore give different roles different tools; the same sandbox can move through multiple roles with the session; later agents can see results produced by earlier tools.
 
-## 调用路径
+## Call Path
 ```text
 workflow(session)
   Workflow.__call__
@@ -265,7 +301,7 @@ workflow(session)
   returned Session carries new chunks, sandbox, lineage
 ```
 
-如果使用预设 `Agent`：
+When using the preset `Agent`:
 
 ```text
 flow.Agent.forward(session)
@@ -277,7 +313,7 @@ flow.Agent.forward(session)
   )
 ```
 
-如果使用预设 `SessionCompressor`：
+When using the preset `SessionCompressor`:
 
 ```text
 flow.SessionCompressor.forward(session)
@@ -288,36 +324,36 @@ flow.SessionCompressor.forward(session)
   )
 ```
 
-## 当前边界
-| 行为 | 当前实现 |
+## Current Boundaries
+| Behavior | Current implementation |
 | --- | --- |
-| attribute registration | 只有赋值为 `AgentParam` 的 attribute 会进入 `_agents`。 |
-| deletion | `__delattr__` 会把同名 agent 从 `_agents` 移除。 |
-| ordering | `named_agents()` 按 attribute name 排序。 |
-| base execution | `Workflow.forward(...)` 抛 `NotImplementedError`。 |
-| nested workflow | base class 不自动登记子 workflow。 |
-| async support | 当前 `Workflow.forward(...)` 是同步接口。 |
-| scheduling policy | 顺序、分支、重试和并发策略由用户在 Python 代码中表达。 |
+| attribute registration | Only attributes assigned to `AgentParam` values enter `_agents`. |
+| deletion | `__delattr__` removes the same-named agent from `_agents`. |
+| ordering | `named_agents()` sorts by attribute name. |
+| base execution | `Workflow.forward(...)` raises `NotImplementedError`. |
+| nested workflow | The base class does not automatically register child workflows. |
+| async support | `Workflow.forward(...)` is currently synchronous. |
+| scheduling policy | Ordering, branching, retries, and concurrency are expressed by the user in Python code. |
 
-## 读源码时的检查点
-1. 在 `workflow.py` 里查看 `__slots__ = ("_agents",)` 和 `__setattr__`。
-2. 在 `workflow.py` 里查看 `named_agents()` 的排序规则。
-3. 在 `agent.py` 里查看 `Agent.forward(...)` 如何调用 `run_session_loop(...)`。
-4. 在 `session_compressor.py` 里查看压缩 workflow 如何调用 `run_session_compress(...)`。
-5. 在 `example/trading_agents/workflow.py` 里查看固定顺序 multi-agent。
-6. 在 `example/engineering_agents/workflows.py` 里查看 nested workflow。
-7. 在 `tests/flow/test_workflow_agent.py` 里查看 workflow registration 和 sandbox 迁移的测试。
+## Code Reading Checkpoints
+1. In `workflow.py`, check `__slots__ = ("_agents",)` and `__setattr__`.
+2. In `workflow.py`, check the sorting rule in `named_agents()`.
+3. In `agent.py`, check how `Agent.forward(...)` calls `run_session_loop(...)`.
+4. In `session_compressor.py`, check how the compression workflow calls `run_session_compress(...)`.
+5. In `example/trading_agents/workflow.py`, check the fixed-order multi-agent flow.
+6. In `example/engineering_agents/workflows.py`, check nested workflows.
+7. In `tests/flow/test_workflow_agent.py`, check workflow registration and sandbox transfer tests.
 
-## 测试覆盖
-| 行为 | 测试 |
+## Test Coverage
+| Behavior | Tests |
 | --- | --- |
 | workflow registration and agent call | `tests/flow/test_workflow_agent.py` |
 | import contract | `tests/test_import.py` |
 | session compressor live behavior | `tests/integration/test_session_compress_real.py` |
 
-## 相关页面
-| 页面 | 内容 |
+## Related Pages
+| Page | Covers |
 | --- | --- |
-| [AgentParam](agent_param.md) | agent-side session、provider 和 request assembly。 |
-| [Trading Agents](../tutorial/examples/trading_agents.md) | 顺序多角色 workflow，包含外部行情工具。 |
-| [Engineering Agents](../tutorial/examples/engineering_agents.md) | 嵌套 workflow，展示工程团队式 agent 编排。 |
+| [AgentParam](agent_param.md) | Agent-side session, provider, and request assembly. |
+| [Trading Agents](../tutorial/examples/trading_agents.md) | Sequential multi-role workflow with an external market data tool. |
+| [Engineering Agents](../tutorial/examples/engineering_agents.md) | Nested workflow for engineering-team-style agent orchestration. |

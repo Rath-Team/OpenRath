@@ -1,47 +1,47 @@
 # Tutorials
-Tutorials 是 OpenRath 的学习入口。这里按使用顺序组织内容：先构造 `Session`，再理解工具执行位置，随后进入 agent loop 和 multi-agent workflow。
+Tutorials are the entry point for learning OpenRath. They are organized in the order you are likely to use the project: build a `Session`, understand where tools run, then move into the agent loop and multi-agent Workflow.
 
-教程以代码片段、关键行解释和运行观察为主，覆盖从 API 使用到 workflow 改写的常见路径。
+Each tutorial focuses on code snippets, key-line notes, and observed behavior. Together they cover the common path from basic API usage to Workflow customization.
 
-## 学习路径
-| 顺序 | 页面 | 内容 |
+## Learning Path
+| Order | Page | What it covers |
 | --- | --- | --- |
-| 1 | [Session 基础](session_basics.md) | 创建 user session 和 agent session，理解 `fork()`、`detach()`、backend placement。 |
-| 2 | [本地沙箱工具](local_sandbox_tools.md) | 直接打开 local backend，理解文件、命令和代码 payload 如何围绕 workspace 执行。 |
-| 3 | [Session Loop 工具调用](session_loop_tools.md) | 看清模型 tool call、tool dispatch、`tool_result` chunk 和下一轮 completion 的关系。 |
-| 4 | [自定义 FlowToolCall](custom_flow_tool.md) | 定义自己的工具 schema 和 Python 执行逻辑，并交给 session loop。 |
-| 5 | [可运行示例](examples/index.md) | 从仓库脚本学习真实 workflow、OpenSandbox 和 multi-agent 组合。 |
+| 1 | [Session Basics](session_basics.md) | Create user and agent sessions, and understand `fork()`, `detach()`, and Backend placement. |
+| 2 | [Local Sandbox Tools](local_sandbox_tools.md) | Open a local Backend directly and see how file, command, and code payloads run around a workspace. |
+| 3 | [Session Loop Tool Calls](session_loop_tools.md) | Understand model tool calls, tool dispatch, `tool_result` chunks, and the next completion round. |
+| 4 | [Custom FlowToolCall](custom_flow_tool.md) | Define your own tool schema and Python execution logic, then pass it into the Session loop. |
+| 5 | [Runnable Examples](examples/index.md) | Learn real Workflow, OpenSandbox, and multi-agent patterns from repository scripts. |
 
-## 按任务选择教程
-| 任务 | 先读 |
+## Choose by Task
+| Task | Start with |
 | --- | --- |
-| 只想理解 OpenRath 的状态模型 | [Session 基础](session_basics.md) |
-| 想确认工具会在哪个目录里执行 | [本地沙箱工具](local_sandbox_tools.md) |
-| 想知道 agent 如何连续调用工具 | [Session Loop 工具调用](session_loop_tools.md) |
-| 想把外部 API 包装成模型可调用工具 | [自定义 FlowToolCall](custom_flow_tool.md) |
-| 想写一个多角色 agent 流程 | [Trading Agents](examples/trading_agents.md) 和 [Engineering Agents](examples/engineering_agents.md) |
-| 想接 OpenSandbox | [OpenSandbox backend](examples/sandbox_backend_opensandbox.md) |
+| Understand OpenRath's state model | [Session Basics](session_basics.md) |
+| Check which directory tools run in | [Local Sandbox Tools](local_sandbox_tools.md) |
+| See how an agent calls tools across turns | [Session Loop Tool Calls](session_loop_tools.md) |
+| Wrap an external API as a model-callable tool | [Custom FlowToolCall](custom_flow_tool.md) |
+| Build a multi-role agent flow | [Trading Agents](examples/trading_agents.md) and [Engineering Agents](examples/engineering_agents.md) |
+| Connect OpenSandbox | [OpenSandbox backend](examples/sandbox_backend_opensandbox.md) |
 
-## 阅读方式
-每页使用相同结构：
+## How to Read
+Each page uses the same structure:
 
-1. 先读覆盖内容，确认这一页解决的问题。
-2. 跟着代码步骤理解 API 边界。
-3. 对照关键行解释，确认状态在哪一行改变。
-4. 运行或改写练习，把示例转成自己的代码。
-5. 行为不符合预期时，先看常见问题，再回到 Developer Notes 查源码层解释。
+1. Read the coverage table first to confirm what the page explains.
+2. Follow the code steps to understand the API boundary.
+3. Compare the key-line notes to see where state changes.
+4. Run or rewrite the exercises to turn the example into your own code.
+5. If behavior is unexpected, check the troubleshooting table first, then use Developer Notes for source-level details.
 
-## 可运行示例
-这些页面对应仓库里的 `example/` 脚本和子目录：
+## Runnable Examples
+These pages map to scripts and subdirectories under `example/`:
 
-| 页面 | 对应脚本 | 重点 |
+| Page | Script | Focus |
 | --- | --- | --- |
-| [Session 用法示例](examples/session_usage.md) | `example/session_usage.py` | `Session`、`run_session_loop`、`run_session_compress` 的连续路径。 |
-| [自定义工具示例](examples/custom_tool_usage.md) | `example/custom_tool_usage.py` | 把外部服务包装成 `FlowToolCall`。 |
-| [本地后端示例](examples/sandbox_backend_local.md) | `example/sandbox_backend_local.py` | `Session.to("local", spec=...)` 与本地目录绑定。 |
-| [OpenSandbox 后端示例](examples/sandbox_backend_opensandbox.md) | `example/sandbox_backend_opensandbox.py` | `Session.to("opensandbox", spec=...)` 与容器 workspace。 |
-| [Trading Agents](examples/trading_agents.md) | `example/trading_agents/` | 顺序多角色研究 workflow。 |
-| [Engineering Agents](examples/engineering_agents.md) | `example/engineering_agents/` | 嵌套 workflow。 |
+| [Session Usage Example](examples/session_usage.md) | `example/session_usage.py` | The continuous path through `Session`, `run_session_loop`, and `run_session_compress`. |
+| [Custom Tool Example](examples/custom_tool_usage.md) | `example/custom_tool_usage.py` | Wrap an external service as a `FlowToolCall`. |
+| [Local Backend Example](examples/sandbox_backend_local.md) | `example/sandbox_backend_local.py` | Bind `Session.to("local", spec=...)` to a local directory. |
+| [OpenSandbox Backend Example](examples/sandbox_backend_opensandbox.md) | `example/sandbox_backend_opensandbox.py` | Bind `Session.to("opensandbox", spec=...)` to a container workspace. |
+| [Trading Agents](examples/trading_agents.md) | `example/trading_agents/` | Sequential multi-role research Workflow. |
+| [Engineering Agents](examples/engineering_agents.md) | `example/engineering_agents/` | Nested Workflow. |
 
 ```{toctree}
 ---

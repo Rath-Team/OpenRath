@@ -1,16 +1,16 @@
 (pkg-rath)=
 # `rath`
 
-包级入口位于 `src/rath/__init__.py`。包根只暴露高层模块，不把 session/backend/flow 的全部符号提升到根命名空间。
+The package-level entrypoint is `src/rath/__init__.py`. The package root exposes only high-level modules and does not promote all session/backend/flow symbols into the root namespace.
 
-## 公共契约
-| 名称 | 来源 | 说明 |
+## Public contract
+| Name | Source | Description |
 | --- | --- | --- |
-| `backend` | eager import | 后端公共 API。 |
-| `flow` | eager import | workflow 与 agent API。 |
-| `session` | lazy import through `__getattr__` | 首次访问 `rath.session` 时导入。 |
+| `backend` | eager import | Backend public API. |
+| `flow` | eager import | Workflow and agent API. |
+| `session` | lazy import through `__getattr__` | Imported on first access to `rath.session`. |
 
-显式导入方式：
+Explicit import style:
 
 ```python
 from rath import flow
@@ -18,7 +18,7 @@ from rath.backend import get
 from rath.session import Session, run_session_loop
 ```
 
-## 自动文档
+## Autodoc
 ```{eval-rst}
 .. automodule:: rath
 ```
