@@ -15,7 +15,7 @@
 
 ### 调用 `run_session_loop`
 
-从 `rath.session` 使用 `run_session_loop`：传入用户 `Session`、`agent_session` 与来自 `AgentParam` 的 `agent_provider`（可选 `executor`、`tools`、`max_tool_rounds`）。
+从 `rath.session` 使用 `run_session_loop`：传入用户 `Session`、`agent_session` 与来自 `AgentParam` 的 `agent_provider`（可选 `executor`、`tools`、`max_tool_rounds`、`chunk_print`）。
 
 ## AgentParam
 
@@ -32,12 +32,20 @@
 
 ## 会话循环内核
 
-`run_session_loop(user_session, agent_session, *, agent_provider, executor=None, max_tool_rounds=16)` **同步**运行：
+`run_session_loop(user_session, agent_session, *, agent_provider, executor=None, max_tool_rounds=16, chunk_print=None)` **同步**运行：
 
 - 将 `chunk_table_to_messages(agent_session)` 与演化的用户会话行拼接为消息。
 - 通过 `executor.complete(RathLLMChatRequest(...))` 请求补全。
 - 经 `global_tool_table().resolve(...)` 解析每个工具调用：**沙箱** 工具走 `executor.dispatch_tool(session_snapshot, FlowToolCall)`；**进程内** `@tool` 在进程内执行并将结果序列化给模型。
 - 追加 assistant 分块与序列化后的工具反馈，直到无工具或达到轮次上限。
+
+传入 ``chunk_print``（推荐使用 :func:`~rath.session.sink_chunk_print` 包一层
+``print`` 或其它单参数写入函数，对**每个新追加的** assistant / tool-result 分块调用
+``hook(row, index, out)``）时，只在对应分块写入 ``out.chunk_table`` 之后调用一次，
+便于逐行观察，而不会每次打印整张表。
+
+``run_session_compress(..., chunk_print=...)`` 在压缩结果会话建好、沙箱重绑之后，
+对**唯一**产出的 user 分块调用 ``hook(row, 0, out)`` 一次。
 
 若省略 `executor`，OpenRath 会构造 `DefaultSessionLoopExecutor(RathOpenAIChatClient(agent_provider))`；此时 `agent_provider.api_key` 必须非空（或传入自定义执行器）。
 

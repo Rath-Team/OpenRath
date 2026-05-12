@@ -11,7 +11,7 @@
 
 ## `rath.session.chunk`
 
-`ChunkTable`、行级辅助、与聊天消息结构的转换。
+`ChunkTable`、行级辅助、`format_chunk_row_brief`、与聊天消息结构的转换。
 
 ## `rath.session.graph`
 
@@ -19,7 +19,8 @@
 
 ## `rath.session.loop`
 
-供 `Workflow` / `run_session_loop` 共用的循环实现细节。
+供 `Workflow` / `run_session_loop` 共用的循环实现细节；含 `ChunkAppendHook`、`sink_chunk_print`
+（逐块打印一行摘要）与 `run_session_loop` 的 ``chunk_print=`` 契约。
 
 ## `rath.session.manager`
 
