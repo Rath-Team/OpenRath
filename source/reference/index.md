@@ -16,7 +16,7 @@ This section organizes the public API by the actual package structure. Each page
 | [`rath.flow`](flow.md) | `Workflow`, `AgentParam`, `Agent`, `Compressor`. |
 | [`rath.flow.tool`](flow_tool.md) | `FlowToolCall`, built-in system tools, backend tool factories, schema merging. |
 | [`rath.llm`](llm.md) | `Provider`, request/response types, OpenAI-compatible client. |
-| [`rath.utils`](utils.md) | `.env` and project-root helpers. |
+| [`rath.utils`](utils.md) | Project-root and test environment helpers. |
 
 ```{toctree}
 ---

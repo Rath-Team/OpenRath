@@ -96,11 +96,8 @@ Development dependencies include:
 | dev | `pytest`, `flake8`, `mypy`. |
 | docs | `sphinx`, `myst-parser`, `pydata-sphinx-theme`. |
 
-Copy the environment template:
-
-```bash
-cp .env.example .env
-```
+Configure credentials in your shell, CI secret store, or deployment environment.
+OpenRath does not load repository-local secret files.
 
 Run tests:
 

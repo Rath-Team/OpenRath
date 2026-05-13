@@ -8,10 +8,12 @@
 git clone https://github.com/Rath-Team/OpenRath.git
 cd OpenRath
 pip install -e .
-cp .env.example .env
+export OPENAI_API_KEY=...
+export OPENAI_BASE_URL=...
+export OPENAI_DEFAULT_MODEL=...
 ```
 
-编辑 `.env`：
+Configure the process environment:
 
 ```text
 OPENAI_API_KEY=...

@@ -14,7 +14,7 @@ These pages map to the `example/` scripts and subdirectories in the repository. 
 | 7 | [Research Transformer](research_transformer.md) | `example/research_transformer/` on `main` | Academic writing pipeline with branch workflows, per-role providers, compression, and an optional image tool. |
 
 ## Before running
-All examples that call a real LLM need an OpenAI-compatible gateway. The docs do not store real keys; manage API keys through shell environment variables or a local `.env` file:
+All examples that call a real LLM need an OpenAI-compatible gateway. The docs do not store real keys; manage API keys through shell environment variables, CI secrets, or your deployment secret store:
 
 ```bash
 export OPENAI_API_KEY=...

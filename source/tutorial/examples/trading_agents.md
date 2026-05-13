@@ -209,7 +209,7 @@ export OPENAI_BASE_URL=...
 export OPENAI_DEFAULT_MODEL=...
 ```
 
-Store real keys in environment variables, a local `.env`, or a secrets manager, not in scripts, docs, or commit history.
+Store real keys in process environment variables, CI secrets, or a secrets manager, not in scripts, docs, or commit history.
 
 ## Successful output
 The script prints the final `Session(...)`. On success, the session shows the analyst's market data tool call and assistant rows appended by later roles:

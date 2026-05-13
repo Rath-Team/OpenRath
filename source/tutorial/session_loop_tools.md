@@ -53,7 +53,7 @@ The executor is responsible for two operations:
 | `complete(req)` | Returns one chat completion response. |
 | `dispatch_tool(session, tool, arguments)` | Executes the selected `FlowToolCall`. |
 
-When no executor is passed, OpenRath creates `DefaultSessionLoopExecutor` and uses the default OpenAI-compatible client. In that mode, configure the model gateway through environment variables or `.env`.
+When no executor is passed, OpenRath creates `DefaultSessionLoopExecutor` and uses the default OpenAI-compatible client. In that mode, configure the model gateway through process environment variables or your deployment secret store.
 
 ## Step 3: Understand One Tool Round
 When the model returns a tool call, the loop appends an assistant row, executes the tool, then appends a tool result row:
