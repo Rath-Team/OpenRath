@@ -230,7 +230,7 @@
 
 配套资产：
 
-- PyTorch / OpenRath 对比图：`docs/source/_static/site/pytorch-openrath-comparison.png`
+- PyTorch / OpenRath 对比图：未保留为正式站点资产；当前正式架构图位于 `docs/source/_static/core-*.png`。
 - 视觉参考：Anthropic Research blog 图形风格，例如 `Teaching Claude why` 与 `Natural Language Autoencoders`。采用暖白背景、黑色主文字、细线箭头、浅黄色强调、轻量虚线/边框、研究解释图气质。避免 glossy icon、厚卡片阴影、强渐变和过度产品化装饰。
 
 后续绘图要求：
@@ -314,16 +314,18 @@ GitHub
 
 ```python
 from rath import flow
+from rath.llm import Provider
 from rath.session import Session
 
+provider = Provider(api_key="sk-...", model="gpt-5.5")
 agent = flow.Agent(
     system_prompt="Use tools when helpful.",
-    model="gpt-5.5",
+    provider=provider,
 )
 
 user = Session.from_user_message(
     "Create a file, then read it back."
-).to("local")
+).to("local", spec=".")
 
 out = agent(user)
 ```
@@ -509,7 +511,7 @@ Developer Notes 组件大纲：
 | `sandbox` | sandbox 以 backend 抽象注册，目前包含 `local` 和可选 `opensandbox`；说明 session 与 sandbox 的绑定和生命周期；说明 local backend 的工作目录实现；说明 OpenSandbox backend 的工作目录/文件传递实现。 |
 | `tool` | tool call 在 loop 中形成 assistant/tool result chunk，并由 `run_session_loop` 产生新的 session lineage；backend stream 支持同 stream FIFO、不同 stream 并发；用户可以继承 `FlowToolCall` 自定义 tool；session loop 接收实例化后的 `FlowToolCall` 列表，让 agent 获得对应工具 schema。 |
 | `agent param` | `AgentParam` 维护 system prompt、provider 等 agent 配置；agent session 保存 system prompt；session loop 会把 user session 与 agent session 拼成 request messages；loop 结束返回以 user-side rows 为主体的输出 session。 |
-| `workflow` | `Workflow` 是高级组件，以模块化方式组织 agent 工作流；用户可以实现、嵌套、拼接或扩展 workflow；OpenRath 通过 session graph、sandbox binding 和 tool result chunks 维护运行记录；预设子类包含 `Agent` 与 `SessionCompressor`。 |
+| `workflow` | `Workflow` 是高级组件，以模块化方式组织 agent 工作流；用户可以实现、嵌套、拼接或扩展 workflow；OpenRath 通过 session graph、sandbox binding 和 tool result chunks 维护运行记录；预设子类包含 `Agent` 与 `Compressor`。 |
 | `llm` | LLM 组件负责构造 chat request、发起 LLM API 请求、解析响应字段，并把 provider 参数合并到 request。 |
 
 实现核对点：
@@ -772,7 +774,7 @@ Developer Notes / Sandbox 页面 warning 文案：
 | 层级 | 对应代码对象 | 站点解释 |
 | --- | --- | --- |
 | 请求参数 | `Provider` | 保存 `model`、`temperature`、`tool_choice`、`parallel_tool_calls`、`response_format` 等请求选项。 |
-| 默认客户端 | `RathOpenAIChatClient` | 使用 OpenAI SDK，读取 `OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_DEFAULT_MODEL`。 |
+| 默认客户端 | `RathOpenAIChatClient` | 使用 OpenAI SDK，并使用传入 `Provider` 中的 `api_key`、`base_url`、`model` 等配置。 |
 | loop 替换点 | `SessionLoopExecutor` | 接管 `complete()`、`dispatch_tool()`、`tool_schemas()`。 |
 | 默认执行器 | `DefaultSessionLoopExecutor` | 连接默认 LLM client 与 `FlowToolCall` 执行。 |
 | 内部格式 | `RathLLMChatRequest` / `RathLLMChatResponse` | OpenRath 内部标准化 chat completion 输入输出。 |
@@ -780,15 +782,15 @@ Developer Notes / Sandbox 页面 warning 文案：
 内容影响：
 
 - 首页：只写“OpenAI-compatible by default”，不展开 provider 细节。
-- Developer Notes / `llm`：解释 `Provider` 如何合并到 chat request，默认 client 如何加载环境变量，executor 如何替换。
+- Developer Notes / `llm`：解释 `Provider` 如何合并到 chat request，应用如何从环境变量组装 `Provider`，executor 如何替换。
 - Tutorials：deterministic tutorial 继续使用 scripted executor，真实 LLM tutorial 展示进程环境变量、`OPENAI_API_KEY`、`OPENAI_DEFAULT_MODEL`。
 - API Reference：`Provider`、`RathOpenAIChatClient`、`SessionLoopExecutor`、`DefaultSessionLoopExecutor`、request/response dataclass 分开列。
 
 当前边界：
 
 - 当前默认路径是同步、non-streaming chat completions。
-- 模型名来自 `Provider.model` 或 `OPENAI_DEFAULT_MODEL`。
-- `OPENAI_BASE_URL` 可用于 OpenAI-compatible endpoint。
+- 模型名来自 `Provider.model`；仓库示例可从 `OPENAI_DEFAULT_MODEL` 读取后填入 `Provider`。
+- `Provider.base_url` 可用于 OpenAI-compatible endpoint；仓库示例可从 `OPENAI_BASE_URL` 读取后填入 `Provider`。
 - 更复杂的模型路由、自定义响应解析、本地模型服务接入通过 `SessionLoopExecutor` 实现。
 
 不要做什么：

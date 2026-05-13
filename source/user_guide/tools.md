@@ -92,10 +92,11 @@ table = merge_tools_for_loop(user_tools)
 
 ```python
 import rath.flow as flow
+from rath.llm import Provider
 
 agent = flow.Agent(
     system_prompt="Use add_one when arithmetic is requested.",
-    model="gpt-5.5",
+    provider=Provider(api_key="sk-...", model="gpt-5.5"),
     tools=[AddOneTool()],
 )
 ```

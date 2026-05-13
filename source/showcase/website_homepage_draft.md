@@ -11,8 +11,13 @@ Session-centered runtime for tool-using agent workflows.
 把 Agent 的对话状态、工具调用、沙箱执行和 LLM 请求拆成可组合的 Python 对象。
 
 ```python
-agent = flow.Agent("You are helpful.", model="gpt-5.5")
-user = Session.from_user_message("Summarize this workspace.").to("local")
+from rath import flow
+from rath.llm import Provider
+from rath.session import Session
+
+provider = Provider(api_key="sk-...", model="gpt-5.5")
+agent = flow.Agent("You are helpful.", provider=provider)
+user = Session.from_user_message("Summarize this workspace.").to("local", spec=".")
 out = agent(user)
 ```
 

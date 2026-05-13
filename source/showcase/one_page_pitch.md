@@ -23,15 +23,17 @@ OpenRath 的做法是拆开四件事：
 
 ```python
 import rath.flow as flow
+from rath.llm import Provider
 from rath.session import Session
 
+provider = Provider(api_key="sk-...", model="gpt-5.5")
 agent = flow.Agent(
     system_prompt="You are a helpful assistant.",
-    model="gpt-5.5",
+    provider=provider,
 )
 
 user = Session.from_user_message("List files and summarize them.")
-user = user.to("local")
+user = user.to("local", spec=".")
 
 out = agent(user)
 print(out)

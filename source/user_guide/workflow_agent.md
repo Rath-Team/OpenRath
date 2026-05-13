@@ -16,7 +16,7 @@ class SingleAgentWorkflow(Workflow):
         super().__init__()
         self.agent = AgentParam(
             agent_session=Session.from_agent_prompt("You are concise."),
-            provider=Provider(model="gpt-5.5"),
+            provider=Provider(api_key="sk-...", model="gpt-5.5"),
         )
 
     def forward(self, session: Session) -> Session:
@@ -46,10 +46,11 @@ class SingleAgentWorkflow(Workflow):
 
 ```python
 import rath.flow as flow
+from rath.llm import Provider
 
 agent = flow.Agent(
     system_prompt="You are a helpful assistant.",
-    model="gpt-5.5",
+    provider=Provider(api_key="sk-...", model="gpt-5.5"),
 )
 
 out_session = agent(user_session)
@@ -57,7 +58,7 @@ out_session = agent(user_session)
 
 构造时会创建：
 
-- `self.agent = AgentParam(Session.from_agent_prompt(system_prompt), Provider(model=model))`
+- `self.agent = AgentParam(Session.from_agent_prompt(system_prompt), provider)`
 - `self.tools = list(tools or [])`
 
 调用时进入 `run_session_loop(...)`。可以通过：

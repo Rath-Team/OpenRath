@@ -25,7 +25,7 @@ This page maps the main component pages to the relevant source files and tests.
 ## Source and tests
 | Component | Main source | Main tests |
 | --- | --- | --- |
-| `Session` | `src/rath/session/session.py`, `loop.py`, `compress.py`, `graph/` | `tests/session/`, `tests/integration/test_session_*_real.py` |
+| `Session` | `src/rath/session/session.py`, `loop.py`, `compress.py`, `graph/` | `tests/session/`, `tests/integration/test_session_loop_real.py`, `tests/integration/test_session_compress_real.py` |
 | `Sandbox` | `src/rath/backend/abc.py`, `local.py`, `opensandbox.py` | `tests/backends/`, `tests/conformance/`, `tests/unit/test_registry.py` |
 | `Tool` | `src/rath/flow/tool/`, `src/rath/backend/tool_types.py` | `tests/session/test_tool_registry.py`, `tests/flow/test_flow_tool_user_subclass.py`, `tests/unit/test_flow_tool.py` |
 | `AgentParam` | `src/rath/flow/agent_param.py`, `src/rath/flow/agent.py` | `tests/flow/test_workflow_agent.py`, `tests/test_import.py` |

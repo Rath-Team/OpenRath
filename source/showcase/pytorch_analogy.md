@@ -40,7 +40,7 @@ class MyWorkflow(Workflow):
         super().__init__()
         self.agent = AgentParam(
             Session.from_agent_prompt("You are concise."),
-            Provider(model="gpt-5.5"),
+            Provider(api_key="sk-...", model="gpt-5.5"),
         )
 
     def forward(self, session):

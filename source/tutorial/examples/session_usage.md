@@ -16,8 +16,11 @@ This script connects the common session primitives in one path. Use it to check 
 
 ## Key code
 ```python
-from rath import flow
+from dataclasses import replace
+
 from rath.session import Session, run_session_loop, run_session_compress
+
+from _openai_provider import provider_from_env
 
 agent_session = Session.from_agent_prompt("You are a helpful assistant.")
 user_session = Session.from_user_message(
@@ -25,7 +28,7 @@ user_session = Session.from_user_message(
 )
 user_session = user_session.to("local", spec="./")
 
-provider = flow.Provider(model="glm-5.1")
+provider = replace(provider_from_env(), model="glm-5.1")
 out_session = run_session_loop(
     user_session=user_session,
     agent_session=agent_session,
@@ -53,10 +56,10 @@ compressed = run_session_compress(
 python example/session_usage.py
 ```
 
-This script requires a real LLM configuration. The model name comes from project configuration; if it is missing, the script uses its default.
+This script requires a real LLM configuration. It reads credentials from the process environment through `provider_from_env()`, then overrides the model to `glm-5.1`.
 
 ## Successful output
-The script prints two `Session(...)` objects. The first is the full transcript after the loop. It usually contains user and assistant rows, plus any `tool_result` rows produced by model tool calls:
+The script streams newly appended chunks through `example_chunk_print()`. During the loop it usually emits assistant rows, plus any `tool_result` rows produced by model tool calls:
 
 ```text
 Session(
@@ -71,7 +74,7 @@ Session(
 )
 ```
 
-The second session is the compressed result. It is usually shorter and mainly keeps the compressed user-side summary:
+The compression step then streams the compressed result. It is usually shorter and mainly keeps the compressed user-side summary:
 
 ```text
 Session(
@@ -84,8 +87,8 @@ Session(
 ## What to inspect
 | Location | What to check |
 | --- | --- |
-| First `print(out_session)` | The post-loop session, with assistant rows and possible tool result rows. |
-| Second `print(out_session)` | The new compressed session, usually shorter and containing a new user-side summary. |
+| First streamed block | The post-loop additions, with assistant rows and possible tool result rows. |
+| Second streamed block | The compressed additions, usually shorter and containing a new user-side summary. |
 | workspace | If the model calls built-in tools, they run in the bound directory. |
 
 ## Troubleshooting

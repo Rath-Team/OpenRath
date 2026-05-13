@@ -15,5 +15,5 @@ The generated HTML is under `docs/_build/html/`.
 The build script also accepts alternate source and output directories:
 
 ```bash
-DOCS_SOURCE=docs/source_en DOCS_BUILD=docs/_build_en bash scripts/build_docs.sh
+DOCS_SOURCE=docs/source DOCS_BUILD=docs/_build_alt bash scripts/build_docs.sh
 ```

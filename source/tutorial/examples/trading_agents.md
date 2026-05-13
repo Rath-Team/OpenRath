@@ -110,9 +110,9 @@ The core structure comes from `example/trading_agents/workflow.py`:
 
 ```python
 class TradingAgentsWorkflow(Workflow):
-    def __init__(self, model: str) -> None:
+    def __init__(self, provider: Provider) -> None:
         super().__init__()
-        prov = Provider(model=model)
+        prov = provider
         self.analyst = AgentParam(Session.from_agent_prompt(ANALYST_SYSTEM), prov)
         self.researcher_bear = AgentParam(
             Session.from_agent_prompt(RESEARCHER_BEAR_SYSTEM),
@@ -163,7 +163,7 @@ Key points:
 
 | Line | Explanation |
 | --- | --- |
-| `prov = Provider(model=model)` | All five roles share the same model configuration. |
+| `prov = provider` | All five roles share the same model configuration. |
 | `self.analyst = AgentParam(...)` | Assignment registers the agent with the `Workflow`. |
 | `market_tools = [AlphaVantageGlobalQuoteTool()]` | The market data tool is passed only to the analyst. |
 | `s = run_session_loop(s, ...)` | Each role receives the output session from the previous role. |

@@ -134,12 +134,11 @@ The outer workflow composes child workflows:
 
 ```python
 class EngineeringProjectWorkflow(Workflow):
-    def __init__(self, model: str) -> None:
+    def __init__(self, provider: Provider) -> None:
         super().__init__()
-        prov = Provider(model=model)
-        self.lead = AgentParam(Session.from_agent_prompt(LEAD_ENGINEER_SYSTEM), prov)
-        self._squad = FeatureSquadWorkflow(prov)
-        self._qa = QualityAssuranceWorkflow(prov)
+        self.lead = AgentParam(Session.from_agent_prompt(LEAD_ENGINEER_SYSTEM), provider)
+        self._squad = FeatureSquadWorkflow(provider)
+        self._qa = QualityAssuranceWorkflow(provider)
 
     def forward(self, session: Session) -> Session:
         s = run_session_loop(

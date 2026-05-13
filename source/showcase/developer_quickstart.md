@@ -25,11 +25,13 @@ OPENAI_DEFAULT_MODEL=...
 
 ```python
 import rath.flow as flow
+from rath.llm import Provider
 from rath.session import Session
 
+provider = Provider(api_key="sk-...", model="gpt-5.5")
 agent = flow.Agent(
     system_prompt="You are a concise assistant. Use tools when useful.",
-    model="gpt-5.5",
+    provider=provider,
 )
 ```
 
@@ -37,7 +39,7 @@ agent = flow.Agent(
 
 ```python
 user = Session.from_user_message("Run `pwd` and tell me where the sandbox is.")
-user = user.to("local")
+user = user.to("local", spec=".")
 ```
 
 ## 4. 运行

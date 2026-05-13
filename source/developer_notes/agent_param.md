@@ -40,7 +40,7 @@ param = AgentParam(
 | Field | Type | Typical source | Runtime meaning |
 | --- | --- | --- | --- |
 | `agent_session` | `Session` | `Session.from_agent_prompt(...)` | System context placed at the start of the request. |
-| `provider` | `Provider` | `Provider(model=...)` | Model configuration passed to the LLM request builder. |
+| `provider` | `Provider` | `Provider(api_key=..., model=...)` | Model configuration passed to the LLM request builder. |
 
 `param.data` returns a `MappingProxyType` containing `agent_session` and `provider`. Callers can read this mapping, but cannot mutate the underlying fields through it.
 
@@ -144,9 +144,8 @@ from rath.session import Session, run_session_loop
 
 
 class TwoPassWorkflow(Workflow):
-    def __init__(self, model: str):
+    def __init__(self, provider: Provider):
         super().__init__()
-        provider = Provider(model=model)
         self.planner = AgentParam(
             Session.from_agent_prompt("Plan the task."),
             provider,
@@ -197,7 +196,7 @@ The agent's system prompt does not pollute user-side context. When a workflow ca
 ## Code Reading Checkpoints
 1. In `agent_param.py`, check the `AgentParam` fields and `data` behavior.
 2. In `workflow.py`, check how `__setattr__` registers `AgentParam`.
-3. In `agent.py`, check how `flow.Agent` creates `AgentParam` from `system_prompt` and `model`.
+3. In `agent.py`, check how `flow.Agent` creates `AgentParam` from `system_prompt` and `provider`.
 4. In `loop.py`, check the request assembly order with `head = chunk_table_to_messages(agent_session.chunk_table)` and `tail = chunk_table_to_messages(...)`.
 5. In `loop.py`, check how the output session sets `parent_session_ids=(user_session.id, agent_session.id)`.
 

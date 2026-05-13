@@ -40,7 +40,7 @@ out_session = agent(user_session)
 python example/sandbox_backend_local.py
 ```
 
-This requires a real LLM configuration because the script uses `flow.Agent` and lets the model decide whether to call tools. The model name comes from project configuration; if it is missing, the script uses its default.
+This requires a real LLM configuration because the script uses `flow.Agent` and lets the model decide whether to call tools. It reads credentials from the process environment through `provider_from_env()`, then overrides the model to `glm-5.1`.
 
 ## Successful output
 The script first prints the initial backend target, usually `None`. It then prints two assistant replies: the first from the temporary empty workspace, and the second from the workspace bound to the project directory.
@@ -59,7 +59,7 @@ The exact text depends on the model. To check success, focus on whether the seco
 | Initial output | `user_session.sandbox_backend` is usually empty at first. |
 | `spec=None` | The model sees a temporary empty workspace. |
 | `spec="."` | The model can list the current project directory. |
-| Last assistant row | The script prints `out_session.chunk_table.rows[-1].payload["content"]`. |
+| Streamed assistant rows | The script uses `example_chunk_print()` to print chunks appended by each `agent(user_session)` call. |
 
 ## Troubleshooting
 | Symptom | Check |

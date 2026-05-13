@@ -98,8 +98,8 @@ OpenRath uses normalized dataclasses internally:
 ## Integration Points
 | Need | Extension point |
 | --- | --- |
-| Change OpenAI-compatible gateway | Set `OPENAI_BASE_URL`. |
-| Change model and sampling parameters | Set `Provider(...)` or `OPENAI_DEFAULT_MODEL`. |
+| Change OpenAI-compatible gateway | Set `Provider.base_url` (often from `OPENAI_BASE_URL`). |
+| Change model and sampling parameters | Set `Provider(...)` before passing it to the loop or client. |
 | Use a local model service | Implement `SessionLoopExecutor.complete(...)`. |
 | Customize tool dispatch policy | Implement `SessionLoopExecutor.dispatch_tool(...)`. |
 | Test fixed model responses | Use a scripted executor. |

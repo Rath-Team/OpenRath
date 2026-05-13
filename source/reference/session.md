@@ -56,6 +56,7 @@ run_session_loop(
     tools: list[FlowToolCall] | None = None,
     executor: SessionLoopExecutor | None = None,
     max_tool_rounds: int = 16,
+    chunk_print: ChunkAppendHook | None = None,
 ) -> Session
 ```
 
@@ -67,6 +68,7 @@ run_session_loop(
 | `tools` | Additional `FlowToolCall` instances. |
 | `executor` | Replacement point for completion and tool dispatch. |
 | `max_tool_rounds` | Maximum number of tool-call rounds. |
+| `chunk_print` | Optional hook called for each newly appended chunk. |
 
 The returned `Session` starts with the user rows, then appends assistant rows and `tool_result` rows. The output session lineage parents are the user session and agent session.
 
@@ -80,6 +82,7 @@ run_session_compress(
     executor: SessionLoopExecutor | None = None,
     compress_instruction: str | None = None,
     register_sessions: bool = True,
+    chunk_print: ChunkAppendHook | None = None,
 ) -> Session
 ```
 
