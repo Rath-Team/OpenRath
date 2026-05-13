@@ -33,7 +33,7 @@ from rath.session import Session
 
 param = AgentParam(
     agent_session=Session.from_agent_prompt("You are concise."),
-    provider=Provider(model="gpt-5.5"),
+    provider=Provider(api_key="sk-...", model="gpt-5.5"),
 )
 ```
 
@@ -93,7 +93,7 @@ class ReviewerWorkflow(Workflow):
         super().__init__()
         self.reviewer = AgentParam(
             Session.from_agent_prompt("Review the implementation."),
-            Provider(model="gpt-5.5"),
+            Provider(api_key="sk-...", model="gpt-5.5"),
         )
 ```
 
@@ -111,10 +111,11 @@ Registration only applies to `AgentParam`. Normal fields, tool lists, executors,
 
 ```python
 from rath import flow
+from rath.llm import Provider
 
 agent = flow.Agent(
     system_prompt="Use tools when useful.",
-    model="gpt-5.5",
+    provider=Provider(api_key="sk-...", model="gpt-5.5"),
 )
 
 out = agent(user)
@@ -125,7 +126,6 @@ Internal structure:
 ```text
 flow.Agent.__init__
   Session.from_agent_prompt(system_prompt)
-  Provider(model=model)
   AgentParam(agent_session, provider)
   tools list
 

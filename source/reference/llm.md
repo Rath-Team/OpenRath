@@ -1,14 +1,13 @@
 (pkg-llm)=
 # `rath.llm`
 
-OpenAI-compatible request/response types, synchronous client, configuration loading, and response normalization.
+OpenAI-compatible provider options, request/response types, synchronous client, and response normalization.
 
 ## Source
 | Module | Source |
 | --- | --- |
 | `rath.llm.provider` | `src/rath/llm/provider.py` |
 | `rath.llm.client` | `src/rath/llm/client.py` |
-| `rath.llm.settings` | `src/rath/llm/settings.py` |
 | `rath.llm.chat_request` | `src/rath/llm/chat_request.py` |
 | `rath.llm.chat_response` | `src/rath/llm/chat_response.py` |
 | `rath.llm.openai_create_kwargs` | `src/rath/llm/openai_create_kwargs.py` |
@@ -17,32 +16,27 @@ OpenAI-compatible request/response types, synchronous client, configuration load
 ## Public contract
 ### `Provider`
 
-`Provider` stores the model, sampling, tool, and provider-specific parameters required by the loop. It does not contain messages or tools; the session loop constructs those.
+`Provider` stores OpenAI-compatible client identity plus model, sampling, tool, and provider-specific parameters required by the loop. It does not contain messages or tools; the session loop constructs those.
 
 | Field category | Fields |
 | --- | --- |
+| client identity | `api_key`, `base_url` |
 | model | `model` |
 | sampling | `temperature`, `top_p`, `max_completion_tokens`, `max_tokens`, `stop`, `n`, `seed` |
 | penalties | `frequency_penalty`, `presence_penalty`, `logit_bias` |
 | tools/output | `tool_choice`, `parallel_tool_calls`, `response_format` |
 | OpenAI options | `reasoning_effort`, `verbosity`, `metadata`, `user`, `store`, `service_tier`, `extra_create_args` |
 
-### Settings
-| Function/type | Behavior |
-| --- | --- |
-| `RathLLMSettings` | `api_key`, `base_url`, `default_model`. |
-| `load_rath_llm_settings(dotenv_path=None)` | Loads `.env`, then reads environment variables. |
-| `rath_llm_default_dotenv_path()` | Returns `.env` under the project root. |
-
-When `OPENAI_API_KEY` is empty, `load_rath_llm_settings(...)` raises `ValueError`.
-
 ### Client
 ```python
-client = RathOpenAIChatClient()
+from rath.llm import Provider, RathOpenAIChatClient
+
+provider = Provider(api_key="sk-...", base_url=None, model="gpt-5.5")
+client = RathOpenAIChatClient(provider)
 response = client.complete(request)
 ```
 
-`RathOpenAIChatClient.complete(...)` calls `openai.OpenAI().chat.completions.create(...)` and normalizes the provider response to `RathLLMChatResponse`.
+`RathOpenAIChatClient.complete(...)` calls `openai.OpenAI(api_key=..., base_url=...).chat.completions.create(...)` and normalizes the provider response to `RathLLMChatResponse`.
 
 ### Request and response DTOs
 | Type | Description |
@@ -73,11 +67,6 @@ response = client.complete(request)
 
 .. autoclass:: rath.llm.RathOpenAIChatClient
    :members:
-
-.. autoclass:: rath.llm.RathLLMSettings
-   :members:
-
-.. autofunction:: rath.llm.load_rath_llm_settings
 
 .. autofunction:: rath.llm.to_create_kwargs
 

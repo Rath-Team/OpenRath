@@ -13,7 +13,7 @@ This section organizes the public API by the actual package structure. Each page
 | [`rath`](rath.md) | Package-level entrypoint. |
 | [`rath.session`](session.md) | `Session`, chunks, loop, compression, lineage, registry. |
 | [`rath.backend`](backend.md) | Backend abstractions, sandboxes, tool payloads, results, registry, stream. |
-| [`rath.flow`](flow.md) | `Workflow`, `AgentParam`, `Agent`, `SessionCompressor`. |
+| [`rath.flow`](flow.md) | `Workflow`, `AgentParam`, `Agent`, `Compressor`. |
 | [`rath.flow.tool`](flow_tool.md) | `FlowToolCall`, built-in system tools, backend tool factories, schema merging. |
 | [`rath.llm`](llm.md) | `Provider`, request/response types, OpenAI-compatible client. |
 | [`rath.utils`](utils.md) | `.env` and project-root helpers. |

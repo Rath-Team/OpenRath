@@ -29,7 +29,7 @@ This page maps the main component pages to the relevant source files and tests.
 | `Sandbox` | `src/rath/backend/abc.py`, `local.py`, `opensandbox.py` | `tests/backends/`, `tests/conformance/`, `tests/unit/test_registry.py` |
 | `Tool` | `src/rath/flow/tool/`, `src/rath/backend/tool_types.py` | `tests/session/test_tool_registry.py`, `tests/flow/test_flow_tool_user_subclass.py`, `tests/unit/test_flow_tool.py` |
 | `AgentParam` | `src/rath/flow/agent_param.py`, `src/rath/flow/agent.py` | `tests/flow/test_workflow_agent.py`, `tests/test_import.py` |
-| `Workflow` | `src/rath/flow/workflow.py`, `agent.py`, `session_compressor.py` | `tests/flow/test_workflow_agent.py` |
+| `Workflow` | `src/rath/flow/workflow.py`, `agent.py`, `compressor.py` | `tests/flow/test_workflow_agent.py` |
 | `LLM` | `src/rath/llm/`, `src/rath/session/provider_builtin.py` | `tests/llm/`, `tests/session/test_llm_message_wire.py` |
 
 Developer Notes describe behavior that exists in the current source. Roadmap notes, troubleshooting, and full application tutorials are tracked separately.

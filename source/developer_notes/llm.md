@@ -17,15 +17,15 @@ request; the normalized response is written back into the session loop.
 ## Overview
 
 The LLM layer is deliberately narrow. It does not own workflow state and it does
-not execute tools. Its job is to build a request, call an OpenAI-compatible
-client, normalize the response, and hand the result back to the session loop.
+not execute tools. Its job is to carry provider options, build a request, call an
+OpenAI-compatible client, normalize the response, and hand the result back to the
+session loop.
 
 ## Source map
 | File | Responsibility |
 | --- | --- |
 | `src/rath/llm/provider.py` | `Provider` request options. |
 | `src/rath/llm/client.py` | `RathOpenAIChatClient`. |
-| `src/rath/llm/settings.py` | `.env` and environment variable loading. |
 | `src/rath/llm/chat_request.py` | Request dataclasses. |
 | `src/rath/llm/chat_response.py` | Normalized response dataclasses. |
 | `src/rath/llm/openai_create_kwargs.py` | Conversion from internal request to OpenAI SDK kwargs. |
@@ -33,13 +33,17 @@ client, normalize the response, and hand the result back to the session loop.
 | `src/rath/session/provider_builtin.py` | Default `SessionLoopExecutor`. |
 
 ## Provider Parameters
-`Provider` is the request options object. It stores the model name, sampling parameters, tool choice, response format, and passthrough arguments.
+`Provider` is the request options object. It stores the API key, optional base URL, model name, sampling parameters, tool choice, response format, and passthrough arguments.
 
 ```python
+import os
+
 from rath.llm import Provider
 
 provider = Provider(
-    model="gpt-5.5",
+    api_key=os.environ["OPENAI_API_KEY"],
+    base_url=os.environ.get("OPENAI_BASE_URL") or None,
+    model=os.environ.get("OPENAI_DEFAULT_MODEL") or "gpt-5.5",
     temperature=0.2,
     parallel_tool_calls=False,
 )
@@ -48,13 +52,13 @@ provider = Provider(
 `provider_into_chat_request(...)` merges `Provider` into `RathLLMChatRequest`. The session loop builds messages and tools.
 
 ## Default Client
-`RathOpenAIChatClient` wraps `openai.OpenAI().chat.completions.create(...)`.
+`RathOpenAIChatClient` wraps `openai.OpenAI(api_key=..., base_url=...).chat.completions.create(...)`.
 
 | Environment variable | Purpose |
 | --- | --- |
 | `OPENAI_API_KEY` | API key for OpenAI or a compatible gateway. |
 | `OPENAI_BASE_URL` | OpenAI-compatible endpoint. |
-| `OPENAI_DEFAULT_MODEL` | Default model used when `Provider.model` is empty. |
+| `OPENAI_DEFAULT_MODEL` | Conventional environment variable used by repository examples when constructing a `Provider`. |
 
 The default client currently uses the synchronous, non-streaming chat completion path. `to_create_kwargs(...)` forces `stream=False`.
 
@@ -108,7 +112,7 @@ run_session_loop
   -> provider_into_chat_request(messages, tools, Provider, default_tool_choice="auto")
   -> DefaultSessionLoopExecutor.complete(req)
   -> RathOpenAIChatClient.complete(req)
-  -> to_create_kwargs(req, default_model=settings.default_model)
+  -> to_create_kwargs(req, default_model=provider.model)
   -> openai.OpenAI(...).chat.completions.create(**kwargs)
   -> normalize_chat_completion(completion)
 ```
@@ -118,7 +122,7 @@ The compress path uses the same client and request/response DTOs, but passes `to
 ## Edge Cases
 | Behavior | Current implementation |
 | --- | --- |
-| missing API key | `load_rath_llm_settings(...)` raises `ValueError`. |
+| missing API key | `RathOpenAIChatClient(provider)` and the default session loop raise `ValueError`. |
 | missing model | `to_create_kwargs(...)` raises `ValueError` when both `req.model` and the default model are empty. |
 | streaming | Raises `ValueError` when `extra_create_args["stream"] is True`; final kwargs set `stream=False`. |
 | tool argument parsing | `normalize_chat_completion(...)` attempts to parse arguments as JSON and records a parse error flag. |

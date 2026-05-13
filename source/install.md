@@ -28,10 +28,9 @@ Core dependencies include:
 | --- | --- |
 | `openai` | Default OpenAI-compatible chat client. |
 | `pydantic` | Tool schemas, request/response models, and configuration types. |
-| `python-dotenv` | Loads LLM and backend configuration from `.env`. |
 
 ### Configure the LLM
-Real LLM workflows require OpenAI-compatible configuration. OpenRath first tries to read `.env` from the current project root, then reads process environment variables.
+Real LLM workflows require OpenAI-compatible configuration. The core library keeps this explicit: build a `Provider` with the API key, optional base URL, and model. The repository examples include small helpers that read these values from process environment variables.
 
 ```bash
 export OPENAI_API_KEY=...
@@ -43,7 +42,7 @@ export OPENAI_DEFAULT_MODEL=gpt-5.5
 | --- | --- |
 | `OPENAI_API_KEY` | OpenAI or compatible gateway API key. The default client fails if this is missing. |
 | `OPENAI_BASE_URL` | OpenAI-compatible endpoint. |
-| `OPENAI_DEFAULT_MODEL` | Default model used when `Provider(model=None)`. |
+| `OPENAI_DEFAULT_MODEL` | Model used by the repository example helpers when no role-specific model is set. |
 
 If you also cloned the OpenRath repository, you can first run examples that do not depend on OpenSandbox:
 
@@ -55,11 +54,20 @@ python example/sandbox_backend_local.py
 When using OpenRath from PyPI in your own project, import it directly:
 
 ```python
+import os
+
 from rath import flow
+from rath.llm import Provider
 from rath.session import Session
 
-agent = flow.Agent("Use tools when helpful.", model="gpt-5.5")
-user = Session.from_user_message("List files.").to("local")
+provider = Provider(
+    api_key=os.environ["OPENAI_API_KEY"],
+    base_url=os.environ.get("OPENAI_BASE_URL") or None,
+    model=os.environ.get("OPENAI_DEFAULT_MODEL") or "gpt-5.5",
+)
+
+agent = flow.Agent("Use tools when helpful.", provider=provider)
+user = Session.from_user_message("List files.").to("local", spec=".")
 out = agent(user)
 ```
 
@@ -84,7 +92,7 @@ Development dependencies include:
 
 | Dependency group | Contents |
 | --- | --- |
-| runtime | `openai`, `pydantic`, `python-dotenv`. |
+| runtime | `openai`, `pydantic`. |
 | dev | `pytest`, `flake8`, `mypy`. |
 | docs | `sphinx`, `myst-parser`, `pydata-sphinx-theme`. |
 

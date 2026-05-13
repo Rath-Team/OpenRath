@@ -210,5 +210,5 @@ If the model calls file-writing tools, implementation or review files appear und
 
 ## Exercises
 1. Add a security reviewer to `FeatureSquadWorkflow`.
-2. Move the QA stage to run before `SessionCompressor`, then compress before producing the report.
+2. Move the QA stage to run before `Compressor`, then compress before producing the report.
 3. Print the session row count after each stage and observe how context grows.

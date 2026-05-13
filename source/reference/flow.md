@@ -9,7 +9,7 @@ Workflow composition layer. `Workflow` organizes `Session -> Session` transforms
 | `rath.flow.workflow` | `src/rath/flow/workflow.py` |
 | `rath.flow.agent_param` | `src/rath/flow/agent_param.py` |
 | `rath.flow.agent` | `src/rath/flow/agent.py` |
-| `rath.flow.session_compressor` | `src/rath/flow/session_compressor.py` |
+| `rath.flow.compressor` | `src/rath/flow/compressor.py` |
 
 ## Public contract
 ### `Workflow`
@@ -32,8 +32,8 @@ When an `AgentParam` is assigned to a workflow as an attribute, `Workflow.__seta
 ### Preset workflows
 | Class | Constructor arguments | Behavior |
 | --- | --- | --- |
-| `Agent` | `system_prompt`, `model`, `tools=None` | Creates an agent session and provider. `forward(...)` calls `run_session_loop(...)`. |
-| `SessionCompressor` | `compress_instruction`, `model` | `forward(...)` calls `run_session_compress(...)`. |
+| `Agent` | `system_prompt`, `provider`, `tools=None`, `chunk_print=None` | Creates an agent session and stores the supplied provider. `forward(...)` calls `run_session_loop(...)`. |
+| `Compressor` | `compress_instruction`, `provider`, `chunk_print=None` | `forward(...)` calls `run_session_compress(...)`. |
 
 `Agent.register_tool(tool)` adds tools and deduplicates by name. `Agent.unregister_tool(tool_name)` removes the tool with the same name.
 
@@ -56,7 +56,7 @@ These examples use the public `Workflow`, `AgentParam`, `Provider`, and `run_ses
 .. autoclass:: rath.flow.Agent
    :members:
 
-.. autoclass:: rath.flow.SessionCompressor
+.. autoclass:: rath.flow.Compressor
    :members:
 ```
 

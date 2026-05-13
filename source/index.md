@@ -23,7 +23,7 @@ agent = flow.Agent(
     provider=Provider(
         base_url=os.environ.get("OPENAI_BASE_URL"),
         api_key=os.environ["OPENAI_API_KEY"],
-        model=os.environ["OPENAI_DEFAULT_MODEL"],
+        model=os.environ.get("OPENAI_DEFAULT_MODEL") or "gpt-5.5",
     ),
 )
 

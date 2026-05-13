@@ -22,7 +22,7 @@ agent_session = Session.from_agent_prompt(
 user_session = Session.from_user_message(
     "Create a file, then read it back."
 ).to("local")
-provider = flow.Provider(model="gpt-5.5")
+provider = flow.Provider(api_key="sk-...", model="gpt-5.5")
 ```
 
 Key lines:

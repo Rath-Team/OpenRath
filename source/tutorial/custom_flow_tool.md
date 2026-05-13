@@ -87,7 +87,7 @@ user_session = Session.from_user_message(
 out = run_session_loop(
     user_session=user_session,
     agent_session=agent_session,
-    agent_provider=flow.Provider(model="gpt-5.5"),
+    agent_provider=flow.Provider(api_key="sk-...", model="gpt-5.5"),
     tools=[tool],
     executor=scripted_executor,
 )

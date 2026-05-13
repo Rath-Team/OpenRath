@@ -32,7 +32,7 @@ OpenRath workflows follow a pattern close to PyTorch modules:
 | `src/rath/flow/workflow.py` | `Workflow` base class, attribute registration, `named_agents()`, repr. |
 | `src/rath/flow/agent_param.py` | `AgentParam` values that can be registered by a workflow. |
 | `src/rath/flow/agent.py` | `Agent` preset workflow wrapping one agent loop. |
-| `src/rath/flow/session_compressor.py` | `SessionCompressor` preset workflow wrapping compression. |
+| `src/rath/flow/compressor.py` | `Compressor` preset workflow wrapping compression. |
 | `src/rath/session/loop.py` | Runs the LLM loop, tool calls, sandbox transfer, and lineage writeback. |
 | `example/trading_agents/workflow.py` | Sequential multi-agent workflow example. |
 | `example/engineering_agents/workflows.py` | Nested workflow example. |
@@ -65,7 +65,7 @@ class PlanningWorkflow(Workflow):
         super().__init__()
         self.planner = AgentParam(
             Session.from_agent_prompt("Plan the work."),
-            Provider(model="gpt-5.5"),
+            Provider(api_key="sk-...", model="gpt-5.5"),
         )
 ```
 
@@ -83,10 +83,11 @@ The smallest runnable path can use the preset `flow.Agent` directly:
 
 ```python
 from rath import flow
+from rath.llm import Provider
 
 agent = flow.Agent(
     system_prompt="Answer clearly.",
-    model="gpt-5.5",
+    provider=Provider(api_key="sk-...", model="gpt-5.5"),
 )
 
 out = agent(user_session)
@@ -223,9 +224,9 @@ OpenRath currently provides two preset subclasses:
 | Class | Wraps | Best for |
 | --- | --- | --- |
 | `Agent` | One `AgentParam`, one tools list, one `run_session_loop(...)` | Single-agent calls and quick tool integration. |
-| `SessionCompressor` | One `AgentParam`, one `run_session_compress(...)` | Compressing a long session into a new user-side session. |
+| `Compressor` | One `AgentParam`, one `run_session_compress(...)` | Compressing a long session into a new user-side session. |
 
-`Agent.register_tool(...)` deduplicates by tool name. `SessionCompressor` asks the model to produce a new user message; the compressed result keeps session lineage and continues to hold the input session's sandbox configuration and handle.
+`Agent.register_tool(...)` deduplicates by tool name. `Compressor` asks the model to produce a new user message; the compressed result keeps session lineage and continues to hold the input session's sandbox configuration and handle.
 
 ## Nested Workflow
 The Engineering Agents example in the repository shows nested workflows:
@@ -313,10 +314,10 @@ flow.Agent.forward(session)
   )
 ```
 
-When using the preset `SessionCompressor`:
+When using the preset `Compressor`:
 
 ```text
-flow.SessionCompressor.forward(session)
+flow.Compressor.forward(session)
   run_session_compress(
     user_session=session,
     agent_session=self.agent.agent_session,
@@ -339,7 +340,7 @@ flow.SessionCompressor.forward(session)
 1. In `workflow.py`, check `__slots__ = ("_agents",)` and `__setattr__`.
 2. In `workflow.py`, check the sorting rule in `named_agents()`.
 3. In `agent.py`, check how `Agent.forward(...)` calls `run_session_loop(...)`.
-4. In `session_compressor.py`, check how the compression workflow calls `run_session_compress(...)`.
+4. In `compressor.py`, check how the compression workflow calls `run_session_compress(...)`.
 5. In `example/trading_agents/workflow.py`, check the fixed-order multi-agent flow.
 6. In `example/engineering_agents/workflows.py`, check nested workflows.
 7. In `tests/flow/test_workflow_agent.py`, check workflow registration and sandbox transfer tests.
