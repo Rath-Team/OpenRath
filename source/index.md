@@ -2,8 +2,8 @@
 # OpenRath
 
 <div class="or-home-hero">
-  <p class="or-slogan">A opensource, torch-like api framework for dynamic multi-agent workflow.</p>
-  <p>OpenRath brings PyTorch-style composability to agent workflows: use Session for state, FlowToolCall for callable tool capabilities, and Backend for controlled execution placement.</p>
+  <p class="or-slogan">An open-source, PyTorch-like API framework for dynamic multi-agent workflows.</p>
+  <p>OpenRath treats the session as the primary carrier through an agent run: Session holds the evolving chunk table, Backend controls where tools execute, and Workflow composes agents into reusable pipelines.</p>
   <p class="or-cta">
     <a class="or-button or-button-primary" href="tutorial/index.html">Start Tutorials</a>
     <a class="or-button" href="developer_notes/index.html">Read Developer Notes</a>
@@ -12,24 +12,31 @@
 </div>
 
 ```python
+import os
+
 from rath import flow
+from rath.llm import Provider
 from rath.session import Session
 
 agent = flow.Agent(
     system_prompt="Use tools when helpful.",
-    model="gpt-5.5",
+    provider=Provider(
+        base_url=os.environ.get("OPENAI_BASE_URL"),
+        api_key=os.environ["OPENAI_API_KEY"],
+        model=os.environ["OPENAI_DEFAULT_MODEL"],
+    ),
 )
 
 user = Session.from_user_message(
     "Create a file, then read it back."
-).to("local")
+).to("local", spec="./")
 
 out = agent(user)
 ```
 
 Tutorials use scripted LLM responses where reproducibility matters. Production
 agent workflows use the same `Session`, `FlowToolCall`, `Workflow`, and
-`Backend` abstractions with a configured model provider.
+`Backend` abstractions with an OpenAI-compatible `Provider`.
 
 ## Where To Start
 
@@ -44,11 +51,12 @@ agent workflows use the same `Session`, `FlowToolCall`, `Workflow`, and
 
 | Concept | Role |
 | --- | --- |
-| `Session` | Carries conversation tables, backend placement, and lineage metadata. |
+| `Session` | Carries ordered chunk rows, sandbox placement, and lineage metadata through a run. |
+| `Backend` | Opens the local or OpenSandbox execution environment attached to a session. |
 | `FlowToolCall` | Exposes JSON schemas to the model and Python callables to the runtime. |
-| `Backend` | Opens sandboxes and executes command, file, and code payloads. |
-| `Workflow` | Composes agent behavior and session transformations as ordinary Python modules. |
-| `Provider` | Stores OpenAI-compatible chat completion model and request parameters. |
+| `Workflow` | Composes agents and session transformations as ordinary Python modules. |
+| `AgentParam` | Stores the agent system session plus LLM routing options. |
+| `Provider` | Stores OpenAI-compatible chat completion identity and request parameters. |
 
 ## Runnable Workflows
 
