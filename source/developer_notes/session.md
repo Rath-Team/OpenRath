@@ -1,121 +1,221 @@
-# 会话（Session）
+# Session
 
-`Session` 是 OpenRath workflow 中流动的运行时状态对象。它承载 chunk transcript、backend placement 和 lineage metadata。
+`Session` is the main runtime object in OpenRath. Agent calls, tool calls, compression, and multi-agent handoffs all end up as changes to a `Session`.
 
-本页回答：运行状态如何流动，`fork()`、`detach()`、`run_session_loop(...)` 和 `run_session_compress(...)` 如何改变 session graph，以及 sandbox handle 何时迁移。
+This page explains how `Session` carries state, execution placement, and lineage, and how `fork()`, `detach()`, `run_session_loop(...)`, and `run_session_compress(...)` affect the session graph and sandbox handle.
 
-## 源码地图（Source Map）
+Start with the diagram below: it shows the three pieces of state a session
+carries, and the lifecycle operations that move or derive that state.
 
-| 文件 | 负责内容 |
-| --- | --- |
-| `src/rath/session/session.py` | `Session` dataclass、sandbox lifecycle、`fork()`、`detach()`。 |
-| `src/rath/session/chunk.py` | `ChunkKind`、`ChunkRow`、`ChunkTable` 和 message 转换。 |
-| `src/rath/session/loop.py` | `run_session_loop(...)`、tool dispatch、`tool_result` 写回。 |
-| `src/rath/session/compress.py` | `run_session_compress(...)`。 |
-| `src/rath/session/graph/recording.py` | `LineageRecorder` 与 lineage mode。 |
-| `src/rath/session/graph/traverse.py` | graph 遍历与 acyclic validation。 |
+```{figure} ../_static/core-session.png
+:alt: Session state overview
 
-## 表格化上下文（Context As A Table）
+`Session` keeps conversation chunks, sandbox placement, and lineage metadata in
+one object so that state can move through agent and workflow calls.
+```
 
-`Session.chunk_table` 是按时间顺序排列的 `ChunkRow` 表。每一行都有 `kind` 和 `payload`。
+## Overview
 
-| Chunk kind | Payload 重点 | 产生位置 |
+`Session` is made of three kinds of state:
+
+| Layer | Stored in | Purpose |
 | --- | --- | --- |
-| `system` | `content` | `Session.from_agent_prompt(...)` |
-| `user` | `content` | `Session.from_user_message(...)` |
-| `assistant` | `content`、`tool_calls` | `run_session_loop(...)` |
-| `tool_result` | `tool_call_id`、`name`、`content` | `run_session_loop(...)` 工具执行后 |
+| Conversation content | `chunk_table` | Which system/user/assistant/tool content the current agent can see. |
+| Execution placement | `sandbox_backend`, `_sandbox_open_spec`, `sandbox` | Which backend receives tool side effects. |
+| State origin | `id`, `parent_session_ids`, `lineage_kind` | Where this session came from and which operation produced it. |
+
+These layers live in the same object because content state and execution state move together through an agent workflow. After one agent produces a tool call, later agents need to read the tool result and may continue using the same sandbox. `Session` is the value passed along that chain.
+
+## Source map
+
+| File | Responsibility |
+| --- | --- |
+| `src/rath/session/session.py` | `Session` dataclass, sandbox lifecycle, `fork()`, `detach()`. |
+| `src/rath/session/chunk.py` | `ChunkKind`, `ChunkRow`, `ChunkTable`, and message conversion. |
+| `src/rath/session/loop.py` | `run_session_loop(...)`, tool dispatch, `tool_result` writeback. |
+| `src/rath/session/compress.py` | `run_session_compress(...)`. |
+| `src/rath/session/graph/recording.py` | `LineageRecorder` and lineage mode. |
+| `src/rath/session/graph/traverse.py` | Graph traversal and acyclic validation. |
+
+## Why Context Is A Table
+
+`Session.chunk_table` is a time-ordered tuple of `ChunkRow` values. Each row has a `kind` and a `payload`. This fits an agent runtime better than a single string because tool calls need structured data.
+
+| Chunk kind | Key payload fields | Produced by | LLM message |
+| --- | --- | --- | --- |
+| `system` | `content` | `Session.from_agent_prompt(...)` | `role="system"` |
+| `user` | `content` | `Session.from_user_message(...)` | `role="user"` |
+| `assistant` | `content`, `tool_calls` | `run_session_loop(...)` | `role="assistant"` |
+| `tool_result` | `tool_call_id`, `name`, `content` | After tool execution | `role="tool"` |
+
+The key conversion happens in `chunk_table_to_messages(...)`:
+
+```python
+from rath.session import Session
+from rath.session.chunk import chunk_table_to_messages
+
+user = Session.from_user_message("List files.")
+messages = chunk_table_to_messages(user.chunk_table)
+print(messages[0].role)
+print(messages[0].content)
+```
+
+The main constraint here is that OpenRath stores a replayable transcript. `tool_calls` in `assistant` rows and `tool_call_id` in `tool_result` rows are rebuilt into OpenAI-compatible messages on the next LLM request, so the model can see which tool it just called and what the tool returned.
+
+## Agent Session And User Session
+
+OpenRath stores the system prompt in an agent-side session and stores user input plus runtime results in a user-side session.
+
+| Session | Typical content | Lifecycle |
+| --- | --- | --- |
+| agent session | `system` chunk | Held by `AgentParam` or `flow.Agent`, usually reused for many calls. |
+| user session | `user`, `assistant`, `tool_result` chunks | A workflow call produces new sessions as it runs. |
+
+When `run_session_loop(...)` builds a request, it places agent session messages before user session messages:
+
+```text
+request messages = agent_session rows + user_session rows
+```
+
+The output session starts from user-side rows and then appends assistant/tool rows. The system prompt is not copied into the output session. This keeps agent configuration separate from user runtime state: change the agent session and the same user session can enter a different behavior.
+
+## Session graph
+
+Every `Session` has an `id`. When an operation creates a new session, OpenRath records its origin in lineage fields.
+
+| Field | Meaning |
+| --- | --- |
+| `id` | UUID of the current session. |
+| `parent_session_ids` | Parent sessions that produced this session. |
+| `lineage_operator` | Name of the operation that produced this session. |
+| `lineage_kind` | Operation category, such as fork, detach, loop, or compress. |
+| `lineage_extras` | Extra structured metadata. |
+
+The graph explains how a run happened. In a multi-agent workflow, each agent receives the output session from the previous agent. In a nested workflow, child workflows also receive and return sessions. As long as each operation records its parents, the final result can be traced back through the steps that produced it.
+
+## Five Primitives
+
+Current `Session` changes can be understood through five primitives.
+
+| Primitive | Code entry point | Content behavior | Graph behavior | Sandbox behavior |
+| --- | --- | --- | --- | --- |
+| create | `Session.from_user_message(...)`, `Session.from_agent_prompt(...)` | Creates a one-row transcript. | Classmethods default to `UNKNOWN`; `create_leaf_user(...)` and `create_leaf_system(...)` write leaf lineage. | No sandbox target. |
+| fork | `session.fork()`, `fork_session(session)` | Copies chunk rows. | Parent points to the source session, `lineage_kind=OP_FORK`. | Copies the backend target, not the open handle. |
+| detach | `session.detach()`, `detach_session(session)` | Copies chunk rows. | Parent is empty, `lineage_kind=OP_DETACH`. | Copies the backend target, not the open handle. |
+| loop | `run_session_loop(user_session, agent_session, ...)` | Copies user rows and appends assistant/tool rows. | Parents are the user session and agent session. | Takes the sandbox from the input user session and binds it to the output session. |
+| compress | `run_session_compress(user_session, agent_session, ...)` | Writes the model summary as a new user row. | Parents are the user session and agent session, with lossy compression metadata. | Takes the sandbox from the input user session and binds it to the output session. |
+
+### When to use fork
+
+Use `fork()` when multiple follow-up paths should start from the same state. For example, the same user request can be tried by two different workflows. The forked session keeps its parent, so the graph shows that it came from the original state.
+
+### When to use detach
+
+Use `detach()` when a transcript should become a fresh starting point. It preserves content and the backend target, but leaves graph parents empty. This is useful when intentionally cutting lineage, such as exporting an intermediate state as the entry point for a new task.
+
+### When to use compress
+
+Use `run_session_compress(...)` to turn a long transcript into a new user-side summary. It disables tool use and requires the model to return text only. In the current implementation, tool calls in the model response raise `RuntimeError`.
+
+## Sandbox Lifecycle
+
+`Session` stores both the sandbox target and the open handle.
+
+| Field | Meaning |
+| --- | --- |
+| `sandbox_backend` | Backend name, such as `local` or `opensandbox`. |
+| `_sandbox_open_spec` | Spec used to open the backend; string specs become `BackendSandboxSpec(working_dir=...)`. |
+| `sandbox` | Open `BackendSandbox` handle. |
+
+Common methods:
+
+| Method | Behavior |
+| --- | --- |
+| `to("local", spec=...)` | Closes the current handle, sets the backend target, and returns the same session. |
+| `with_sandbox(sandbox)` | Binds an already-open sandbox handle. |
+| `require_sandbox()` | Returns the current handle; if only a backend target exists, opens it lazily. |
+| `take_sandbox()` | Takes the current handle; if only a backend target exists, opens it lazily and then takes it. |
+| `close_sandbox()` | Closes the current handle and keeps the backend target. |
+
+The sandbox behavior of `fork()` is easy to misread: fork copies the backend target so the derived session knows which backend to open later, but any open handle stays on the source session.
 
 ```python
 from rath.session import Session
 
-user = Session.from_user_message("List files.")
-for row in user.chunk_table.rows:
-    print(row.kind, row.payload)
+source = Session.from_user_message("Inspect project.").to("local")
+forked = source.fork()
+
+print(source.sandbox is None)
+print(forked.sandbox is None)
+print(forked.sandbox_backend)
 ```
 
-`chunk_table_to_messages(...)` 会把这些 rows 转成 chat completion messages。agent session 的 system rows 会在 request 中放到 user rows 前面。
+## run_session_loop State Transfer
 
-## 会话图（Session Graph）
+`run_session_loop(...)` does four things:
 
-OpenRath 使用 session 自身的 lineage 字段表达 graph。
+1. Merges built-in tools with user-provided `FlowToolCall` objects.
+2. Takes the sandbox from the input user session and creates the output session.
+3. Runs LLM completions in a loop; if the assistant returns tool calls, executes tools and appends `tool_result`.
+4. When there are no tool calls, appends the final assistant row and returns the output session.
 
-| 字段 | 含义 |
-| --- | --- |
-| `id` | 当前 session 的 UUID。 |
-| `parent_session_ids` | 产生当前 session 的父 session。 |
-| `lineage_operator` | 产生当前 session 的操作名称。 |
-| `lineage_kind` | 操作类别，例如 fork、detach、loop、compress。 |
-| `lineage_extras` | 额外结构化信息。 |
+The state transfer is:
 
-这些字段由 `LineageRecorder` 写入。`session_registry()` 提供进程内调试注册表，`ancestors_bfs(...)`、`validate_acyclic(...)` 等 helper 可以遍历和检查 graph。
-
-## 五个原语（Five Primitives）
-
-| Primitive | 代码入口 | Graph 行为 |
+| Location | Before loop | After loop |
 | --- | --- | --- |
-| create | `Session.from_user_message(...)`、`Session.from_agent_prompt(...)`、`create_leaf_user(...)`、`create_leaf_system(...)` | classmethod 创建基础 transcript；leaf helper 会记录 leaf lineage。 |
-| fork | `session.fork()`、`fork_session(session)` | 新 session 的 `parent_session_ids=(source.id,)`，`lineage_kind=OP_FORK`。 |
-| detach | `session.detach()`、`detach_session(session)` | 新 session 的 `parent_session_ids=()`，`lineage_kind=OP_DETACH`。 |
-| loop | `run_session_loop(user_session, agent_session, ...)` | 输出 session 的 parents 是 user session 与 agent session，`lineage_kind=OP_SESSION_LOOP`。 |
-| compress | `run_session_compress(user_session, agent_session, ...)` | 输出 user-only session，parents 是 user session 与 agent session，`lineage_kind=OP_SESSION_COMPRESS`。 |
+| Input user session | Holds original user rows and may hold a sandbox. | Sandbox is taken; `user_session.sandbox` becomes `None`. |
+| agent session | Holds system rows. | Unchanged. |
+| Output session | Does not exist. | Holds user rows, assistant rows, tool result rows, and the sandbox. |
 
-## 沙箱绑定（Sandbox Placement）
+Tool errors do not directly stop the loop. The current implementation writes errors as JSON `tool_result` chunks and sends that result back to the model. There are three cases:
 
-`Session` 记录 sandbox target 和可选 open handle。
-
-| 方法 | 行为 |
+| Case | Written error kind |
 | --- | --- |
-| `to("local", spec=...)` | 设置 backend target，关闭当前 handle，返回同一个 session。 |
-| `with_sandbox(sandbox)` | 绑定已经打开的 sandbox handle。 |
-| `require_sandbox()` | 返回当前 handle，或按 backend target lazy open。 |
-| `take_sandbox()` | 取走当前 handle，用于把 sandbox 转移到输出 session。 |
-| `close_sandbox()` | 关闭当前 handle，保留 backend target。 |
+| Tool arguments are not parseable JSON | `invalid_tool_arguments` |
+| Model requested an unknown tool | `unknown_tool` |
+| Tool execution raised an exception | `tool_execution_exception` |
 
-`run_session_loop(...)` 会从输入 user session 取走 sandbox，并把它绑定到输出 session。`fork()` 和 `detach()` 会复制 sandbox target，不复制已经打开的 handle。
+## run_session_compress State Transfer
 
-## 调用路径（Call Path）
+`run_session_compress(...)` uses the same agent/user session concatenation, but it creates a new user-only session.
 
-一次 tool-using loop 的主要调用路径：
-
-```text
-run_session_loop
-  -> merge_tools_for_loop
-  -> user_session.take_sandbox
-  -> chunk_table_to_messages(agent_session)
-  -> chunk_table_to_messages(user rows)
-  -> provider_into_chat_request
-  -> executor.complete
-  -> executor.dispatch_tool
-  -> tool_feedback_chunk
-  -> LineageRecorder.stamp_new_session
-```
-
-`run_session_compress(...)` 的路径更短：
-
-```text
-run_session_compress
-  -> chunk_table_to_messages(agent_session + user_session)
-  -> provider_into_chat_request(tools=None, tool_choice="none")
-  -> executor.complete
-  -> user_text_chunk(model_content)
-  -> LineageRecorder.stamp_new_session
-```
-
-## 边界条件（Boundary Conditions）
-
-| 行为 | 当前实现 |
+| Behavior | Current implementation |
 | --- | --- |
-| `fork()` / `detach()` | 复制 chunk rows 和 sandbox target，保留源 session 的 open handle。 |
-| `run_session_loop(...)` | 输出 session 接管输入 user session 的 sandbox handle。 |
-| malformed tool arguments | 写入 JSON error `tool_result`，loop 继续。 |
-| unknown tool | 写入 JSON error `tool_result`，loop 继续。 |
-| tool exception | 捕获异常并写入 JSON error `tool_result`。 |
-| compress tool calls | `run_session_compress(...)` 抛 `RuntimeError`。 |
+| Request content | agent session rows + user session rows + compression instruction. |
+| tool choice | Tools are forced off. |
+| Output content | Model text becomes the only `user` chunk. |
+| sandbox | Moved from the input user session to the output session. |
+| lineage extras | `compression.lossy=True`, `compression.rows_out=1`. |
 
-## 测试覆盖（Test Coverage）
+This operation is lossy. It reduces context length, and the compressed session keeps only the summary text written by the model.
 
-| 行为 | 测试 |
+## Code Reading Checkpoints
+
+| Question | Where to look |
+| --- | --- |
+| How a row becomes an LLM message | `src/rath/session/chunk.py::chunk_table_to_messages` |
+| When sandbox lazy open happens | `src/rath/session/session.py::_ensure_sandbox` |
+| How loop moves the sandbox | `take_sandbox()` in `src/rath/session/loop.py::run_session_loop` |
+| How compress disables tools | `default_tool_choice="none"` in `src/rath/session/compress.py::run_session_compress` |
+| Whether fork/detach copy an open handle | `tests/session/test_session_fork_detach_merge.py` |
+
+## Edge Cases
+
+| Behavior | Current implementation |
+| --- | --- |
+| `take_sandbox()` without a backend target | Raises `RuntimeError("no sandbox to take")`. |
+| `require_sandbox()` without a backend target | Raises `RuntimeError` with guidance to call `session.to("local")` or `bind_sandbox(...)`. |
+| `require_sandbox()` with a bound closed sandbox | Raises `RuntimeError("session sandbox is closed")`. |
+| `fork()` / `detach()` | Copies chunk rows and sandbox target; keeps the source session's open handle on the source. |
+| `run_session_loop(...)` | Output session takes over the input user session's sandbox handle. |
+| malformed tool arguments | Writes JSON error `tool_result` and continues the loop. |
+| unknown tool | Writes JSON error `tool_result` and continues the loop. |
+| tool exception | Catches the exception and writes JSON error `tool_result`. |
+| compress tool calls | `run_session_compress(...)` raises `RuntimeError`. |
+
+## Test Coverage
+
+| Behavior | Tests |
 | --- | --- |
 | chunk to messages | `tests/session/test_chunk_messages.py` |
 | sandbox lifecycle | `tests/session/test_session_sandbox_behavior.py` |

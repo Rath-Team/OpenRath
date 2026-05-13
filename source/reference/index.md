@@ -1,29 +1,27 @@
-# API 参考（API Reference）
+# API Reference
+This section organizes the public API by the actual package structure. Each page contains three kinds of information:
 
-本节按真实包结构整理 public API。每个页面包含三类信息：
-
-| 信息 | 用途 |
+| Information | Purpose |
 | --- | --- |
-| 源码（Source） | 对应源码文件，方便直接跳回实现。 |
-| 公共契约（Public contract） | 常用签名、参数、返回值和异常。 |
-| 自动文档（Autodoc） | 从当前源码导入的 class/function 文档。 |
+| Source | Corresponding source files for jumping back to the implementation. |
+| Public contract | Common signatures, parameters, return values, and exceptions. |
+| Autodoc | Class/function documentation imported from the current source. |
 
-## 包结构（Packages）
-
-| 包 | 内容 |
+## Package structure
+| Package | Contents |
 | --- | --- |
-| [`rath`](rath.md) | 包级入口。 |
-| [`rath.session`](session.md) | `Session`、chunk、loop、compress、lineage、registry。 |
-| [`rath.backend`](backend.md) | 后端抽象、沙箱、工具载荷、结果、注册表、stream。 |
-| [`rath.flow`](flow.md) | `Workflow`、`AgentParam`、`Agent`、`Compressor`。 |
-| [`rath.flow.tool`](flow_tool.md) | `FlowToolCall`、内置系统工具、后端工具工厂、schema 合并。 |
-| [`rath.llm`](llm.md) | `Provider`、请求/响应类型、OpenAI-compatible client。 |
-| [`rath.utils`](utils.md) | 项目根路径与测试用环境变量辅助。 |
+| [`rath`](rath.md) | Package-level entrypoint. |
+| [`rath.session`](session.md) | `Session`, chunks, loop, compression, lineage, registry. |
+| [`rath.backend`](backend.md) | Backend abstractions, sandboxes, tool payloads, results, registry, stream. |
+| [`rath.flow`](flow.md) | `Workflow`, `AgentParam`, `Agent`, `Compressor`. |
+| [`rath.flow.tool`](flow_tool.md) | `FlowToolCall`, built-in system tools, backend tool factories, schema merging. |
+| [`rath.llm`](llm.md) | `Provider`, request/response types, OpenAI-compatible client. |
+| [`rath.utils`](utils.md) | `.env` and project-root helpers. |
 
 ```{toctree}
 ---
 maxdepth: 2
-caption: API 参考
+caption: API Reference
 ---
 
 rath

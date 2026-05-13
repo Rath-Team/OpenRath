@@ -1,49 +1,44 @@
 (pkg-flow-tool)=
 # `rath.flow.tool`
 
-模型可见工具接口、内置工具、工具表合并和 backend payload factory。
+Model-visible tool interface, built-in tools, tool table merging, and backend payload factories.
 
-## 源码（Source）
-
-| 模块 | 源码 |
+## Source
+| Module | Source |
 | --- | --- |
 | `rath.flow.tool.base` | `src/rath/flow/tool/base.py` |
 | `rath.flow.tool.system_tool` | `src/rath/flow/tool/system_tool.py` |
 | `rath.flow.tool.tool_table` | `src/rath/flow/tool/tool_table.py` |
 
-## 公共契约（Public Contract）
-
+## Public contract
 ### `FlowToolCall`
 
-| 成员 | 类型 | 说明 |
+| Member | Type | Description |
 | --- | --- | --- |
-| `name` | `str` | OpenAI function tool name。 |
-| `description` | `str` \| `None` | 可选工具说明。 |
-| `parameters` | `Mapping[str, Any]` | JSON Schema object。 |
-| `__call__(session, arguments)` | `Any` | runtime 执行入口。 |
+| `name` | `str` | OpenAI function tool name. |
+| `description` | `str` \| `None` | Optional tool description. |
+| `parameters` | `Mapping[str, Any]` | JSON Schema object. |
+| `__call__(session, arguments)` | `Any` | Runtime execution entrypoint. |
 
-### 内置工具（Built-in Tools）
-
-| Tool | Name | 参数 | 行为 |
+### Built-in tools
+| Tool | Name | Arguments | Behavior |
 | --- | --- | --- | --- |
-| `RunShellCommandTool` | `run_shell_command` | `{cmd: string}` | 调用 `BackendToolCommandRun`。 |
-| `WriteWorkspaceFileTool` | `write_workspace_file` | `{path: string, content: string}` | 调用 `BackendToolFilesWrite`。 |
+| `RunShellCommandTool` | `run_shell_command` | `{cmd: string}` | Calls `BackendToolCommandRun`. |
+| `WriteWorkspaceFileTool` | `write_workspace_file` | `{path: string, content: string}` | Calls `BackendToolFilesWrite`. |
 
-`RunShellCommandTool` 会拒绝多行命令和超过 2048 字符的命令。`WriteWorkspaceFileTool` 要求 `content` 是 text。
+`RunShellCommandTool` rejects multiline commands and commands longer than 2048 characters. `WriteWorkspaceFileTool` requires `content` to be text.
 
-### 工具表（Tool Table）
-
-| 函数 | 返回 | 行为 |
+### Tool table
+| Function | Returns | Behavior |
 | --- | --- | --- |
-| `global_system_tools()` | `dict[str, FlowToolCall]` | 返回进程内 singleton 内置工具表。 |
-| `merge_tools_for_loop(user_tools)` | `dict[str, FlowToolCall]` | 合并内置工具与用户工具。 |
-| `tools_dict_to_schemas(table)` | `tuple[RathLLMFunctionTool, ...]` | 转为 OpenAI-style function tool schema。 |
+| `global_system_tools()` | `dict[str, FlowToolCall]` | Returns the in-process singleton built-in tool table. |
+| `merge_tools_for_loop(user_tools)` | `dict[str, FlowToolCall]` | Merges built-in tools and user tools. |
+| `tools_dict_to_schemas(table)` | `tuple[RathLLMFunctionTool, ...]` | Converts to OpenAI-style function tool schemas. |
 
-用户工具名与内置工具名冲突时，`merge_tools_for_loop(...)` 抛 `ToolNameConflictError`。
+When a user tool name conflicts with a built-in tool name, `merge_tools_for_loop(...)` raises `ToolNameConflictError`.
 
-### 后端工具工厂（Backend Tool Factories）
-
-| 函数 | 返回 |
+### Backend tool factories
+| Function | Returns |
 | --- | --- |
 | `flow_tool_command_run(cmd, env=None, cwd=None, stdin=None, timeout=None)` | `BackendToolCommandRun` |
 | `flow_tool_files_read(path, encoding="utf-8")` | `BackendToolFilesRead` |
@@ -52,8 +47,7 @@
 | `flow_tool_files_exists(path)` | `BackendToolFilesExists` |
 | `flow_tool_code_run(code, language="python", timeout=None)` | `BackendToolCodeRun` |
 
-## 自动文档（Autodoc）
-
+## Autodoc
 ```{eval-rst}
 .. autoclass:: rath.flow.tool.FlowToolCall
    :members:
@@ -85,4 +79,4 @@
 .. autoexception:: rath.flow.tool.ToolNameConflictError
 ```
 
-[← API 参考](index.md)
+[← API Reference](index.md)

@@ -1,33 +1,29 @@
-# 开发者笔记（Developer Notes）
+# Developer Notes
+Developer Notes explain OpenRath's core components and runtime boundaries. They are written for developers who want to extend OpenRath, read the source, write custom workflows, or connect a new backend.
 
-Developer Notes 解释 OpenRath 的核心组件和运行边界。这里面向想要扩展 OpenRath、读源码、写自定义 workflow 或接入新 backend 的开发者。
+This page maps the main component pages to the relevant source files and tests.
 
-本页回答：阅读源码时应该先看哪些组件入口，以及每个组件和源码、测试之间如何对应。
-
-## 组件地图（Component Map）
-
-| 组件 | 负责内容 | 入口 |
+## Component map
+| Component | Covers | Entry point |
 | --- | --- | --- |
-| `Session` | 上下文表、backend placement、session graph。 | [Session](session.md) |
-| `Sandbox` | backend 注册、sandbox 生命周期、local/OpenSandbox 行为。 | [Sandbox](sandbox.md) |
-| `Tool` | `FlowToolCall`、backend payload、tool result chunk、stream。 | [Tool](tool.md) |
-| `AgentParam` | agent-side system session 和 provider 参数。 | [Agent Param](agent_param.md) |
-| `Workflow` | 可组合的 agent workflow 模块。 | [Workflow](workflow.md) |
-| `LLM` | request 构造、OpenAI-compatible client、executor 替换点。 | [LLM](llm.md) |
+| `Session` | Context table, backend placement, session graph. | [Session](session.md) |
+| `Sandbox` | Backend registration, sandbox lifecycle, local/OpenSandbox behavior. | [Sandbox](sandbox.md) |
+| `Tool` | `FlowToolCall`, backend payloads, tool result chunks, streams. | [Tool](tool.md) |
+| `AgentParam` | Agent-side system session and provider options. | [Agent Param](agent_param.md) |
+| `Workflow` | Composable agent workflow modules. | [Workflow](workflow.md) |
+| `LLM` | Request construction, OpenAI-compatible client, executor replacement points. | [LLM](llm.md) |
 
-## 阅读顺序（Reading Order）
-
-| 目标 | 推荐顺序 |
+## Reading order
+| Goal | Suggested order |
 | --- | --- |
-| 理解运行路径 | `Session` → `Sandbox` → `Tool` |
-| 写单 agent | `AgentParam` → `Workflow` → `LLM` |
-| 写 multi-agent workflow | `Workflow` → `AgentParam` → `Session` |
-| 写自定义工具 | `Tool` → `Sandbox` → `Session` |
-| 接新模型网关 | `LLM` → `AgentParam` |
+| Understand the runtime path | `Session` -> `Sandbox` -> `Tool` |
+| Write a single agent | `AgentParam` -> `Workflow` -> `LLM` |
+| Write a multi-agent workflow | `Workflow` -> `AgentParam` -> `Session` |
+| Write a custom tool | `Tool` -> `Sandbox` -> `Session` |
+| Connect a new model gateway | `LLM` -> `AgentParam` |
 
-## 源码与测试（Source And Tests）
-
-| 组件 | 主要源码 | 主要测试 |
+## Source and tests
+| Component | Main source | Main tests |
 | --- | --- | --- |
 | `Session` | `src/rath/session/session.py`, `loop.py`, `compress.py`, `graph/` | `tests/session/`, `tests/integration/test_session_*_real.py` |
 | `Sandbox` | `src/rath/backend/abc.py`, `local.py`, `opensandbox.py` | `tests/backends/`, `tests/conformance/`, `tests/unit/test_registry.py` |
@@ -36,12 +32,12 @@ Developer Notes 解释 OpenRath 的核心组件和运行边界。这里面向想
 | `Workflow` | `src/rath/flow/workflow.py`, `agent.py`, `compressor.py` | `tests/flow/test_workflow_agent.py` |
 | `LLM` | `src/rath/llm/`, `src/rath/session/provider_builtin.py` | `tests/llm/`, `tests/session/test_llm_message_wire.py` |
 
-Developer Notes 只描述当前源码已经实现的行为。Roadmap、troubleshooting 和完整应用教程会在后续审计阶段单独补。
+Developer Notes describe behavior that exists in the current source. Roadmap notes, troubleshooting, and full application tutorials are tracked separately.
 
 ```{toctree}
 ---
 maxdepth: 2
-caption: 开发者笔记
+caption: Developer Notes
 ---
 
 session

@@ -2,67 +2,78 @@
 # OpenRath
 
 <div class="or-home-hero">
-  <h2>A PyTorch-inspired runtime for LLM agent workflows</h2>
-  <p>OpenRath brings PyTorch-style composability to agents: explicit sessions for state, structured tools for callable capabilities, and backends for controlled execution.</p>
+  <p class="or-slogan">An open-source, PyTorch-like API framework for dynamic multi-agent workflows.</p>
+  <p>OpenRath treats the session as the primary carrier through an agent run: Session holds the evolving chunk table, Backend controls where tools execute, and Workflow composes agents into reusable pipelines.</p>
   <p class="or-cta">
-    <a class="or-button or-button-primary" href="tutorial/index.html">Start with Tutorials</a>
-    <a class="or-button" href="developer_notes/index.html">Developer Notes</a>
+    <a class="or-button or-button-primary" href="tutorial/index.html">Start Tutorials</a>
+    <a class="or-button" href="developer_notes/index.html">Read Developer Notes</a>
     <a class="or-button or-button-muted" href="https://github.com/Rath-Team/OpenRath">GitHub</a>
   </p>
 </div>
 
 ```python
+import os
+
 from rath import flow
+from rath.llm import Provider
 from rath.session import Session
 
 agent = flow.Agent(
     system_prompt="Use tools when helpful.",
-    model="gpt-5.5",
+    provider=Provider(
+        base_url=os.environ.get("OPENAI_BASE_URL"),
+        api_key=os.environ["OPENAI_API_KEY"],
+        model=os.environ.get("OPENAI_DEFAULT_MODEL") or "gpt-5.5",
+    ),
 )
 
 user = Session.from_user_message(
     "Create a file, then read it back."
-).to("local")
+).to("local", spec="./")
 
 out = agent(user)
 ```
 
-The tutorials use scripted LLM responses for deterministic runs. Real agents use the same `Session`, `FlowToolCall`, `Workflow`, and `Backend` abstractions with your configured model provider.
+Tutorials use scripted LLM responses where reproducibility matters. Production
+agent workflows use the same `Session`, `FlowToolCall`, `Workflow`, and
+`Backend` abstractions with an OpenAI-compatible `Provider`.
 
 ## Where To Start
 
-| Path | Use it for | Start here |
+| Path | Use it for | Entry |
 | --- | --- | --- |
-| Install | Set up OpenRath, LLM credentials, and optional sandbox backends. | [Install](install.md) |
-| Tutorials | Learn from runnable code, then adapt full examples, including multi-agent workflows. | [Tutorials](tutorial/index.md) |
-| Developer Notes | Understand the core runtime components and their boundaries. | [Developer Notes](developer_notes/index.md) |
-| API Reference | Look up public modules, signatures, and integration points. | [API Reference](reference/index.md) |
+| Installation | Install OpenRath, configure model credentials, and connect a sandbox backend when needed. | [Installation](install.md) |
+| Tutorials | Learn from runnable code, then adapt examples including multi-agent workflows. | [Tutorials](tutorial/index.md) |
+| Developer Notes | Understand runtime components, call boundaries, and how the docs map to source code. | [Developer Notes](developer_notes/index.md) |
+| API Reference | Look up public modules, function signatures, and integration points. | [API Reference](reference/index.md) |
 
 ## Core Model
 
 | Concept | Role |
 | --- | --- |
-| `Session` | Carries chunk transcript, backend placement, and lineage metadata. |
-| `FlowToolCall` | Exposes a JSON schema to the model and a Python callable to the runtime. |
-| `Backend` | Opens sandboxes and executes command, file, and code payloads. |
-| `Workflow` | Composes agents and session transformations as Python modules. |
-| `Provider` | Stores model and request options for OpenAI-compatible chat completions. |
+| `Session` | Carries ordered chunk rows, sandbox placement, and lineage metadata through a run. |
+| `Backend` | Opens the local or OpenSandbox execution environment attached to a session. |
+| `FlowToolCall` | Exposes JSON schemas to the model and Python callables to the runtime. |
+| `Workflow` | Composes agents and session transformations as ordinary Python modules. |
+| `AgentParam` | Stores the agent system session plus LLM routing options. |
+| `Provider` | Stores OpenAI-compatible chat completion identity and request parameters. |
 
 ## Runnable Workflows
 
-| Example | What it shows |
+| Example | Demonstrates |
 | --- | --- |
-| [Trading Agents](tutorial/examples/trading_agents.md) | A sequential research workflow: analyst, bear/bull researchers, trader, and risk/PM. |
-| [Engineering Agents](tutorial/examples/engineering_agents.md) | A nested engineering workflow: lead, feature squad, backend pair, frontend, and QA. |
+| [Trading Agents](tutorial/examples/trading_agents.md) | A sequential research workflow with analyst, bear/bull researchers, trader, risk, and PM roles. |
+| [Engineering Agents](tutorial/examples/engineering_agents.md) | A nested engineering workflow with lead, feature squad, backend pair, frontend, and QA roles. |
+| [Research Transformer](tutorial/examples/research_transformer.md) | An academic writing pipeline with branch workflows, repeated layers, compression, and optional image tooling. |
 
 ## PyTorch Mental Model
 
-| PyTorch | OpenRath |
+| PyTorch mental model | OpenRath counterpart |
 | --- | --- |
 | Tensor carries data | `Session` carries agent state |
 | Module composes computation | `Workflow` / `Agent` composes behavior |
 | device controls placement | `Backend` controls execution placement |
-| callable modules expose reusable interfaces | `FlowToolCall` exposes tools |
+| callable module exposes a reusable interface | `FlowToolCall` exposes tools |
 
 ```{toctree}
 ---
@@ -71,8 +82,8 @@ caption: OpenRath
 hidden:
 ---
 
-install
-tutorial/index
-developer_notes/index
-reference/index
+Installation <install>
+Tutorials <tutorial/index>
+Developer Notes <developer_notes/index>
+API Reference <reference/index>
 ```

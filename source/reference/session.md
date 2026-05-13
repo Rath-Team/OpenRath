@@ -1,11 +1,10 @@
 (pkg-session)=
 # `rath.session`
 
-会话状态、chunk transcript、session loop、上下文压缩和 lineage graph。
+Session state, chunk transcript, session loop, context compression, and lineage graph.
 
-## 源码（Source）
-
-| 模块 | 源码 |
+## Source
+| Module | Source |
 | --- | --- |
 | `rath.session.session` | `src/rath/session/session.py` |
 | `rath.session.chunk` | `src/rath/session/chunk.py` |
@@ -15,42 +14,39 @@
 | `rath.session.graph` | `src/rath/session/graph/` |
 | `rath.session.manager` | `src/rath/session/manager.py` |
 
-## 公共契约（Public Contract）
-
+## Public contract
 ### `Session`
 
-| 字段 | 类型 | 含义 |
+| Field | Type | Meaning |
 | --- | --- | --- |
-| `chunk_table` | `ChunkTable` | chronological chunk rows。 |
-| `id` | `UUID` | session identity。 |
-| `sandbox` | `BackendSandbox` \| `None` | 当前打开的 sandbox handle。 |
-| `sandbox_backend` | `str` \| `None` | lazy open 使用的 backend name。 |
-| `parent_session_ids` | `tuple[UUID, ...]` | lineage parents。 |
-| `lineage_operator` | `str` | 产生当前 session 的操作。 |
-| `lineage_kind` | `LineageKind` | lineage 操作类别。 |
+| `chunk_table` | `ChunkTable` | Chronological chunk rows. |
+| `id` | `UUID` | Session identity. |
+| `sandbox` | `BackendSandbox` \| `None` | Currently open sandbox handle. |
+| `sandbox_backend` | `str` \| `None` | Backend name used for lazy open. |
+| `parent_session_ids` | `tuple[UUID, ...]` | Lineage parents. |
+| `lineage_operator` | `str` | Operation that produced the current session. |
+| `lineage_kind` | `LineageKind` | Lineage operation kind. |
 
-| 方法 | 返回 | 行为 |
+| Method | Returns | Behavior |
 | --- | --- | --- |
-| `Session.from_agent_prompt(prompt)` | `Session` | 创建单个 `system` chunk。 |
-| `Session.from_user_message(text)` | `Session` | 创建单个 `user` chunk。 |
-| `session.to(backend="local", spec=None)` | `Session` | 设置 sandbox target，关闭当前 handle。 |
-| `session.require_sandbox()` | `BackendSandbox` | 返回或 lazy open 当前 sandbox。 |
-| `session.take_sandbox()` | `BackendSandbox` | 取走 handle，供 loop 绑定到输出 session。 |
-| `session.fork()` | `Session` | 复制 chunk rows 与 sandbox target，parent 指向源 session。 |
-| `session.detach()` | `Session` | 复制 chunk rows 与 sandbox target，创建新的 lineage root。 |
+| `Session.from_agent_prompt(prompt)` | `Session` | Creates a single `system` chunk. |
+| `Session.from_user_message(text)` | `Session` | Creates a single `user` chunk. |
+| `session.to(backend="local", spec=None)` | `Session` | Sets the sandbox target and closes the current handle. |
+| `session.require_sandbox()` | `BackendSandbox` | Returns or lazily opens the current sandbox. |
+| `session.take_sandbox()` | `BackendSandbox` | Takes the handle so the loop can attach it to the output session. |
+| `session.fork()` | `Session` | Copies chunk rows and sandbox target, with the parent pointing to the source session. |
+| `session.detach()` | `Session` | Copies chunk rows and sandbox target, then creates a new lineage root. |
 
-### Chunk 辅助函数（Chunk Helpers）
-
-| 函数 | 返回 | 用途 |
+### Chunk helpers
+| Function | Returns | Purpose |
 | --- | --- | --- |
-| `user_text_chunk(text)` | `ChunkRow` | 创建 user row。 |
-| `system_text_chunk(text)` | `ChunkRow` | 创建 system row。 |
-| `assistant_turn_chunk(tool_calls, content=None)` | `ChunkRow` | 创建 assistant row。 |
-| `tool_feedback_chunk(tool_call_id, name, body)` | `ChunkRow` | 创建 tool result row。 |
-| `chunk_table_to_messages(tab)` | `tuple[RathLLMMessage, ...]` | 转成 chat completion messages。 |
+| `user_text_chunk(text)` | `ChunkRow` | Creates a user row. |
+| `system_text_chunk(text)` | `ChunkRow` | Creates a system row. |
+| `assistant_turn_chunk(tool_calls, content=None)` | `ChunkRow` | Creates an assistant row. |
+| `tool_feedback_chunk(tool_call_id, name, body)` | `ChunkRow` | Creates a tool result row. |
+| `chunk_table_to_messages(tab)` | `tuple[RathLLMMessage, ...]` | Converts to chat completion messages. |
 
-### 循环（Loop）
-
+### Loop
 ```python
 run_session_loop(
     user_session: Session,
@@ -63,19 +59,18 @@ run_session_loop(
 ) -> Session
 ```
 
-| 参数 | 说明 |
+| Parameter | Description |
 | --- | --- |
-| `user_session` | user-side transcript 和 sandbox placement。 |
-| `agent_session` | agent/system transcript，参与 request assembly。 |
-| `agent_provider` | model 和 request 参数。 |
-| `tools` | 额外 `FlowToolCall` 实例。 |
-| `executor` | completion/tool dispatch 替换点。 |
-| `max_tool_rounds` | tool-call round 上限。 |
+| `user_session` | User-side transcript and sandbox placement. |
+| `agent_session` | Agent/system transcript used in request assembly. |
+| `agent_provider` | Model and request parameters. |
+| `tools` | Additional `FlowToolCall` instances. |
+| `executor` | Replacement point for completion and tool dispatch. |
+| `max_tool_rounds` | Maximum number of tool-call rounds. |
 
-返回的 `Session` 以 user rows 为起点，追加 assistant rows 和 `tool_result` rows。输出 session 的 lineage parents 是 user session 和 agent session。
+The returned `Session` starts with the user rows, then appends assistant rows and `tool_result` rows. The output session lineage parents are the user session and agent session.
 
-### 压缩（Compress）
-
+### Compression
 ```python
 run_session_compress(
     user_session: Session,
@@ -88,19 +83,17 @@ run_session_compress(
 ) -> Session
 ```
 
-返回 user-only session。compress request 使用 `tools=None` 和 `tool_choice="none"`；模型返回 tool calls 时抛 `RuntimeError`。
+Returns a user-only session. The compression request uses `tools=None` and `tool_choice="none"`. A model response with tool calls raises `RuntimeError`.
 
-### 异常与边界行为（Exceptions And Edge Behavior）
-
-| 位置 | 行为 |
+### Exceptions and edge behavior
+| Location | Behavior |
 | --- | --- |
-| `Session.require_sandbox()` | 无 backend target 时抛 `RuntimeError`。 |
-| `Session.take_sandbox()` | 无 sandbox 且无 backend target 时抛 `RuntimeError`。 |
-| `run_session_loop(...)` | tool arguments 非 JSON、未知工具、工具执行异常会写入 JSON error `tool_result`。 |
-| `run_session_compress(...)` | 空模型内容、tool calls、异常 finish reason 会抛 `RuntimeError`。 |
+| `Session.require_sandbox()` | Raises `RuntimeError` when no backend target is set. |
+| `Session.take_sandbox()` | Raises `RuntimeError` when there is no sandbox and no backend target. |
+| `run_session_loop(...)` | Non-JSON tool arguments, unknown tools, and tool execution exceptions are written as JSON error `tool_result` rows. |
+| `run_session_compress(...)` | Empty model content, tool calls, and unexpected finish reasons raise `RuntimeError`. |
 
-## 自动文档（Autodoc）
-
+## Autodoc
 ```{eval-rst}
 .. autoclass:: rath.session.Session
    :members:
@@ -127,4 +120,4 @@ run_session_compress(
 .. autofunction:: rath.session.detach_session
 ```
 
-[← API 参考](index.md)
+[← API Reference](index.md)

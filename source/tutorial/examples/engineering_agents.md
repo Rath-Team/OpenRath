@@ -1,31 +1,96 @@
-# 工程团队示例（Engineering Agents）
+# Engineering Agents
 
-对应目录：`example/engineering_agents/`。
+Directory: `example/engineering_agents/`.
 
-这个例子展示一个工程团队式的 multi-agent nested workflow。它把 lead、architect、backend auth、backend data、frontend 和 QA 拆成不同 `AgentParam`，再通过多个 `Workflow` 类组织成分层执行结构。
+Engineering Agents decomposes an engineering task into layered workflows: the lead plans, the architect decomposes the design, backend and frontend roles implement separate parts, and QA reviews risks at the end. Each role is represented by an `AgentParam`, and ordinary Python `Workflow` composition defines the hierarchy.
 
-## 结构（Structure）
-
-| 文件 | 负责内容 |
+## What it covers
+| Topic | Result |
 | --- | --- |
-| `agents.py` | 定义 lead engineer、architect、backend、frontend、QA 的 system prompts。 |
-| `workflows.py` | 定义 `BackendPairWorkflow`、`FeatureSquadWorkflow`、`QualityAssuranceWorkflow`、`EngineeringProjectWorkflow`。 |
-| `main.py` | CLI 入口，读取 LLM 配置，构造 user session，绑定 local backend 并运行 workflow。 |
+| nested workflow | A parent workflow calls a child workflow, which can call smaller workflows. |
+| direct registration | Directly assigned `AgentParam` instances are registered by the current workflow. |
+| ordinary attributes | Child workflows are stored as ordinary attributes and called in `forward(...)`. |
+| session pipeline | All roles keep appending context along the same session. |
+| session-level parallel | Subtasks without upstream/downstream dependencies can fork from the same session and run in parallel. |
+| engineering decomposition | A complex engineering task is split into lead, architect, backend, frontend, and QA roles. |
 
-## 工作流层次（Workflow Layers）
+## Directory structure
+| File | Responsibility |
+| --- | --- |
+| `agents.py` | Defines system prompts for the lead engineer, architect, backend, frontend, and QA roles. |
+| `workflows.py` | Defines `BackendPairWorkflow`, `FeatureSquadWorkflow`, `QualityAssuranceWorkflow`, and `EngineeringProjectWorkflow`. |
+| `main.py` | CLI entry point that reads LLM configuration, constructs the user session, binds the local backend, and runs the workflow. |
 
-| 层级 | Class | 角色 |
+## Workflow hierarchy
+| Level | Class | Execution |
 | --- | --- | --- |
-| L1 | `EngineeringProjectWorkflow` | lead plan -> feature squad -> QA。 |
-| L2 | `FeatureSquadWorkflow` | architect -> backend pair -> frontend。 |
-| L3 | `BackendPairWorkflow` | backend auth -> backend data。 |
-| QA | `QualityAssuranceWorkflow` | 读取完整 thread，输出测试计划和风险。 |
+| L1 | `EngineeringProjectWorkflow` | lead plan -> feature squad -> QA. |
+| L2 | `FeatureSquadWorkflow` | architect -> backend pair -> frontend. |
+| L3 | `BackendPairWorkflow` | backend auth -> backend data. |
+| QA | `QualityAssuranceWorkflow` | Produces a test plan and risk review from the full session. |
 
-这个例子说明 nested workflow 的当前写法：base `Workflow` 自动登记直接赋值的 `AgentParam`，嵌套 workflow 作为普通 Python attribute 组合，并在 `forward(...)` 中显式调用。
+This nested workflow uses three rules: `AgentParam` instances attached directly to the current workflow are registered; child workflows are stored as ordinary Python attributes; execution order is written explicitly in `forward(...)`.
 
-## 嵌套 Workflow 代码（Nested Workflow Code）
+## Session-level parallelism
+Engineering Agents can also express parallel development with session branches. The current `BackendPairWorkflow` runs the auth backend and data backend sequentially. If both subtasks already have enough context from the architect stage, they can fork from the same session and run in parallel:
 
-核心结构来自 `example/engineering_agents/workflows.py`：
+```python
+from concurrent.futures import ThreadPoolExecutor
+
+
+auth_input = session.fork()
+data_input = session.fork()
+
+with ThreadPoolExecutor(max_workers=2) as pool:
+    auth_future = pool.submit(
+        run_session_loop,
+        auth_input,
+        self.backend_auth.agent_session,
+        agent_provider=self.backend_auth.provider,
+        tools=None,
+    )
+    data_future = pool.submit(
+        run_session_loop,
+        data_input,
+        self.backend_data.agent_session,
+        agent_provider=self.backend_data.provider,
+        tools=None,
+    )
+    auth_session = auth_future.result()
+    data_session = data_future.result()
+```
+
+This pattern does not automatically merge the two branches into one transcript. The workflow must explicitly define the next input, such as extracting summaries from both branches and passing them to the frontend or QA agent. OpenRath records fork and loop lineage and keeps each branch's sandbox handle independent for the session lifecycle.
+
+One minimal aggregation approach is to combine the final output from both branches into a new user session:
+
+```python
+from rath.session import ChunkKind, Session
+
+
+def last_assistant_text(s: Session) -> str:
+    for row in reversed(s.chunk_table.rows):
+        if row.kind == ChunkKind.ASSISTANT and row.payload.get("content"):
+            return str(row.payload["content"])
+    return ""
+
+
+frontend_input = Session.from_user_message(
+    "Implement the frontend using both backend branches.\n\n"
+    f"Auth backend:\n{last_assistant_text(auth_session)}\n\n"
+    f"Data backend:\n{last_assistant_text(data_session)}"
+).to("local")
+```
+
+If both branches write files, reset the workspace after the fork so the auth and data branches do not write into the same directory:
+
+```python
+auth_input = session.fork().to("local", spec=".workspace/auth-backend")
+data_input = session.fork().to("local", spec=".workspace/data-backend")
+```
+
+## BackendPairWorkflow
+The core structure comes from `example/engineering_agents/workflows.py`:
 
 ```python
 class BackendPairWorkflow(Workflow):
@@ -55,7 +120,17 @@ class BackendPairWorkflow(Workflow):
         )
 ```
 
-外层 workflow 继续组合它：
+Key points:
+
+| Line | Explanation |
+| --- | --- |
+| `self.backend_auth = AgentParam(...)` | The auth backend role is registered with the current workflow. |
+| `self.backend_data = AgentParam(...)` | The data backend role is also registered. |
+| `s = run_session_loop(...)` | The auth output session enters the data stage. |
+| `tools=None` | The roles can still use built-in tools; no custom tools are added. |
+
+## Outer composition
+The outer workflow composes child workflows:
 
 ```python
 class EngineeringProjectWorkflow(Workflow):
@@ -77,9 +152,18 @@ class EngineeringProjectWorkflow(Workflow):
         return self._qa.forward(s)
 ```
 
-## 运行（Run）
+Key points:
 
-从仓库根目录运行：
+| Line | Explanation |
+| --- | --- |
+| `self.lead = AgentParam(...)` | The lead is a direct agent on the current workflow. |
+| `self._squad = FeatureSquadWorkflow(prov)` | The child workflow is stored as an ordinary attribute. |
+| `self._qa = QualityAssuranceWorkflow(prov)` | The QA child workflow is also stored as an ordinary attribute. |
+| `self._squad.forward(s)` | The parent workflow explicitly calls the child workflow. |
+| `return self._qa.forward(s)` | The QA stage receives the full session. |
+
+## Run
+Run from the repository root:
 
 ```bash
 python example/engineering_agents/main.py \
@@ -87,14 +171,44 @@ python example/engineering_agents/main.py \
   --workdir .workspace/engineering-agents
 ```
 
-该例子需要真实 OpenAI-compatible LLM 配置。它默认使用 `OPENAI_DEFAULT_MODEL`，缺省时回退到脚本中的默认模型名。
+This example requires a real OpenAI-compatible LLM configuration. The script reads the default model configuration; if it is missing, it falls back to the default model name in the script.
 
-## 检查结果（What To Inspect）
+## Successful output
+The script prints the final `Session(...)`. On success, assistant rows grow in this order: lead, architect, backend auth, backend data, frontend, QA:
 
-| 位置 | 看什么 |
+```text
+Session(
+  chunks=[
+    [0] user: 'Full-stack todo app with auth...'
+    [1] assistant: text='Lead plan...'
+    [2] assistant: text='Architecture...'
+    [3] assistant: text='Backend auth...'
+    [4] assistant: text='Backend data...'
+    [5] assistant: text='Frontend plan...'
+    [6] assistant: text='QA review...'
+  ]
+)
+```
+
+If the model calls file-writing tools, implementation or review files appear under `.workspace/engineering-agents`. The example QA prompt asks for `ENGINEERING_REVIEW.md`, but actual file creation depends on whether the model calls tools.
+
+## What to inspect
+| Location | What to check |
 | --- | --- |
-| stdout | lead、architect、backend、frontend、QA 依次追加到同一个 session。 |
-| workflow repr | 直接注册的 `AgentParam` 会出现在 `named_agents()` / `repr(workflow)` 中。 |
-| workspace | QA prompt 会要求写入 `ENGINEERING_REVIEW.md`。 |
+| stdout | Lead, architect, backend, frontend, and QA append to the same session in order. |
+| workflow repr | Directly registered `AgentParam` instances appear in `named_agents()` and `repr(workflow)`. |
+| workspace | The QA prompt asks for `ENGINEERING_REVIEW.md`. |
+| chunk table | Shows the order of assistant messages from each role. |
 
-这个例子适合展示 OpenRath 的高级组合方式：`Workflow` 本身不规定复杂调度策略；开发者用普通 Python 把多个 agent 和子 workflow 组合起来，OpenRath 负责 session、provider、tool 和 sandbox 的运行边界。
+## Troubleshooting
+| Symptom | Check |
+| --- | --- |
+| LLM request fails | Check the model gateway configuration. |
+| Workspace has no output files | Check whether the model actually called file-writing tools. |
+| Child workflow does not appear in repr | The current base class only registers directly attached `AgentParam` instances. |
+| Output is repetitive | Check the role boundaries in each system prompt. |
+
+## Exercises
+1. Add a security reviewer to `FeatureSquadWorkflow`.
+2. Move the QA stage to run before `Compressor`, then compress before producing the report.
+3. Print the session row count after each stage and observe how context grows.

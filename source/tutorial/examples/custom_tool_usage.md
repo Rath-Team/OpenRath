@@ -1,17 +1,32 @@
 (example-custom-tool)=
-# 如何自定义工具
+# Custom Tool Usage
 
-对应脚本：`example/custom_tool_usage.py`。
+Script: `example/custom_tool_usage.py`.
 
-自定义工具通过继承 `FlowToolCall` 实现。工具对象同时提供 LLM schema 和执行逻辑。
+This script shows how to connect an external HTTPS service: wrap the Zhipu GLM-Image API as a `FlowToolCall`, let the model call it through the tool schema, and run the actual request in the Python runtime.
 
-示例中的 `ImageGenTool`：
+## What it covers
+| Topic | Result |
+| --- | --- |
+| schema definition | `ImageGenInput` constrains the prompt and size. |
+| tool class | `ImageGenTool` provides the name, description, parameters, and execution logic. |
+| external API | The tool sends the HTTPS request in the Python runtime. |
+| agent registration | `flow.Agent(..., tools=[ImageGenTool()])` passes the tool to the loop. |
+| returned result | The API JSON enters the session as a `tool_result`. |
 
+## Tool code
 ```python
 class ImageGenTool(FlowToolCall):
     @property
     def name(self) -> str:
         return "image_gen"
+
+    @property
+    def description(self) -> str | None:
+        return (
+            "Generate an image with Zhipu GLM-Image. "
+            "Returns parsed API JSON."
+        )
 
     @property
     def parameters(self) -> Mapping[str, Any]:
@@ -23,19 +38,57 @@ class ImageGenTool(FlowToolCall):
         return json.loads(raw)
 ```
 
-## 关键点
+## Key lines
+| Line | Explanation |
+| --- | --- |
+| `ImageGenInput.model_json_schema()` | Generates the JSON Schema visible to the model. |
+| `model_validate(...)` | Validates the arguments returned by the model. |
+| `urllib.request.Request(...)` | Calls the external service inside the tool. |
+| `return json.loads(raw)` | Returns a plain dict, which the loop serializes into a `tool_result`. |
+| `tools=[ImageGenTool()]` | Makes `image_gen` available to the agent in the loop. |
 
-- loop 会把解析后的 arguments 传给工具；示例里使用 `ImageGenInput.model_validate(...)` 做参数校验。
-- 工具可以完全在 Python 进程内执行，也可以自己调用 `session.require_sandbox().dispatch(...)`。
-- `flow.Agent(..., tools=[ImageGenTool()])` 会把工具传给 `run_session_loop`。
-- 如果工具名与内置工具 `run_shell_command` 或 `write_workspace_file` 冲突，loop 会抛 `ToolNameConflictError`。
-
-## 运行
-
+## Run
 ```bash
+export ZHIPU_API_KEY=...
 python example/custom_tool_usage.py
 ```
 
-该示例访问智谱 GLM-Image API，需要 `ZHIPU_API_KEY` 或 `OPENAI_API_KEY`。它展示如何把外部服务包装成 `FlowToolCall`。
+You can also use `OPENAI_API_KEY` as a fallback. Store real keys in environment variables, a local `.env`, or a secrets manager, not in tutorials, scripts, or commits.
 
-[GitHub：`example/custom_tool_usage.py`](https://github.com/Rath-Team/OpenRath/blob/main/example/custom_tool_usage.py)
+## Successful output
+The script prints a `Session(...)`. On success, the chunk table contains one `image_gen` tool call and its `tool_result`; the final assistant reply references the image URL or generation summary returned by the tool.
+
+```text
+Session(
+  chunks=[
+    [0] user: 'Generate a simple cartoon cat on a sofa...'
+    [1] assistant: tools=[image_gen(...)]
+    [2] tool_result: name='image_gen', body='{"created": ... , "data": ...}'
+    [3] assistant: text='Generated image: https://...'
+  ]
+)
+```
+
+The current tool only returns the API JSON. It does not download image files. Seeing a URL does not mean a local file was saved.
+
+## What to inspect
+| Location | What to check |
+| --- | --- |
+| stdout | The output session should include the assistant reply after the tool call. |
+| tool result | Should contain the JSON returned by the image API. |
+| final reply | The agent should extract the image URL or summary from the tool result. |
+
+The user prompt in the script mentions saving an image file, but the current `ImageGenTool` only returns API JSON. To actually download the image, add a download or file-writing tool.
+
+## Troubleshooting
+| Symptom | Check |
+| --- | --- |
+| `Set ZHIPU_API_KEY or OPENAI_API_KEY` | No image API key is configured. |
+| HTTP error | Check the key, quota, model name, and image size. |
+| Model does not call the tool | Check whether the system prompt clearly asks for `image_gen`. |
+| Returned JSON has no URL | Print the tool result first and confirm the external API response shape. |
+
+## Exercises
+1. Add a `style` parameter to `ImageGenInput` and append it to the prompt.
+2. Change the tool to return only `data[0].url`, reducing what the model must parse.
+3. Add a file download tool that downloads the URL into the sandbox workspace.

@@ -1,11 +1,10 @@
 (pkg-backend)=
 # `rath.backend`
 
-后端抽象、sandbox handle、backend tool payload、执行结果、注册表和 stream。
+Backend abstractions, sandbox handles, backend tool payloads, execution results, registry, and stream.
 
-## 源码（Source）
-
-| 模块 | 源码 |
+## Source
+| Module | Source |
 | --- | --- |
 | `rath.backend.abc` | `src/rath/backend/abc.py` |
 | `rath.backend.tool_types` | `src/rath/backend/tool_types.py` |
@@ -15,70 +14,62 @@
 | `rath.backend.opensandbox` | `src/rath/backend/opensandbox.py` |
 | `rath.backend.stream` | `src/rath/backend/stream.py` |
 
-## 公共契约（Public Contract）
-
-### 后端接口（Backend Interface）
-
-| API | 返回 | 说明 |
+## Public contract
+### Backend interface
+| API | Returns | Description |
 | --- | --- | --- |
-| `Backend.is_available()` | `bool` | 静态可用性检查。 |
-| `Backend.capabilities()` | `Capabilities` | backend class 级别能力。 |
-| `Backend.supported_calls()` | `frozenset[type[BackendTool]]` | 支持的 payload 类型。 |
-| `backend.open(spec=None)` | `BackendSandbox` | 打开 sandbox handle。 |
-| `backend.close(sandbox)` | `None` | 关闭并释放资源。 |
-| `backend.dispatch(sandbox, call)` | `ToolResult` \| `bool` | 执行 payload。 |
+| `Backend.is_available()` | `bool` | Static availability check. |
+| `Backend.capabilities()` | `Capabilities` | Backend class-level capabilities. |
+| `Backend.supported_calls()` | `frozenset[type[BackendTool]]` | Supported payload types. |
+| `backend.open(spec=None)` | `BackendSandbox` | Opens a sandbox handle. |
+| `backend.close(sandbox)` | `None` | Closes and releases resources. |
+| `backend.dispatch(sandbox, call)` | `ToolResult` \| `bool` | Executes the payload. |
 
-### 沙箱规格（Sandbox Spec）
-
-| 字段 | 类型 | 说明 |
+### Sandbox spec
+| Field | Type | Description |
 | --- | --- | --- |
-| `image` | `str` \| `None` | backend 可选择使用的镜像名。 |
-| `entrypoint` | `Sequence[str]` \| `None` | backend 可选择使用的 entrypoint。 |
-| `env` | `Mapping[str, str]` \| `None` | sandbox 环境变量。 |
-| `timeout` | `timedelta` \| `None` | sandbox 生命周期或创建超时语义。 |
-| `working_dir` | `str` \| `None` | local 工作目录或 OpenSandbox host bind 来源。 |
+| `image` | `str` \| `None` | Image name that the backend may use. |
+| `entrypoint` | `Sequence[str]` \| `None` | Entrypoint that the backend may use. |
+| `env` | `Mapping[str, str]` \| `None` | Sandbox environment variables. |
+| `timeout` | `timedelta` \| `None` | Sandbox lifetime or creation-timeout semantics. |
+| `working_dir` | `str` \| `None` | Local working directory or OpenSandbox host bind source. |
 
-### 后端工具载荷（Backend Tool Payloads）
-
-| Payload | 字段 | 返回 |
+### Backend tool payloads
+| Payload | Fields | Returns |
 | --- | --- | --- |
-| `BackendToolCommandRun` | `cmd`, `env`, `cwd`, `stdin`, `timeout` | `CommandResult` 或 `ToolExecutionFailure` |
-| `BackendToolFilesRead` | `path`, `encoding` | `FileContent` 或 `ToolExecutionFailure` |
+| `BackendToolCommandRun` | `cmd`, `env`, `cwd`, `stdin`, `timeout` | `CommandResult` or `ToolExecutionFailure` |
+| `BackendToolFilesRead` | `path`, `encoding` | `FileContent` or `ToolExecutionFailure` |
 | `BackendToolFilesWrite` | `path`, `data`, `mode` | `FileWriteResult` |
-| `BackendToolFilesList` | `path` | `FileEntries` 或 `ToolExecutionFailure` |
+| `BackendToolFilesList` | `path` | `FileEntries` or `ToolExecutionFailure` |
 | `BackendToolFilesExists` | `path` | `bool` |
-| `BackendToolCodeRun` | `code`, `language`, `timeout` | `CodeResult` 或 `ToolExecutionFailure` |
+| `BackendToolCodeRun` | `code`, `language`, `timeout` | `CodeResult` or `ToolExecutionFailure` |
 
-### 注册表（Registry）
-
-| 函数 | 行为 |
+### Registry
+| Function | Behavior |
 | --- | --- |
-| `register(name)` | 注册 backend class 的装饰器。 |
-| `list_names()` | 返回已注册 backend name。 |
-| `get(name)` | 返回 backend 新实例。 |
-| `get_class(name)` | 返回 backend class。 |
-| `is_available(name)` | backend 已注册且 class availability 为 true。 |
-| `preferred(names)` | 返回第一个可用 backend 实例。 |
-| `set_default(name)` / `current()` | 设置和获取默认 backend。 |
+| `register(name)` | Decorator that registers a backend class. |
+| `list_names()` | Returns registered backend names. |
+| `get(name)` | Returns a new backend instance. |
+| `get_class(name)` | Returns the backend class. |
+| `is_available(name)` | Returns true when the backend is registered and class availability is true. |
+| `preferred(names)` | Returns the first available backend instance. |
+| `set_default(name)` / `current()` | Sets and gets the default backend. |
 
-### 异常（Exceptions）
-
-| 异常 | 触发位置 |
+### Exceptions
+| Exception | Trigger |
 | --- | --- |
-| `BackendNotFound` | `get(...)` / `get_class(...)` 找不到 backend。 |
-| `BackendSandboxClosed` | 已关闭 sandbox 调用 `BackendSandbox.dispatch(...)`。 |
-| `UnsupportedBackendTool` | backend 实现不支持某种 payload。 |
-| `RuntimeError` | OpenSandbox SDK 缺失时直接打开 opensandbox backend。 |
+| `BackendNotFound` | `get(...)` / `get_class(...)` cannot find the backend. |
+| `BackendSandboxClosed` | `BackendSandbox.dispatch(...)` is called on a closed sandbox. |
+| `UnsupportedBackendTool` | The backend implementation does not support a payload type. |
+| `RuntimeError` | The opensandbox backend is opened directly when the OpenSandbox SDK is missing. |
 
-## 内置后端（Built-in Backends）
-
-| Backend | 行为 |
+## Built-in backends
+| Backend | Behavior |
 | --- | --- |
-| `local` | host-side subprocess + filesystem workspace；导入 `rath.backend` 后自动注册。 |
-| `opensandbox` | optional SDK backend；容器 root 为 `/workspace`，`working_dir` 会请求 host bind。 |
+| `local` | Host-side subprocess plus filesystem workspace. Automatically registered after importing `rath.backend`. |
+| `opensandbox` | Optional SDK backend. The container root is `/workspace`; `working_dir` requests a host bind. |
 
-## 自动文档（Autodoc）
-
+## Autodoc
 ```{eval-rst}
 .. autoclass:: rath.backend.Backend
    :members:
@@ -139,4 +130,4 @@
 .. autofunction:: rath.backend.preferred
 ```
 
-[← API 参考](index.md)
+[← API Reference](index.md)
