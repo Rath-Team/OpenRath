@@ -15,7 +15,7 @@ project = "OpenRath"
 author = "OpenRath contributors"
 copyright = "OpenRath contributors"
 
-release = version = "0.0.0"
+release = version = "1.0.0"
 
 extensions = [
     "myst_parser",
