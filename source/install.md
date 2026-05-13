@@ -96,11 +96,8 @@ Development dependencies include:
 | dev | `pytest`, `flake8`, `mypy`. |
 | docs | `sphinx`, `myst-parser`, `pydata-sphinx-theme`. |
 
-Copy the environment template:
-
-```bash
-cp .env.example .env
-```
+Configure credentials in your shell, CI secret store, or deployment environment.
+OpenRath does not load repository-local secret files.
 
 Run tests:
 
@@ -232,4 +229,4 @@ user = user.to("opensandbox", spec=".")
 `spec="."` requests a bind from the current directory to `/workspace` inside the container. This host path must be visible to the machine running the OpenSandbox server and allowed by the storage allowlist in `.sandbox.toml`. The repository script automatically allowlists the current project directory. To bind other directories, manually add the matching prefix to `allowed_host_paths`. If the host bind is rejected, OpenRath retries with an empty workspace by default. Set `RATH_OPENSANDBOX_STRICT_WORKSPACE_BIND=1` to disable this fallback.
 
 ## Local sandbox path notes
-`Session.to("local", spec="...")` treats the string `spec` as `BackendSandboxSpec(working_dir=...)`. The current `LocalBackend.close(...)` deletes the working directory it manages, so temporary or reproducible directories are safer for real debugging. Binding the project root is only suitable for short experiments where you explicitly understand the lifecycle.
+`Session.to("local", spec="...")` treats the string `spec` as `BackendSandboxSpec(working_dir=...)`. `LocalBackend.close(...)` only deletes temporary working directories that OpenRath created itself. User-supplied working directories are left on disk when the sandbox closes.

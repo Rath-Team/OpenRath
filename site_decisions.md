@@ -781,7 +781,7 @@ Developer Notes / Sandbox 页面 warning 文案：
 
 - 首页：只写“OpenAI-compatible by default”，不展开 provider 细节。
 - Developer Notes / `llm`：解释 `Provider` 如何合并到 chat request，默认 client 如何加载环境变量，executor 如何替换。
-- Tutorials：deterministic tutorial 继续使用 scripted executor，真实 LLM tutorial 再展示 `.env`、`OPENAI_API_KEY`、`OPENAI_DEFAULT_MODEL`。
+- Tutorials：deterministic tutorial 继续使用 scripted executor，真实 LLM tutorial 展示进程环境变量、`OPENAI_API_KEY`、`OPENAI_DEFAULT_MODEL`。
 - API Reference：`Provider`、`RathOpenAIChatClient`、`SessionLoopExecutor`、`DefaultSessionLoopExecutor`、request/response dataclass 分开列。
 
 当前边界：

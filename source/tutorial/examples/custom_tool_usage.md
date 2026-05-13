@@ -53,7 +53,7 @@ export ZHIPU_API_KEY=...
 python example/custom_tool_usage.py
 ```
 
-You can also use `OPENAI_API_KEY` as a fallback. Store real keys in environment variables, a local `.env`, or a secrets manager, not in tutorials, scripts, or commits.
+You can also use `OPENAI_API_KEY` as a fallback. Store real keys in process environment variables, CI secrets, or a secrets manager, not in tutorials, scripts, or commits.
 
 ## Successful output
 The script prints a `Session(...)`. On success, the chunk table contains one `image_gen` tool call and its `tool_result`; the final assistant reply references the image URL or generation summary returned by the tool.
