@@ -11,7 +11,7 @@ This page maps the main component pages to the relevant source files and tests.
 | `Tool` | `FlowToolCall`, backend payloads, tool result chunks, streams. | [Tool](tool.md) |
 | `AgentParam` | Agent-side system session and provider options. | [Agent Param](agent_param.md) |
 | `Workflow` | Composable agent workflow modules. | [Workflow](workflow.md) |
-| `LLM` | Request construction, OpenAI-compatible client, executor replacement points. | [LLM](llm.md) |
+| `LLM` | Provider registry, OpenAI-compatible and Anthropic clients, streaming, retry, budget, and executor replacement points. | [LLM](llm.md) |
 
 ## Reading order
 | Goal | Suggested order |

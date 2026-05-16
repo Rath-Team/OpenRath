@@ -127,6 +127,51 @@ article.bd-article table td {
   vertical-align: middle;
 }
 
+@media (min-width: 960px) {
+  .bd-sidebar-primary .sidebar-primary-item {
+    margin-bottom: 0;
+  }
+
+  .bd-sidebar-primary .bd-links__title {
+    margin: 0.75rem 0 0.55rem;
+    font-size: 1.2rem;
+    line-height: 1.2;
+  }
+
+  .bd-sidebar-primary .bd-docs-nav .caption {
+    margin-top: 0.45rem;
+    margin-bottom: 0.35rem;
+    font-size: 0.98rem;
+    line-height: 1.2;
+  }
+
+  .bd-sidebar-primary .bd-sidenav,
+  .bd-sidebar-primary .bd-sidenav ul {
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+
+  .bd-sidebar-primary .bd-sidenav li > a {
+    margin-top: 0;
+    margin-bottom: 0;
+    padding-top: 0.16rem;
+    padding-bottom: 0.16rem;
+    font-size: 0.92rem;
+    line-height: 1.22;
+  }
+
+  .bd-sidebar-primary .bd-sidenav .toctree-l2 > a {
+    padding-top: 0.14rem;
+    padding-bottom: 0.14rem;
+    font-size: 0.9rem;
+  }
+
+  .bd-sidebar-primary .bd-sidenav li.current > a,
+  .bd-sidebar-primary .bd-sidenav li.active > a {
+    line-height: 1.22;
+  }
+}
+
 @media (max-width: 900px) {
   article.bd-article img.or-research-transformer-figure {
     width: 100%;

@@ -167,9 +167,9 @@ Key lines:
 | `require_sandbox()` | Returns the current handle; if no handle exists but a Backend target is set, it opens one lazily. |
 | `sandbox.closed` | Marked as closed after the local Backend closes it. |
 
-## Step 7: Fork Does Not Copy an Open Handle
+## Step 7: Fork Shares an Open Handle
 
-If the source Session already has an open sandbox, the forked Session copies the Backend target but does not share the same open handle.
+If the source Session already has an open sandbox, the forked Session shares that handle and increments its reference count. The sandbox closes only after every owning session releases its reference.
 
 ```python
 source = Session.from_user_message("inspect").to("local")
@@ -179,7 +179,8 @@ with source:
     forked = source.fork()
 
     print(source.sandbox is source_sandbox)
-    print(forked.sandbox is None)
+    print(forked.sandbox is source_sandbox)
+    print(source_sandbox.refcount)
     print(forked.sandbox_backend)
 ```
 
@@ -188,10 +189,11 @@ Expected output:
 ```text
 True
 True
+2
 local
 ```
 
-An open sandbox handle has a lifecycle and side-effect boundary. `fork()` only copies the target for which Backend to open later; it does not copy an already open handle.
+An open sandbox handle has a lifecycle and side-effect boundary. `fork()`, `detach()`, `merge()`, `run_session_loop(...)`, and `run_session_compress(...)` share the live handle when one exists. If you want an independent runtime after branching, close or retarget the branch with `to(...)`.
 
 ## Troubleshooting
 
@@ -200,7 +202,7 @@ An open sandbox handle has a lifecycle and side-effect boundary. `fork()` only c
 | `RuntimeError: no sandbox to take` | The Session has no Backend target and no handle. | Call `session.to("local")` or `with_sandbox(...)` first. |
 | `session sandbox is closed` | The Session is bound to a closed handle. | Call `to(...)` again or bind a new sandbox. |
 | Local workspace disappeared | `LocalBackend.close(...)` cleans up directories it manages. | Do not use important, non-reproducible directories as a local sandbox workspace. |
-| No `sandbox` after fork | The current design copies only the Backend target. | Check `forked.sandbox_backend`. |
+| Branches unexpectedly share files | The current design shares an already-open sandbox handle. | Retarget branches with `forked.to("local", spec="...")` before running tools. |
 
 ## Exercises
 
@@ -212,6 +214,6 @@ An open sandbox handle has a lifecycle and side-effect boundary. `fork()` only c
 
 - `Session` carries the transcript, Backend target, and lineage.
 - `chunk_table` is a structured context table; later tool calls and tool results are appended to it.
-- `fork()` copies content and preserves the parent; `detach()` copies content and creates a new graph root.
+- `fork()` copies content and preserves the parent; `detach()` copies content and creates a new graph root; both share an open sandbox handle when one exists.
 - `to(...)` sets the execution location; the sandbox handle opens on demand.
-- `run_session_loop(...)` migrates the input user Session's sandbox to the output Session. Later tutorials cover that behavior.
+- `run_session_loop(...)` shares the input user Session's sandbox with the output Session. Later tutorials cover that behavior.

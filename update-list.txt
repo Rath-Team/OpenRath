@@ -1,0 +1,460 @@
+OpenRath docs update list
+=========================
+
+Purpose
+-------
+Track source-to-docs drift for the docs branch.
+
+Current audit baseline:
+- docs branch / origin/docs: 4ea5833 (2026-05-13) docs: align documentation with current APIs
+- source target / origin/main: bf8a8c9 (2026-05-16) chore: bump version to 1.1.0
+- comparison range: origin/docs..origin/main, then docs branch fast-forwarded through bf8a8c9
+- latest GitHub release tag is v1.1.0; pyproject version is 1.1.0.
+- current docs branch has been fast-forwarded to bf8a8c9 and is being updated from there.
+
+How to refresh this file
+------------------------
+1. Fetch remote refs:
+   git fetch origin --tags --prune
+2. List new commits not reflected by docs branch:
+   git log --oneline --date=short --pretty=format:'%h %ad %s' origin/docs..origin/main
+3. List src/docs/example/test files changed:
+   git diff --name-status origin/docs..origin/main -- src/rath docs/source example tests pyproject.toml README.md README_zh.md .github .pre-commit-config.yaml uv.lock
+4. Append new findings under "Commit intake log" and update task statuses.
+
+Status legend
+-------------
+- TODO: docs work is needed.
+- VERIFY: source/docs disagree or behavior should be checked before writing prose.
+- DONE_IN_MAIN: origin/main already contains a partial docs update, but docs branch still needs to receive or reconcile it.
+- DONE: completed in this docs branch working tree.
+
+
+Progress log
+------------
+
+2026-05-16:
+- DONE: Fast-forwarded local docs branch from 4ea5833 to origin/main 5793891.
+- DONE: Added reference/config.md and linked it from reference/index.md.
+- DONE: Updated install.md for core dependencies, Provider/env/config precedence, Anthropic, MCP, Azure env fallbacks, Ruff, and mamba direct Sphinx build.
+- DONE: Updated reference/llm.md for registry dispatch, Anthropic, streaming deltas, retry, budget usage, and config fallback.
+- DONE: Updated developer_notes/llm.md for new module layout, ChatClient/StreamingChatClient, Provider registry, streaming, Anthropic, retries, budget, and tests.
+- DONE: Updated reference/session.md for persistence, StreamingExecutor, lineage JSONL export, and cumulative usage.
+- DONE: Updated reference/backend.md for BackendSandbox refcounting, OpenSandbox bind fallback, and PersistentSandboxRegistry.
+- DONE: Updated reference/flow_tool.md for MCP stdio adapter behavior. MCP API is documented manually because importing the third-party mcp package during docs build currently depends on the installed Pydantic minor version.
+- DONE: Added tutorial example pages for streaming_chat.py, anthropic_provider.py, mcp_tool_usage.py, and lineage_export.py, and linked them from tutorial/examples/index.md.
+- DONE: Updated tutorial/session_basics.md and developer_notes/workflow.md to reflect refcounted sandbox sharing and Session.merge().
+- DONE: Fixed Sphinx docstring formatting in src/rath/config/store.py.
+- DONE: Built docs with mamba rath-dev:
+  mamba run -n rath-dev python -m sphinx -W -b html docs/source docs/_build/html
+- DONE: Served the built site locally at http://127.0.0.1:8123/ using rath-dev Python and verified HTTP 200.
+- DONE: Smoke-tested example/mcp_tool_usage.py in rath-dev.
+- DONE: Smoke-tested example/lineage_export.py in rath-dev and removed the generated lineage_demo.jsonl artifact.
+- DONE: Removed internal docs blog pages. Blog content belongs on the separate `blog.openrath.com` site, not under `docs.openrath.com`.
+- DONE: Removed `Release Notes` from the top navigation; the docs homepage points to the external blog site from "Where To Start".
+- DONE: Added `docs/source/project_status.md` as an orphan docs page linked from the homepage. It summarizes current maturity, implemented runtime layers, recently landed features, and remaining productization work.
+- DONE: Detected new `v1.1.0` tag and fast-forwarded docs branch through `bf8a8c9`; updated docs Sphinx version and project status version language.
+- DONE: Verified the v1.1.0 GitHub release body references the non-existent `run_session_loop_stream(...)` API while source exports `run_session_loop(..., on_event=...)`; filed https://github.com/Rath-Team/OpenRath/issues/16 for maintainer correction.
+- DONE: Added `docs/source/user_guide/config.md` and linked it from `docs/source/user_guide/index.md` so Markdown readers have a practical config guide in addition to the API reference.
+- DONE: Synced `docs/source/user_guide/llm.md` with current provider registry dispatch, `Provider.from_config(...)`, Anthropic, OpenAI/Azure env fallbacks, streaming via `on_event`, and token budget guard behavior.
+- DONE: Synced `docs/source/user_guide/session.md` with append-only session persistence, read-side APIs, `to_resumable_pair()`, and updated `merge(...)` sandbox compatibility semantics.
+- DONE: Corrected stale sandbox lifecycle wording in `docs/source/user_guide/backends.md`, `docs/source/user_guide/workflow_agent.md`, and `docs/source/tutorial/session_loop_tools.md` from transfer/delete language to refcounted sharing and owned-temp-dir cleanup.
+- DONE: Rebuilt docs with `mamba run -n rath-dev python -m sphinx -W -b html docs/source docs/_build/html` after the user guide and tutorial updates.
+- DONE: Embedded generated diagrams into the public English docs site: release highlights and CI pipeline in `project_status.md`; config resolution in `reference/config.md`; provider registry, streaming loop, and resilience/budget in `reference/llm.md`; merge lineage and session persistence in `reference/session.md`; sandbox refcount and identity registry in `reference/backend.md`; MCP adapter in `reference/flow_tool.md`. Kept `bilingual-readme-onboarding.png` out of the English site.
+- DONE: Rebuilt docs after image insertion, verified all embedded PNGs render at 1672 x 941 in the browser, and confirmed no broken local links or horizontal overflow on the updated pages.
+
+Remaining follow-up candidates:
+- TODO: Continue expanding user_guide pages. They are currently excluded from the Sphinx build by docs/source/conf.py, but the source files should still be synced for readers browsing Markdown directly.
+- TODO: Add a deeper dedicated session persistence tutorial if persistence becomes a user-facing workflow rather than an API reference feature.
+- VERIFY: MCP runtime import and demo work in rath-dev, but MCP autodoc is still intentionally avoided to keep docs builds less sensitive to third-party import-time behavior.
+- VERIFY: Decide whether homepage quickstart should prefer explicit env Provider construction or Provider.from_config as the first example.
+
+
+High-level map
+--------------
+
+origin/docs --> new src changes --> docs updates --> docs branch
+
+Main themes in origin/main:
+- Persistent user config under ~/.openrath/config.json.
+- Provider registry and per-provider LLM subpackages.
+- Anthropic adapter is now a core dependency.
+- OpenAI streaming support through on_event and StreamingChatClient.
+- Token usage accumulation and budget guard.
+- MCP stdio tools are core and can be loaded from config.
+- Append-only session JSONL persistence.
+- Persistent sandbox identity registry.
+- Refcounted shared sandbox handles plus Session.merge().
+- OpenSandbox workspace-bind fallback and CI hardening.
+- Ruff/pre-commit/GitHub Actions CI migration.
+
+
+Commit intake log
+-----------------
+
+Range: origin/docs..origin/main
+
+2026-05-16:
+- bf8a8c9 chore: bump version to 1.1.0
+- 5793891 fix(opensandbox): unblock CI by hardening _code_run and sorting imports
+- 30462db refactor: extract shared helpers and decouple tests from private state
+- 1a40fa4 Add step to pre-pull sandbox image in CI workflow
+- d477dff refactor(session): refcount-shared sandboxes, unified stream loop, merge primitive
+- 2fdd5e9 feat(persistence): append-only session JSONL + sandbox identity registry
+- 310e901 feat(config): persistent ~/.openrath/ store; drop .env; mcp to core
+- a33960a refactor(llm): registry-based dispatch and per-provider subpackages
+
+2026-05-14:
+- 6857787 Merge pull request #9 from NorthSecond/contrib/ci-cd
+- 5bff64d Merge pull request #8 from NorthSecond/contrib/ruff-migration
+- 3c67a21 fix(llm,mcp): resolve mypy strict-mode errors
+- 95923c3 ci: add GitHub Actions CI workflows and pre-commit hooks
+- 6bea045 style: apply ruff check --fix and ruff format
+- 07c7350 chore: migrate from flake8 to ruff
+- 2e149d0 Merge branch 'main' of https://github.com/Rath-Team/OpenRath
+- c147b90 update readme
+- a11f69c Merge pull request #3 from Enderfga/contrib/pr3-pluggable-llm
+- 0cd22cd test(local): skip POSIX-chmod tests on Windows
+- 344c965 docs(llm): drop async row from integration-points reference table
+- 2efc056 chore(deps): promote anthropic from optional extra to core dependency
+
+2026-05-12 / 2026-05-13:
+- 5cd844a test(llm): direct coverage for _chunk_to_deltas, and document max_tokens default
+- 82da328 refactor(llm): tighten Protocol/import nits exposed in review
+- 72fed65 fix(loop): fail fast on streaming + Anthropic, not deep inside dispatch
+- 9c8a7f4 fix(llm): Anthropic adapter now actually retries transient errors
+- a73744b docs(llm): add a reference table for new integration points
+- dd2030b feat(llm): streaming support (opt-in via run_session_loop_stream)
+- 36efb8c feat(llm): Anthropic adapter via provider_kind="anthropic"
+- d1f28cd refactor(llm): extract ChatClient Protocol for executor injection
+- c55df7b Merge pull request #2 from Enderfga/contrib/pr2-p1-features
+- 9e7a884 Merge pull request #1 from Enderfga/contrib/pr1-bug-fixes
+- abe65cd Merge pull request #7 from jonathanhu237/docs-http-preview
+- f27eea1 fix(loop): latch budget guard to the first cap-crossing per session
+- 8ae40a4 feat(tool): MCP stdio adapter
+- d1d5e68 feat(graph): JSONL lineage exporter for sessions and journals
+- 9a3dbd9 feat(llm): retry transient API errors, aggregate token usage, add budget guard
+- abd281e feat(llm): Azure OpenAI env-var fallbacks + AzureOpenAI legacy routing
+- f2c6d09 fix(loop,compress): let RathOpenAIChatClient own env-aware api_key validation
+- 69e05ec feat(flow,llm): support Agent(model=...) shortcut and auto-load .env
+- 63ac4c2 fix(graph): make LineageJournal mutable so visit_order survives ctx exit
+- 97fbccd fix(loop): warn and stamp lineage when max_tool_rounds truncates
+- bd7c9d9 fix(compress): make user_session sandbox optional
+- e71f79d fix(local): normalize OSError in _files_write and _files_exists
+- 304a4d1 test(local): regression test for user-supplied working_dir not being rmtree'd
+- 85a74c3 docs: document local HTTP docs preview
+
+
+Docs work needed by area
+------------------------
+
+1. Install, configuration, and secrets
+
+TODO docs/source/install.md:
+- Add ~/.openrath/config.json as a first-class configuration path.
+- Document OPENRATH_HOME and project-local .openrath/ behavior.
+- Explain config precedence for LLM clients:
+  Provider kwargs > environment variables > ~/.openrath/config.json.
+- Remove or clarify any stale "auto-load .env" guidance. Source now says OpenRath no longer auto-loads .env; users should source env files themselves.
+- Add Anthropic and MCP as core dependencies from pyproject.toml:
+  anthropic>=0.40.0, mcp>=1.0.0, pydantic>=2.0.0,<3.
+- Add Azure OpenAI env fallback names:
+  AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, AZURE_API_KEY,
+  OPENAI_API_VERSION / AZURE_OPENAI_API_VERSION.
+
+TODO new docs/source/user_guide/config.md or reference/config.md:
+- Cover rath.config schema:
+  RathConfig, LLMConfig, LLMProviderConfig, MCPConfig, MCPServerConfig.
+- Include minimal JSON examples for openai, anthropic, and MCP stdio server entries.
+- Cover ConfigStore.load(), save(), get_llm_provider(), find_provider_by_kind(),
+  get_mcp_server(), enabled_mcp_servers().
+- Explain secret handling:
+  chmod 600, .openrath/.gitignore, project .gitignore insertion.
+
+TODO docs/source/index.md and docs/source/user_guide/index.md:
+- Add config as a visible docs entry; currently users can miss the new persistent store.
+
+
+2. LLM/provider docs
+
+TODO docs/source/developer_notes/llm.md:
+- Replace old module path references:
+  old: src/rath/llm/client.py, openai_create_kwargs.py, openai_normalize.py
+  new: src/rath/llm/openai/client.py, openai/create_kwargs.py, openai/normalize.py,
+       src/rath/llm/anthropic/*, src/rath/llm/registry.py, src/rath/llm/base.py.
+- Document registry-based dispatch:
+  chat_client_for(provider), register_chat_client(kind, factory), registered_kinds().
+- Explain Provider.provider_kind:
+  None/openai -> RathOpenAIChatClient; anthropic -> RathAnthropicChatClient.
+- Document ChatClient and StreamingChatClient protocols.
+- Explain streaming:
+  RathOpenAIChatClient.complete_stream(), RathLLMStreamDelta, on_event in run_session_loop.
+- Explain Anthropic limitation:
+  Anthropic client is non-streaming; on_event with provider_kind="anthropic" raises TypeError before session registration.
+- Document retry policy:
+  retry_max_attempts, retry_base_seconds; OpenAI and Anthropic transient exception sets.
+- Document token accounting:
+  RathLLMTokenUsage, add_usage(), Session.cumulative_usage.
+- Document budget guard:
+  Provider.budget_total_tokens and on_budget_exceeded fire only on the first cap crossing.
+
+TODO docs/source/reference/llm.md:
+- Add autoclass/autofunction entries for:
+  ChatClient, StreamingChatClient, RathAnthropicChatClient,
+  chat_client_for, register_chat_client, registered_kinds,
+  BudgetExceededError, RathLLMStreamDelta, add_usage.
+- Update pure helper references:
+  to_create_kwargs_stream exists under rath.llm.openai.create_kwargs but is not exported from rath.llm.__init__.
+- Remove stale statement that stream=True raises ValueError. Source now supports OpenAI streaming via to_create_kwargs_stream and complete_stream().
+- Include max_tokens vs max_completion_tokens behavior and Anthropic DEFAULT_MAX_TOKENS fallback.
+
+TODO docs/source/user_guide/llm.md:
+- Add Provider.from_config(name=None, **overrides).
+- Add examples for:
+  Provider(provider_kind="anthropic", model="claude-...")
+  Provider.from_config("openai-main")
+  Provider(budget_total_tokens=..., on_budget_exceeded=...)
+- Clarify default model resolution:
+  OpenAI: Provider.model > OPENAI_DEFAULT_MODEL > config default provider model.
+  Anthropic: Provider.model > ANTHROPIC_DEFAULT_MODEL > config provider model.
+
+
+3. Session loop, streaming, and persistence
+
+TODO docs/source/reference/session.md:
+- Confirm run_session_loop signature includes:
+  on_event, persist, persist_path, sandbox_handle_id.
+- Document resolve_executor() behavior:
+  custom executor incompatible with on_event unless caller wraps StreamingExecutor manually.
+- Document SessionLoopExecutor and StreamingExecutor public protocols/classes.
+- Document writer behavior:
+  inherited user rows are seeded into JSONL; graceful return writes trailer; exception leaves no trailer and reload reports closed=False.
+- Add session persistence API:
+  SessionWriter,
+  load_session(),
+  list_persisted_sessions(),
+  delete_session(),
+  prune_sessions(),
+  PersistedSession.to_resumable_pair().
+
+TODO docs/source/developer_notes/session.md:
+- Update lifecycle diagram/text around refcounted sandbox sharing:
+  run_session_loop(), run_session_compress(), fork(), detach(), merge() share an open sandbox handle when present and increment refcount.
+- Add Session.merge(other):
+  concatenates rows, requires same sandbox identity or both unbound with same backend target, sums cumulative_usage, lineage kind OP_MERGE.
+- Add Session.__str__/__repr__ compact chunk preview behavior if useful for debugging docs.
+- Add persistence section:
+  JSONL record types header/chunk/trailer, crash detection, resumable pair.
+- Add session registry behavior:
+  run_session_loop registers user, agent, output and marks output active.
+
+VERIFY src/rath/session/session.py:
+- The class docstring says detach is the exception and copies only backend/spec, but Session.detach() currently calls detached.bind_sandbox(self.sandbox) when a live sandbox exists.
+- Existing docs say detach shares the sandbox. Decide whether to fix the source docstring or change behavior; do not write contradictory docs.
+
+TODO docs/source/user_guide/session.md:
+- Add practical examples for:
+  merge(), cumulative_usage, close_sandbox()/refcount, persistence reload.
+- Make clear that .to(...) closes/releases any current handle before changing backend target.
+
+TODO docs/source/tutorial/session_loop_tools.md:
+- Replace any old run_session_loop_stream wording with run_session_loop(on_event=...).
+- Add a short streaming output example using example/_on_event.py or example/streaming_chat.py.
+
+TODO docs/source/tutorial/session_basics.md:
+- Add merge() as a peer to fork()/detach().
+- Update sandbox handle statement: older tutorial text says fork only copies target and not an already-open handle; latest source shares an open handle via refcount.
+
+
+4. Backend, sandbox, and OpenSandbox docs
+
+TODO docs/source/reference/backend.md:
+- Document BackendSandbox.refcount, acquire(), release(), and context manager semantics.
+- Document Backend.open() returns a sandbox with refcount == 0; binding to Session or using with sandbox acquires it.
+- Add BackendSandboxClosed error behavior where relevant.
+- Add backend.persistence reference:
+  PersistentSandboxRegistry,
+  RemoteSandboxRecord,
+  local/remote registry paths,
+  alloc_local_id(), ensure_local(), list_local(), delete_local(), prune_local(),
+  record_remote(), load_remote(), list_remote(), touch_remote(), delete_remote().
+
+TODO docs/source/developer_notes/sandbox.md:
+- Add persistent sandbox identity model:
+  .openrath/sandboxes/local/<uuid>/ and .openrath/sandboxes/opensandbox/<uuid>.json.
+- Update OpenSandbox behavior:
+  default image opensandbox/code-interpreter:v1.0.2;
+  working_dir is bound at /workspace via volume;
+  bind rejection retries once without volumes unless RATH_OPENSANDBOX_STRICT_WORKSPACE_BIND=1.
+- Document OPEN_SANDBOX_DOMAIN and legacy OPENSANDBOX_DOMAIN availability checks.
+- Document that is_available() is cheap and does not ping the service.
+- Mention _code_run hardening only if user-visible:
+  supported languages and error normalization for code interpreter failures.
+
+TODO docs/source/user_guide/backends.md:
+- Add refcounted sharing example with two sessions holding the same sandbox.
+- Add cleanup guidance for persistent local sandboxes and remote sandbox records.
+
+TODO docs/source/tutorial/examples/sandbox_backend_opensandbox.md:
+- Add bind fallback troubleshooting:
+  warning means host path was refused by OpenSandbox allowlist; either allow the path or set strict env var to fail.
+- Mention CI pre-pulls sandbox image so cold-start failures are less likely in tests.
+
+
+5. Tools and MCP
+
+TODO docs/source/developer_notes/tool.md:
+- Add MCP stdio adapter as first-class FlowToolCall source:
+  MCPClient, MCPToolCall, mcp_tools_from_server(), mcp_tools_from_config().
+- Explain lifecycle:
+  fresh stdio subprocess per list_tools/call_tool on a shared dedicated loop; no explicit close.
+- Explain CallToolResult flattening:
+  text content is joined; otherwise result is JSON-encoded by the loop summarizer.
+- Add tool argument parsing behavior:
+  parsed args stored on RathLLMToolCallFunction.arguments_parsed, parse errors become JSON tool failure payloads.
+
+TODO docs/source/reference/flow_tool.md:
+- Add mcp_adapter module API entries.
+- Add ToolNameConflictError and merge_tools_for_loop shadowing behavior if missing or too brief.
+
+TODO docs/source/tutorial/custom_flow_tool.md and examples index:
+- Add a small "use MCP tools" example or point to example/mcp_tool_usage.py.
+
+
+6. Workflow and agent docs
+
+TODO docs/source/developer_notes/workflow.md:
+- Update branch semantics after refcounted sandbox sharing.
+- Add merge() as the explicit way to combine two session transcripts when they share a sandbox.
+- Clarify when to use branch-specific workspaces after fork(), especially when both branches write files.
+
+TODO docs/source/user_guide/workflow_agent.md:
+- Add Agent(model=...) shortcut behavior.
+- Update examples to the new Provider/config pattern.
+- Confirm imports still work through rath.flow and rath.llm after package refactor.
+
+TODO docs/source/reference/flow.md:
+- Add or verify Agent(model=...) shortcut and Agent.register_tool() dedupe behavior.
+
+
+7. Examples and tutorials
+
+TODO docs/source/tutorial/examples/index.md:
+- Add new examples:
+  example/streaming_chat.py
+  example/anthropic_provider.py
+  example/mcp_tool_usage.py
+  example/lineage_export.py
+  example/_demo_echo_server.py
+  example/_on_event.py
+- Remove references to deleted example/_chunk_print.py.
+
+TODO docs/source/tutorial/examples/session_usage.md:
+- Update streamed output explanation to use example_on_event().
+- Add persistence and merge notes if the example exercises them.
+
+TODO docs/source/tutorial/examples/sandbox_backend_local.md:
+- Update provider/config text:
+  example/_openai_provider.py now resolves Provider from env/config rather than relying on old .env behavior.
+
+TODO docs/source/tutorial/examples/trading_agents.md and engineering_agents.md:
+- Update fork/parallel sandbox notes to latest refcount behavior.
+- Add merge guidance where workflow combines branch outputs manually.
+
+TODO docs/source/tutorial/examples/research_transformer.md:
+- Recheck example API after workflow/tools changes:
+  main.py, tools.py, workflow.py changed in origin/main.
+- Update env/config table if provider_from_env fallback changed.
+
+TODO README.md and README_zh.md:
+- Sync new config, streaming, Anthropic, MCP, persistence, and CI claims.
+- Keep release/version language aligned to the latest tag; current tag is v1.1.0.
+
+
+8. Graph and lineage docs
+
+TODO docs/source/reference/session.md or new reference/graph.md:
+- Add JSONL export API:
+  session_to_jsonl_row(),
+  export_jsonl_string(),
+  export_jsonl(),
+  export_journal_jsonl(),
+  cumulative_usage_to_jsonable(),
+  lineage_extras_to_jsonable().
+- Document LineageJournal.visit_order mutability fix and export_journal_jsonl(skip_unknown=True).
+
+TODO docs/source/developer_notes/session.md:
+- Explain lineage JSONL format:
+  one session per line; parent_session_ids imply edges; includes chunk_count and cumulative_usage.
+
+TODO docs/source/tutorial/examples/index.md:
+- Link example/lineage_export.py from a lineage/export tutorial entry.
+
+
+9. CI, linting, and contributor docs
+
+TODO docs/source/install.md or CONTRIBUTING.md:
+- Replace flake8 guidance with Ruff:
+  ruff check, ruff format, pre-commit.
+- Document GitHub Actions added:
+  ci-build.yml, ci-docs.yml, ci-lint.yml, ci-shellcheck.yml,
+  ci-test-fast.yml, ci-test-opensandbox.yml.
+- Mention docs build command dependencies; current local environment did not have sphinx installed via python -m sphinx.
+
+TODO docs/source/developer_notes/index.md:
+- Add CI/testing matrix reference:
+  fast unit tests, OpenSandbox tests, shellcheck, docs build.
+
+
+10. Reference index structure
+
+TODO docs/source/reference/index.md:
+- Add new reference pages or sections for:
+  rath.config
+  rath.session.persistence
+  rath.backend.persistence
+  rath.session.graph.export
+  rath.llm.registry
+  rath.flow.tool.mcp_adapter
+
+TODO docs/source/conf.py:
+- Verify autodoc can import renamed modules after llm package refactor.
+- Ensure docs branch has dependencies required to build API reference.
+
+
+11. Known verification gaps
+
+DONE docs build:
+- Base mamba env uses Python 3.14, outside the project requirement (<3.14), and is not suitable as the primary docs build env.
+- rath-dev uses Python 3.12.13 and has Sphinx/Myst/PyData theme.
+- Reinstalled the project in rath-dev with pip install -e . to pick up new core dependencies anthropic and mcp.
+- Build command passed with warnings treated as errors:
+  mamba run -n rath-dev python -m sphinx -W -b html docs/source docs/_build/html
+- Local static server verified:
+  /Users/kk/.local/share/mamba/envs/rath-dev/bin/python -m http.server 8123 --bind 127.0.0.1 --directory docs/_build/html
+
+VERIFY source/doc inconsistency:
+- Session.detach() behavior vs class docstring conflict described above.
+
+VERIFY old API names:
+- Search docs for:
+  rath.llm.client
+  openai_create_kwargs
+  openai_normalize
+  run_session_loop_stream
+  auto-load .env
+  stream=True raises ValueError
+  fork only copies target
+- Update or remove each occurrence.
+
+
+Append future commits here
+--------------------------
+
+Use this format:
+
+YYYY-MM-DD:
+- <sha> <subject>
+  Impact:
+  Docs to update:
+  Status:

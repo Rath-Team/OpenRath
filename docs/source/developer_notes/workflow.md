@@ -203,19 +203,19 @@ This pattern has three boundaries:
 | Boundary | Notes |
 | --- | --- |
 | lineage | Both forked sessions keep the same parent, and later loop outputs record their own agent parent. |
-| sandbox | `fork()` copies the backend target but not the open handle; parallel branches open their own sandbox handles as needed. |
-| aggregation | There is no built-in merge primitive yet; the workflow must decide explicitly how to summarize multiple output sessions into the next input. The example above builds the trader input from the last assistant text in each branch. |
+| sandbox | If the source has an open sandbox, `fork()` shares that handle by reference count. If no handle is open, branches inherit the backend target and open lazily. |
+| aggregation | `Session.merge(other)` can concatenate compatible sessions that share the same sandbox; workflows may still choose to summarize branch outputs into a new user message. The example above builds the trader input from the last assistant text in each branch. |
 
 OpenRath's parallel unit is therefore the session. Tool stream concurrency belongs to the backend layer, and `Provider.parallel_tool_calls` belongs to LLM tool-call parameters; both are separate from session-level parallelism.
 
-If branches write to the workspace, assign different directories explicitly. `fork()` copies the backend target; when the source session uses `spec="."`, both forked branches may still target the same host directory. A safer pattern is to reset a branch-specific workspace after fork:
+If branches write to the workspace, assign different directories explicitly. When the source has an open sandbox, forked branches share the same handle; when it only has `spec="."`, both branches still target the same host directory on lazy open. A safer pattern is to reset a branch-specific workspace after fork:
 
 ```python
 auth_input = session.fork().to("local", spec=".workspace/auth-branch")
 data_input = session.fork().to("local", spec=".workspace/data-branch")
 ```
 
-OpenSandbox follows the same rule: each branch can own an independent sandbox handle, but the host bind path still comes from `spec` and the server allowlist.
+OpenSandbox follows the same rule: retarget a branch before tool execution if it needs an independent container or host bind path.
 
 ## Preset Workflows
 OpenRath currently provides two preset subclasses:

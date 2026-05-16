@@ -1,0 +1,689 @@
+OpenRath image generation list
+==============================
+
+Purpose
+-------
+Plan new documentation images for the current OpenRath update. This file is
+for an async LLM/agent that will read the referenced source and produce images
+for `docs/source/_static/`.
+
+Style rules
+-----------
+- Prefer clean OSS documentation diagrams over marketing art.
+- Use simple horizontal layouts (`flowchart LR` style) where possible.
+- Keep node labels short and consistent.
+- Use the existing docs image vocabulary as reference:
+  `docs/source/_static/core-provider.png`,
+  `core-session.png`, `core-backend.png`, `core-tool.png`, `core-workflow.png`.
+- Output PNG files suitable for Sphinx figures, ideally 1600x900 or 1800x1000.
+- Use transparent or white/light background unless matching the existing docs
+  theme requires otherwise.
+- Avoid decorative gradients, mascots, or large illustration-only scenes.
+- Each diagram should teach one concept.
+
+Current existing images
+-----------------------
+- `backend.png`
+- `session.png`
+- `workflow.png`
+- `core-provider.png`
+- `core-session.png`
+- `core-backend.png`
+- `core-tool.png`
+- `core-workflow.png`
+- `research-transformer-overview.png`
+- `research_transformer.png`
+
+Recommended additions
+---------------------
+
+Priority P0 images should be created first because they correspond to the new
+release highlights and newly documented APIs.
+
+
+P0-01 provider-dispatch-registry.png
+------------------------------------
+
+Purpose:
+- Explain the new provider ecosystem: `Provider` -> registry -> concrete client.
+- This supports release notes, LLM reference, and LLM developer notes.
+
+Use in docs:
+- `external blog post on https://blog.openrath.com`
+- `docs/source/reference/llm.md`
+- `docs/source/developer_notes/llm.md`
+
+Read before drawing:
+- `src/rath/llm/provider.py`
+- `src/rath/llm/registry.py`
+- `src/rath/llm/base.py`
+- `src/rath/llm/openai/client.py`
+- `src/rath/llm/anthropic/client.py`
+- `src/rath/llm/__init__.py`
+- `docs/source/reference/llm.md`
+- `docs/source/developer_notes/llm.md`
+
+Key facts to represent:
+- `Provider.provider_kind` selects a registered client.
+- `None` / `"openai"` maps to `RathOpenAIChatClient`.
+- `"anthropic"` maps to `RathAnthropicChatClient`.
+- Third-party adapters can use `register_chat_client(kind, factory)`.
+- `run_session_loop` gets a client through `chat_client_for(provider)`.
+
+Suggested layout:
+
+```mermaid
+flowchart LR
+  P["Provider"] --> K["provider_kind"]
+  K --> R["Client Registry"]
+  R --> O["OpenAI Client"]
+  R --> A["Anthropic Client"]
+  R --> X["Custom Client"]
+  O --> N["Normalized Response"]
+  A --> N
+  X --> N
+```
+
+Visual notes:
+- Keep `Provider` and `Client Registry` central.
+- Show OpenAI and Anthropic as built-in lanes.
+- Show custom provider lane as extensibility, not main path.
+- Avoid provider logos unless licensing is checked.
+
+Acceptance criteria:
+- A reader can understand provider dispatch without reading code.
+- The figure does not imply Anthropic supports streaming.
+
+
+P0-02 config-resolution-stack.png
+---------------------------------
+
+Purpose:
+- Explain `Provider` and client configuration resolution:
+  explicit fields -> environment -> persistent config.
+
+Use in docs:
+- `docs/source/install.md`
+- `docs/source/reference/config.md`
+- `docs/source/reference/llm.md`
+
+Read before drawing:
+- `src/rath/config/paths.py`
+- `src/rath/config/schema.py`
+- `src/rath/config/store.py`
+- `src/rath/llm/provider.py`
+- `src/rath/llm/openai/client.py`
+- `src/rath/llm/anthropic/client.py`
+- `docs/source/reference/config.md`
+- `docs/source/install.md`
+
+Key facts to represent:
+- Config path resolution:
+  `$OPENRATH_HOME/config.json`, project `.openrath/config.json`,
+  default `~/.openrath/config.json`.
+- Provider resolution order:
+  `Provider(...)` fields, environment variables, config.
+- Config includes `llm.providers` and `mcp.servers`.
+- Save writes with secret-safe filesystem behavior.
+
+Suggested layout:
+
+```mermaid
+flowchart LR
+  A["Provider kwargs"] --> R["Resolved Provider"]
+  B["Environment"] --> R
+  C["config.json"] --> R
+  C --> L["llm.providers"]
+  C --> M["mcp.servers"]
+  R --> Client["Chat Client"]
+```
+
+Visual notes:
+- Draw as a layered precedence stack, with top priority visually above lower
+  priority if using a vertical sub-section.
+- Add small path callouts for `OPENRATH_HOME`, project `.openrath`, user home.
+
+Acceptance criteria:
+- The precedence is unambiguous.
+- The image works even if rendered small in the install page.
+
+
+P0-03 session-persistence-jsonl.png
+-----------------------------------
+
+Purpose:
+- Explain append-only session JSONL persistence and resume.
+
+Use in docs:
+- `external blog post on https://blog.openrath.com`
+- `docs/source/reference/session.md`
+- `docs/source/developer_notes/session.md`
+
+Read before drawing:
+- `src/rath/session/loop.py`
+- `src/rath/session/compress.py`
+- `src/rath/session/persistence/writer.py`
+- `src/rath/session/persistence/loader.py`
+- `src/rath/session/persistence/_serialize.py`
+- `src/rath/session/persistence/paths.py`
+- `docs/source/reference/session.md`
+- `external blog post on https://blog.openrath.com`
+
+Key facts to represent:
+- Writer creates JSONL with `header`, `chunk`, and `trailer` records.
+- Inherited user rows are seeded into the persisted output session.
+- Missing trailer means unclean shutdown / crash boundary.
+- `load_session(...)` returns `PersistedSession`.
+- `PersistedSession.to_resumable_pair(...)` returns `(user_session, agent_session)`.
+
+Suggested layout:
+
+```mermaid
+flowchart LR
+  Loop["run_session_loop"] --> W["SessionWriter"]
+  W --> H["header"]
+  W --> C["chunk rows"]
+  W --> T["trailer"]
+  H --> File["session.jsonl"]
+  C --> File
+  T --> File
+  File --> Load["load_session"]
+  Load --> Pair["resumable pair"]
+```
+
+Visual notes:
+- Show JSONL as a file with ordered rows.
+- Mark `trailer` as "closed=True"; missing trailer as "closed=False".
+- Use a small warning callout for crash detection.
+
+Acceptance criteria:
+- A reader can distinguish session persistence from sandbox persistence.
+- The diagram makes clear that resume does not open a sandbox immediately.
+
+
+P0-04 sandbox-identity-registry.png
+-----------------------------------
+
+Purpose:
+- Explain persistent sandbox identities and their separation from live handles.
+
+Use in docs:
+- `external blog post on https://blog.openrath.com`
+- `docs/source/reference/backend.md`
+- `docs/source/developer_notes/sandbox.md`
+
+Read before drawing:
+- `src/rath/backend/abc.py`
+- `src/rath/backend/persistence/registry.py`
+- `src/rath/backend/persistence/paths.py`
+- `src/rath/backend/persistence/spec_json.py`
+- `src/rath/backend/local.py`
+- `src/rath/backend/opensandbox.py`
+- `docs/source/reference/backend.md`
+- `docs/source/developer_notes/sandbox.md`
+
+Key facts to represent:
+- `PersistentSandboxRegistry` tracks identity, not live handles.
+- Local backend stores `.openrath/sandboxes/local/<uuid>/`.
+- OpenSandbox stores `.openrath/sandboxes/opensandbox/<uuid>.json`.
+- Live `BackendSandbox` handles remain process-local and refcounted.
+- Remote records do not kill remote containers when deleted.
+
+Suggested layout:
+
+```mermaid
+flowchart LR
+  Reg["PersistentSandboxRegistry"] --> Local["local/<uuid>/"]
+  Reg --> Remote["opensandbox/<uuid>.json"]
+  Local --> Spec["BackendSandboxSpec"]
+  Remote --> RID["remote_id + spec"]
+  Spec --> Handle["Live BackendSandbox"]
+  RID --> Handle
+  Handle --> Ref["refcount"]
+```
+
+Visual notes:
+- Use two lanes: Local workspace and OpenSandbox remote record.
+- Put "identity" on disk side and "handle" on runtime side.
+
+Acceptance criteria:
+- The image does not imply the registry stores live sandbox objects.
+- The local/remote paths are visible.
+
+
+P0-05 sandbox-refcount-lifecycle.png
+------------------------------------
+
+Purpose:
+- Explain refcounted sandbox sharing across sessions.
+
+Use in docs:
+- `docs/source/tutorial/session_basics.md`
+- `docs/source/reference/backend.md`
+- `docs/source/developer_notes/workflow.md`
+- `external blog post on https://blog.openrath.com`
+
+Read before drawing:
+- `src/rath/backend/abc.py`
+- `src/rath/session/session.py`
+- `src/rath/session/loop.py`
+- `src/rath/session/compress.py`
+- `tests/backends/test_sandbox_refcount.py`
+- `tests/session/test_session_fork_detach_merge.py`
+- `docs/source/tutorial/session_basics.md`
+
+Key facts to represent:
+- `Backend.open()` returns a sandbox with `refcount == 0`.
+- `Session.require_sandbox()` or `bind_sandbox()` acquires one reference.
+- `run_session_loop`, `run_session_compress`, `fork`, `detach`, `merge`
+  share a live handle and increment refcount.
+- `close_sandbox()` releases one reference.
+- Backend closes when refcount reaches zero.
+
+Suggested layout:
+
+```mermaid
+flowchart LR
+  Open["Backend.open"] --> S["BackendSandbox ref=0"]
+  S --> A["user Session ref=1"]
+  A --> F["fork/detach ref=2"]
+  A --> L["loop output ref=3"]
+  F --> Close1["close one"]
+  L --> Close2["close all"]
+  Close2 --> Done["backend.close"]
+```
+
+Visual notes:
+- Use small counters on sandbox node: ref=0, ref=1, ref=2.
+- Show close only on final release.
+
+Acceptance criteria:
+- A reader understands why sandbox reuse improved.
+- A reader understands how to get independent branches: retarget with `.to(...)`.
+
+
+P0-06 session-merge-lineage.png
+-------------------------------
+
+Purpose:
+- Explain the new `Session.merge(...)` primitive and lineage.
+
+Use in docs:
+- `external blog post on https://blog.openrath.com`
+- `docs/source/reference/session.md`
+- `docs/source/developer_notes/workflow.md`
+- `docs/source/user_guide/session.md`
+
+Read before drawing:
+- `src/rath/session/session.py`
+- `src/rath/session/graph/kind.py`
+- `src/rath/session/graph/recording.py`
+- `src/rath/llm/chat_response.py` for `add_usage`
+- `tests/session/test_session_fork_detach_merge.py`
+- `docs/source/reference/session.md`
+- `docs/source/developer_notes/workflow.md`
+
+Key facts to represent:
+- Merge concatenates `self.rows + other.rows`.
+- Parents are `(self.id, other.id)`.
+- `lineage_kind` is `OP_MERGE`.
+- `cumulative_usage` is summed.
+- Requires same live sandbox object, or both unbound with compatible backend target.
+
+Suggested layout:
+
+```mermaid
+flowchart LR
+  A["Session A"] --> M["merge"]
+  B["Session B"] --> M
+  M --> C["Merged Session"]
+  C --> Rows["rows A + rows B"]
+  C --> Parents["parents: A, B"]
+  C --> Usage["usage summed"]
+```
+
+Visual notes:
+- Draw A and B as two branches converging.
+- Include a small compatibility gate before merge: "same sandbox".
+
+Acceptance criteria:
+- It is visually different from generic fork/detach diagrams.
+- It makes merge constraints clear without too much text.
+
+
+P0-07 mcp-tool-adapter.png
+--------------------------
+
+Purpose:
+- Explain how a stdio MCP server becomes OpenRath `FlowToolCall` objects.
+
+Use in docs:
+- `external blog post on https://blog.openrath.com`
+- `docs/source/reference/flow_tool.md`
+- `docs/source/tutorial/examples/mcp_tool_usage.md`
+- `docs/source/developer_notes/tool.md`
+
+Read before drawing:
+- `src/rath/flow/tool/mcp_adapter.py`
+- `src/rath/flow/tool/base.py`
+- `src/rath/session/loop.py`
+- `src/rath/flow/tool/tool_table.py`
+- `example/mcp_tool_usage.py`
+- `example/_demo_echo_server.py`
+- `tests/flow/test_mcp_adapter.py`
+
+Key facts to represent:
+- `mcp_tools_from_server(command)` starts from a stdio server command.
+- `MCPClient.list_tools()` discovers tools.
+- `MCPToolCall` wraps one MCP tool as `FlowToolCall`.
+- Session loop sees normal tools and tool schemas.
+- Each list/call opens a fresh subprocess on a shared dedicated event loop.
+- `mcp_tools_from_config(name)` loads command/env from config.
+
+Suggested layout:
+
+```mermaid
+flowchart LR
+  Config["config or command"] --> Client["MCPClient"]
+  Client --> List["list_tools"]
+  List --> Wrap["MCPToolCall"]
+  Wrap --> Table["Tool table"]
+  Table --> Loop["Session loop"]
+  Loop --> Call["call_tool"]
+  Call --> Server["stdio MCP server"]
+```
+
+Visual notes:
+- Keep MCP server on the far right as an external process.
+- Show `FlowToolCall` boundary clearly.
+
+Acceptance criteria:
+- A reader can see MCP is an adapter, not a separate loop.
+- The image says "stdio only" somewhere small.
+
+
+P0-08 streaming-loop-deltas.png
+-------------------------------
+
+Purpose:
+- Explain streaming output in `run_session_loop(on_event=...)`.
+
+Use in docs:
+- `external blog post on https://blog.openrath.com`
+- `docs/source/tutorial/examples/streaming_chat.md`
+- `docs/source/reference/session.md`
+- `docs/source/developer_notes/llm.md`
+
+Read before drawing:
+- `src/rath/session/loop.py`
+- `src/rath/llm/base.py`
+- `src/rath/llm/chat_response.py`
+- `src/rath/llm/openai/client.py`
+- `example/streaming_chat.py`
+- `tests/session/test_loop_stream.py`
+- `tests/llm/test_openai_stream_chunks.py`
+
+Key facts to represent:
+- `on_event` requires `StreamingChatClient`.
+- OpenAI client implements `complete_stream`.
+- Each `RathLLMStreamDelta` is forwarded to callback immediately.
+- Loop accumulates deltas into a final `RathLLMChatResponse`.
+- Session stores one assistant chunk per round, not one chunk per token.
+- Anthropic currently does not support streaming in the built-in adapter.
+
+Suggested layout:
+
+```mermaid
+flowchart LR
+  Loop["run_session_loop"] --> Client["StreamingChatClient"]
+  Client --> D1["delta"]
+  Client --> D2["delta"]
+  Client --> D3["delta"]
+  D1 --> CB["on_event"]
+  D2 --> CB
+  D3 --> CB
+  D1 --> Acc["accumulate"]
+  D2 --> Acc
+  D3 --> Acc
+  Acc --> Chunk["assistant chunk"]
+```
+
+Visual notes:
+- Show two paths from deltas: UI callback and durable session chunk.
+- Add "OpenAI yes / Anthropic no" as a small compatibility badge.
+
+Acceptance criteria:
+- The image prevents the misconception that every stream token becomes a session row.
+
+
+P1-09 llm-resilience-budget.png
+-------------------------------
+
+Purpose:
+- Explain retries, token accounting, and budget guard in one diagram.
+
+Use in docs:
+- `external blog post on https://blog.openrath.com`
+- `docs/source/developer_notes/llm.md`
+- `docs/source/reference/llm.md`
+
+Read before drawing:
+- `src/rath/llm/retry.py`
+- `src/rath/llm/budget.py`
+- `src/rath/llm/provider.py`
+- `src/rath/llm/chat_response.py`
+- `src/rath/session/loop.py`
+- `src/rath/session/compress.py`
+- `tests/unit/test_retry.py`
+- `tests/unit/test_retry_provider_agnostic.py`
+- `tests/session/test_token_budget.py`
+
+Key facts to represent:
+- Provider clients retry transient provider errors.
+- `add_usage` accumulates response usage into `Session.cumulative_usage`.
+- Budget callback fires only on the first crossing of `budget_total_tokens`.
+- Callback can raise `BudgetExceededError` to abort.
+
+Suggested layout:
+
+```mermaid
+flowchart LR
+  Req["Completion request"] --> Retry["retry_with_backoff"]
+  Retry --> Resp["Response + usage"]
+  Resp --> Usage["cumulative_usage"]
+  Usage --> Gate["budget cap?"]
+  Gate --> Warn["warn/callback"]
+  Warn --> Abort["optional abort"]
+```
+
+Visual notes:
+- Draw the retry loop as a compact circular arrow.
+- Make "first crossing only" a callout.
+
+Acceptance criteria:
+- The diagram is understandable without provider-specific details.
+
+
+P1-10 release-highlights-overview.png
+-------------------------------------
+
+Purpose:
+- A single high-level image for the release notes landing/current page.
+
+Use in docs:
+- `external blog post on https://blog.openrath.com`
+- possibly homepage if the page needs a stronger visual.
+
+Read before drawing:
+- `external blog post on https://blog.openrath.com`
+- `update-list.txt`
+- `docs/source/reference/index.md`
+
+Key facts to represent:
+- Four pillars:
+  1. Provider ecosystem
+  2. Durable runtime
+  3. Tool integration
+  4. Project quality
+- Contributor names should NOT be in the image; keep contributors in text.
+
+Suggested layout:
+
+```mermaid
+flowchart LR
+  Core["OpenRath Runtime"] --> P["Providers"]
+  Core --> D["Persistence"]
+  Core --> T["Tools"]
+  Core --> Q["CI + Docs"]
+```
+
+Visual notes:
+- This is a summary card, not an architecture diagram.
+- Use the same palette and typography as existing core images.
+
+Acceptance criteria:
+- It can sit near the top of release notes without duplicating all details.
+
+
+P1-11 ci-tooling-pipeline.png
+-----------------------------
+
+Purpose:
+- Explain the developer tooling update: Ruff, pre-commit, and GitHub Actions.
+
+Use in docs:
+- `external blog post on https://blog.openrath.com`
+- `docs/source/install.md`
+- future `CONTRIBUTING.md` docs page if added.
+
+Read before drawing:
+- `.pre-commit-config.yaml`
+- `.github/workflows/ci-build.yml`
+- `.github/workflows/ci-docs.yml`
+- `.github/workflows/ci-lint.yml`
+- `.github/workflows/ci-shellcheck.yml`
+- `.github/workflows/ci-test-fast.yml`
+- `.github/workflows/ci-test-opensandbox.yml`
+- `scripts/run_openrath_test.sh`
+- `scripts/build_docs.sh`
+- `pyproject.toml` `[tool.ruff]`
+
+Key facts to represent:
+- Local developer path: Ruff check/format + pre-commit.
+- CI path: build, docs, lint, shellcheck, fast tests, OpenSandbox tests.
+- flake8 is no longer the primary lint path.
+
+Suggested layout:
+
+```mermaid
+flowchart LR
+  Dev["Developer"] --> Ruff["Ruff"]
+  Dev --> Pre["pre-commit"]
+  Pre --> PR["Pull Request"]
+  PR --> CI["GitHub Actions"]
+  CI --> Build["build"]
+  CI --> Docs["docs"]
+  CI --> Tests["tests"]
+  CI --> OSB["OpenSandbox"]
+```
+
+Visual notes:
+- Use small checkmarks only if consistent with existing style.
+- Keep "flake8 -> Ruff" as a small migration label.
+
+Acceptance criteria:
+- A contributor can infer the expected local and CI checks.
+
+
+P2-12 bilingual-readme-onboarding.png
+-------------------------------------
+
+Purpose:
+- Show bilingual onboarding without overemphasizing it as runtime architecture.
+
+Use in docs:
+- `external blog post on https://blog.openrath.com` if a small visual is desired.
+- README assets only if maintainers want a badge-like graphic.
+
+Read before drawing:
+- `README.md`
+- `README_zh.md`
+- `docs/source/index.md`
+
+Key facts to represent:
+- English README and Chinese README both point to the same project concepts.
+- Keep this as a small documentation/onboarding visual, not a technical figure.
+
+Suggested layout:
+
+```mermaid
+flowchart LR
+  Repo["OpenRath"] --> EN["README"]
+  Repo --> ZH["README_zh"]
+  EN --> Docs["Docs"]
+  ZH --> Docs
+```
+
+Visual notes:
+- Optional. Do not spend time here until P0/P1 technical diagrams are done.
+
+Acceptance criteria:
+- It improves onboarding clarity without cluttering technical pages.
+
+
+Implementation workflow for async image agent
+---------------------------------------------
+
+For each selected image:
+
+1. Read the listed source files and docs.
+2. Draft a Mermaid diagram first.
+3. Check labels for correctness against source symbols.
+4. Render to PNG in `docs/source/_static/<filename>`.
+5. Keep source diagram text in a sidecar file if useful:
+   `docs/source/_static/<filename>.mmd`.
+6. Add a Sphinx figure to the target docs page.
+7. Run:
+   `mamba run -n rath-dev python -m sphinx -W -b html docs/source docs/_build/html`
+8. Visually inspect the generated HTML page.
+
+Suggested first batch
+---------------------
+
+Create these first:
+- DONE: `provider-dispatch-registry.png`
+- DONE: `config-resolution-stack.png`
+- DONE: `session-persistence-jsonl.png`
+- DONE: `sandbox-identity-registry.png`
+- DONE: `sandbox-refcount-lifecycle.png`
+- DONE: `session-merge-lineage.png`
+- DONE: `mcp-tool-adapter.png`
+- DONE: `streaming-loop-deltas.png`
+
+Then consider:
+- DONE: `llm-resilience-budget.png`
+- DONE: `release-highlights-overview.png`
+- DONE: `ci-tooling-pipeline.png`
+- DONE: `bilingual-readme-onboarding.png`
+
+Generation status
+-----------------
+
+2026-05-16:
+- Generated all selected images with the built-in image generation tool.
+- Copied final PNG assets into `docs/source/_static/`.
+- Verified every generated PNG is `1672 x 941`, RGB, non-interlaced.
+- Read the referenced source/docs for each image before generation.
+- Regenerated `session-persistence-jsonl.png` to remove extension typos.
+- Regenerated `ci-tooling-pipeline.png` to keep command labels readable and
+  avoid fragile long version strings.
+- Existing generated images under `$CODEX_HOME/generated_images/...` were left
+  in place; project copies live under `docs/source/_static/`.
+
+Do not create yet
+-----------------
+
+- Provider-specific logo art.
+- Marketing hero graphics.
+- Screenshots of GitHub Actions unless the docs add a CI troubleshooting page.
+- Screenshots of terminal outputs; current docs are better served by diagrams.

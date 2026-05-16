@@ -79,7 +79,7 @@ merged = session.merge(other)
 | --- | --- | --- |
 | `fork()` | 新 session `parent_session_ids=(source.id,)` | 表示并行派生。 |
 | `detach()` | 新 session `parent_session_ids=()` | 切成新的 lineage root，但 sandbox 仍共享。 |
-| `merge(other)` | `parent_session_ids=(self.id, other.id)` | 拼接 `self.rows + other.rows`；两个 session 必须引用同一个 sandbox（按 `is` 判断），否则抛 `ValueError`。`cumulative_usage` 自动相加。 |
+| `merge(other)` | `parent_session_ids=(self.id, other.id)` | 拼接 `self.rows + other.rows`；两个 session 必须引用同一个 live sandbox，或都未打开但指向同一个 backend/spec，否则抛 `ValueError`。`cumulative_usage` 自动相加。 |
 
 模块级 `fork_session(...)` 和 `detach_session(...)` 只是调用对应方法。
 
@@ -95,6 +95,41 @@ merged = session.merge(other)
 - `run_session_compress(...)`
 
 `session_registry()` 是进程内调试注册表。`run_session_loop` 会注册输入 user session、agent session 和输出 session，并把输出设置为 active。
+
+## 持久化
+
+`run_session_loop(..., persist=True)` 会把输出 session 追加写入 JSONL：
+
+```python
+out = run_session_loop(
+    user_session=user_session,
+    agent_session=agent_session,
+    agent_provider=provider,
+    persist=True,
+)
+```
+
+默认路径和 config 一样走 `.openrath` 解析规则，文件位于：
+
+```text
+.openrath/sessions/<session-id>.jsonl
+```
+
+写入是 append-only：已有 user rows 会先 seed 到文件里，随后每个 assistant / tool_result chunk 落盘。正常返回时写 trailer；如果进程被杀或中途异常，没有 trailer，`load_session(...)` 会把 `closed` 标成 `False`。
+
+常用读取接口：
+
+```python
+from rath.session import list_persisted_sessions, load_session
+
+for meta in list_persisted_sessions():
+    print(meta.id, meta.chunk_count, meta.closed)
+
+persisted = load_session(out.id)
+user_session, agent_session = persisted.to_resumable_pair()
+```
+
+`to_resumable_pair()` 不会立刻打开 sandbox；它只恢复 backend/spec，让下一次 `run_session_loop(...)` 懒打开或复用稳定工作目录。
 
 ## 压缩会话
 

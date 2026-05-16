@@ -10,7 +10,7 @@ OpenRath supports CPython `3.10` through `3.13`. Choose the installation path th
 
 (install-openrath-from-pypi)=
 ## Install OpenRath from PyPI
-This is the user installation path. It installs the OpenRath core runtime: `Session`, `Workflow`, `FlowToolCall`, the local backend, and the default OpenAI-compatible LLM client.
+This is the user installation path. It installs the OpenRath core runtime: `Session`, `Workflow`, `FlowToolCall`, the local backend, OpenAI-compatible and Anthropic LLM clients, persistent config, and the stdio MCP adapter.
 
 ```bash
 pip install openrath
@@ -26,23 +26,66 @@ Core dependencies include:
 
 | Dependency | Purpose |
 | --- | --- |
-| `openai` | Default OpenAI-compatible chat client. |
+| `openai` | OpenAI-compatible chat client and Azure OpenAI routing. |
+| `anthropic` | Anthropic Messages API adapter. |
+| `mcp` | Stdio MCP server integration. |
 | `pydantic` | Tool schemas, request/response models, and configuration types. |
 
 ### Configure the LLM
-Real LLM workflows require OpenAI-compatible configuration. The core library keeps this explicit: build a `Provider` with the API key, optional base URL, and model. The repository examples include small helpers that read these values from process environment variables.
+Real LLM workflows require provider configuration. The most explicit path is to build a `Provider` with the API key, optional base URL, model, and provider kind. Clients resolve credentials in this order:
+
+1. `Provider(...)` fields.
+2. Environment variables.
+3. `~/.openrath/config.json` or `$OPENRATH_HOME/config.json`.
 
 ```bash
 export OPENAI_API_KEY=...
 export OPENAI_BASE_URL=https://api.openai.com/v1
 export OPENAI_DEFAULT_MODEL=gpt-5.5
+
+export ANTHROPIC_API_KEY=...
+export ANTHROPIC_DEFAULT_MODEL=claude-sonnet-4-5
 ```
 
 | Variable | Meaning |
 | --- | --- |
 | `OPENAI_API_KEY` | OpenAI or compatible gateway API key. The default client fails if this is missing. |
 | `OPENAI_BASE_URL` | OpenAI-compatible endpoint. |
-| `OPENAI_DEFAULT_MODEL` | Model used by the repository example helpers when no role-specific model is set. |
+| `OPENAI_DEFAULT_MODEL` | OpenAI-compatible fallback model. |
+| `AZURE_OPENAI_ENDPOINT` | Azure OpenAI endpoint fallback when `Provider.base_url` is empty. |
+| `AZURE_OPENAI_API_KEY` / `AZURE_API_KEY` | Azure OpenAI key fallbacks. |
+| `OPENAI_API_VERSION` / `AZURE_OPENAI_API_VERSION` | Legacy Azure API version; default is `2024-10-21`. |
+| `ANTHROPIC_API_KEY` | Anthropic API key. |
+| `ANTHROPIC_BASE_URL` | Optional Anthropic-compatible endpoint. |
+| `ANTHROPIC_DEFAULT_MODEL` | Anthropic fallback model. |
+
+Persistent config is JSON:
+
+```json
+{
+  "version": 1,
+  "llm": {
+    "default_provider": "openai-main",
+    "providers": {
+      "openai-main": {
+        "provider_kind": "openai",
+        "model": "gpt-5.5",
+        "api_key": "sk-..."
+      }
+    }
+  }
+}
+```
+
+Use it from Python:
+
+```python
+from rath.llm import Provider
+
+provider = Provider.from_config("openai-main", temperature=0.2)
+```
+
+OpenRath does not auto-load `.env` files. Source them in the shell or let your deployment platform inject secrets before starting Python.
 
 If you also cloned the OpenRath repository, you can first run examples that do not depend on OpenSandbox:
 
@@ -81,19 +124,19 @@ cd OpenRath
 uv sync --group dev --group docs
 ```
 
-Without `uv`, use an editable install:
+Without `uv`, use an editable install. This also works in an existing mamba/conda environment:
 
 ```bash
 pip install -e .
-pip install pytest flake8 mypy sphinx myst-parser pydata-sphinx-theme
+pip install pytest ruff mypy sphinx myst-parser pydata-sphinx-theme
 ```
 
 Development dependencies include:
 
 | Dependency group | Contents |
 | --- | --- |
-| runtime | `openai`, `pydantic`. |
-| dev | `pytest`, `flake8`, `mypy`. |
+| runtime | `openai`, `anthropic`, `mcp`, `pydantic`. |
+| dev | `pytest`, `ruff`, `mypy`. |
 | docs | `sphinx`, `myst-parser`, `pydata-sphinx-theme`. |
 
 Configure credentials in your shell, CI secret store, or deployment environment.
@@ -115,6 +158,12 @@ Or call Sphinx directly:
 
 ```bash
 uv run sphinx-build -M html docs/source docs/_build
+```
+
+In a mamba environment that already has the docs dependencies installed, the equivalent direct build is:
+
+```bash
+mamba run -n rath-dev python -m sphinx -M html docs/source docs/_build
 ```
 
 The generated output is under `docs/_build/html/`.

@@ -6,11 +6,12 @@
 
 1. [设计概览](concepts.md)：OpenRath 的心智模型和 PyTorch 类比边界。
 2. [主要组件](main_components.md)：每个模块负责什么，不负责什么。
-3. [会话](session.md)：`Session`、chunk、sandbox 绑定、lineage、压缩。
-4. [沙箱后端](backends.md)：`Backend`、`BackendSandbox`、工具载荷和结果。
-5. [工具](tools.md)：`FlowToolCall`、内置工具、自定义工具和 schema。
-6. [工作流](workflow_agent.md)：`Workflow`、`AgentParam`、`Agent` 和 `run_session_loop`。
-7. [LLM 请求接口](llm.md)：`Provider`、请求/响应类型、默认 OpenAI-compatible 客户端。
+3. [配置](config.md)：`~/.openrath/config.json`、LLM provider 和 MCP server。
+4. [会话](session.md)：`Session`、chunk、sandbox 绑定、lineage、压缩和持久化。
+5. [沙箱后端](backends.md)：`Backend`、`BackendSandbox`、工具载荷和结果。
+6. [工具](tools.md)：`FlowToolCall`、内置工具、自定义工具和 schema。
+7. [工作流](workflow_agent.md)：`Workflow`、`AgentParam`、`Agent` 和 `run_session_loop`。
+8. [LLM 请求接口](llm.md)：`Provider`、请求/响应类型、OpenAI-compatible 和 Anthropic 客户端。
 
 ```{toctree}
 ---
@@ -20,6 +21,7 @@ caption: 用户指南
 
 concepts
 main_components
+config
 session
 backends
 tools
