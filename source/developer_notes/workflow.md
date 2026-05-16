@@ -285,7 +285,7 @@ Inside a workflow, tools and sandbox still take effect through `run_session_loop
 | --- | --- |
 | Tool list merge | At the start of each `run_session_loop(...)`. |
 | Tool call record | Written to the output session as a `tool_result` chunk. |
-| sandbox handle | Taken from the input session with `take_sandbox()`, then bound to the output session. |
+| sandbox handle | Shared from the input session via `bind_sandbox` (refcount + 1); the input keeps its reference. |
 | sandbox backend spec | Stored on the output session. |
 | lineage | Output session records both the user session and agent session as parents. |
 

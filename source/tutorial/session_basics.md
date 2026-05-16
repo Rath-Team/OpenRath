@@ -132,7 +132,7 @@ local
 True
 ```
 
-`to("local")` sets the Backend target. It does not open a sandbox handle immediately. The handle opens on demand through `require_sandbox()`, `take_sandbox()`, or `with session:`.
+`to("local")` sets the Backend target. It does not open a sandbox handle immediately. The handle opens on demand through `require_sandbox()` or `with session:`.
 
 ## Step 6: Open and Close the Sandbox Handle
 

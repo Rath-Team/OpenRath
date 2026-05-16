@@ -59,7 +59,7 @@ python example/session_usage.py
 This script requires a real LLM configuration. It reads credentials from the process environment through `provider_from_env()`, then overrides the model to `glm-5.1`.
 
 ## Successful output
-The script streams newly appended chunks through `example_chunk_print()`. During the loop it usually emits assistant rows, plus any `tool_result` rows produced by model tool calls:
+The script streams assistant content deltas through `example_on_event()`. During the loop the output session collects assistant rows and any `tool_result` rows produced by model tool calls:
 
 ```text
 Session(

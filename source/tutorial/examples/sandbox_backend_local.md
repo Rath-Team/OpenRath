@@ -59,7 +59,7 @@ The exact text depends on the model. To check success, focus on whether the seco
 | Initial output | `user_session.sandbox_backend` is usually empty at first. |
 | `spec=None` | The model sees a temporary empty workspace. |
 | `spec="."` | The model can list the current project directory. |
-| Streamed assistant rows | The script uses `example_chunk_print()` to print chunks appended by each `agent(user_session)` call. |
+| Streamed assistant deltas | The script uses `example_on_event()` to forward streaming deltas from each `agent(user_session)` call to stdout. |
 
 ## Troubleshooting
 | Symptom | Check |

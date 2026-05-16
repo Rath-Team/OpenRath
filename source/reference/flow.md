@@ -32,8 +32,8 @@ When an `AgentParam` is assigned to a workflow as an attribute, `Workflow.__seta
 ### Preset workflows
 | Class | Constructor arguments | Behavior |
 | --- | --- | --- |
-| `Agent` | `system_prompt`, `provider`, `tools=None`, `chunk_print=None` | Creates an agent session and stores the supplied provider. `forward(...)` calls `run_session_loop(...)`. |
-| `Compressor` | `compress_instruction`, `provider`, `chunk_print=None` | `forward(...)` calls `run_session_compress(...)`. |
+| `Agent` | `system_prompt`, `provider`, `tools=None`, `on_event=None` | Creates an agent session and stores the supplied provider. `forward(...)` calls `run_session_loop(...)`. When `on_event` is provided, the underlying chat client must satisfy `StreamingChatClient`. |
+| `Compressor` | `compress_instruction`, `provider`, `on_event=None` | `forward(...)` calls `run_session_compress(...)`. |
 
 `Agent.register_tool(tool)` adds tools and deduplicates by name. `Agent.unregister_tool(tool_name)` removes the tool with the same name.
 

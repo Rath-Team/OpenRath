@@ -104,7 +104,7 @@ OpenRath uses normalized dataclasses internally:
 | Customize tool dispatch policy | Implement `SessionLoopExecutor.dispatch_tool(...)`. |
 | Test fixed model responses | Use a scripted executor. |
 | Call Anthropic (`claude-*`) | `Provider(provider_kind="anthropic", model="...")`. |
-| Stream assistant deltas | `from rath.session.loop_stream import run_session_loop_stream`, pass an `on_event=` callback. |
+| Stream assistant deltas | Pass `on_event=` to `run_session_loop(...)`; the resolved client must satisfy `StreamingChatClient`. |
 | Wire an MCP server's tools | `from rath.flow.tool.mcp_adapter import mcp_tools_from_server` — `mcp` ships as a core dependency. |
 | Per-session token accounting | `Session.cumulative_usage` (the loop / compress accumulate automatically). |
 | Token budget guardrail | `Provider(budget_total_tokens=..., on_budget_exceeded=callback)`; the callback can `raise BudgetExceededError` to abort the loop. |

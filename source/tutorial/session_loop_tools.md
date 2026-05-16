@@ -113,7 +113,7 @@ print(sandbox.backend.name)
 | `unknown_tool` | The tool name returned by the model is not in the tool table. |
 | `invalid_tool_arguments` | The model returned JSON arguments that could not be parsed. |
 | Tool execution failed | Check the message and detail in `tool_execution_exception`. |
-| Tool cannot find a sandbox | Confirm the user Session has already called `.to("local")` or `.with_sandbox(...)`. |
+| Tool cannot find a sandbox | Confirm the user Session has already called `.to("local")` or `.bind_sandbox(...)`. |
 
 ## Exercises
 1. Change the user prompt to "Answer only; do not call tools" and observe whether `tool_result` still appears in the chunk table.

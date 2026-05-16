@@ -24,7 +24,7 @@ user_session = Session.from_user_message("Summarize this workspace.")
 
 ## 绑定沙箱
 
-`run_session_loop` 会调用 `user_session.take_sandbox()`。因此进入循环前，用户侧 session 必须已经有 sandbox handle 或至少有 sandbox backend target。
+`run_session_loop` 会与用户 session 共享同一个 sandbox（引用计数 +1），所以进入循环前 user session 至少要有 sandbox handle 或 backend target。
 
 ```python
 user_session = Session.from_user_message("List files.")
@@ -47,38 +47,39 @@ from rath.session import Session
 
 backend = get("local")
 with backend.open() as sandbox:
-    user_session = Session.from_user_message("hello").with_sandbox(sandbox)
+    user_session = Session.from_user_message("hello").bind_sandbox(sandbox)
 ```
 
 ## sandbox 生命周期
 
-`Session` 的 sandbox 行为是 lazy 的：
+`Session.sandbox` 走**引用计数**：每个持有该 sandbox 的 session 算 1 个引用，`close_sandbox()` 释放一次，归零时 backend 才真正关闭。
 
 | 方法 | 行为 |
 | --- | --- |
-| `to(backend, spec=None)` | 关闭当前 handle，设置 backend target，返回 `self`。 |
-| `require_sandbox()` | 若已有 open handle，返回它；否则按 backend target lazy open。 |
-| `take_sandbox()` | 取走 handle，用于把 sandbox 从输入 session 转移到输出 session。 |
-| `bind_sandbox(sandbox)` | 把已有 `BackendSandbox` 绑定到当前 session。 |
-| `close_sandbox()` | 关闭当前 handle，但保留 backend target。 |
+| `to(backend, spec=None)` | 释放当前 handle，设置 backend target，返回 `self`。 |
+| `require_sandbox()` | 若已有 open handle，返回它；否则按 backend target lazy open 并获取一个引用。 |
+| `bind_sandbox(sandbox)` | 释放旧 handle，对新 sandbox 获取一个引用（refcount +1）。 |
+| `close_sandbox()` | 释放当前引用；引用计数为 0 时 backend 才 close。 |
 
-`run_session_loop` 会把用户 session 的 sandbox 转移到输出 session 上：调用后，输入 session 通常不再持有 `sandbox`，输出 session 持有同一个 handle。
+`run_session_loop` / `run_session_compress` 把用户 session 的 sandbox 共享给输出 session（refcount +1）。两边的 session 持有同一个 handle，都可以独立 `close_sandbox()`；只有最后一个引用释放后，backend 才真正回收。
 
-## `fork` 与 `detach`
+## `fork`、`detach`、`merge`
 
 ```python
 forked = session.fork()
 detached = session.detach()
+merged = session.merge(other)
 ```
 
-两者都会复制 `chunk_table`，也都会复制 sandbox target（backend 名称和 open spec），但不会复制已经打开的 sandbox handle。
+三者都会复制 `chunk_table`，并与源 session **共享同一个 sandbox 引用**（refcount +1）。
 
-差异在 lineage：
+差异在 lineage 与适用语义：
 
-| 方法 | lineage 语义 |
-| --- | --- |
-| `fork()` | 新 session 的 `parent_session_ids=(source.id,)`，表示派生。 |
-| `detach()` | 新 session 的 `parent_session_ids=()`，表示切成新的 lineage root。 |
+| 方法 | lineage 语义 | 备注 |
+| --- | --- | --- |
+| `fork()` | 新 session `parent_session_ids=(source.id,)` | 表示并行派生。 |
+| `detach()` | 新 session `parent_session_ids=()` | 切成新的 lineage root，但 sandbox 仍共享。 |
+| `merge(other)` | `parent_session_ids=(self.id, other.id)` | 拼接 `self.rows + other.rows`；两个 session 必须引用同一个 sandbox（按 `is` 判断），否则抛 `ValueError`。`cumulative_usage` 自动相加。 |
 
 模块级 `fork_session(...)` 和 `detach_session(...)` 只是调用对应方法。
 
@@ -113,8 +114,8 @@ compressed = run_session_compress(
 
 ## 注意事项
 
-1. 未绑定 sandbox 的 user session 不能直接进入 `run_session_loop`，否则会报 `RuntimeError("no sandbox to take")`。
-2. `fork` / `detach` 不复制 open sandbox handle，这避免多个 session 意外共享一个运行时句柄。
-3. `LocalBackend.close(...)` 会删除它管理的 working directory；不要把不可删除的重要目录当作长期 sandbox working directory。
+1. 未绑定 sandbox 的 user session 仍可以进入 `run_session_loop`，但工具调用时会拿不到 sandbox 而失败；交互式场景请先 `to(...)` 或 `bind_sandbox(...)`。
+2. `fork` / `detach` / `merge` 都与源 session 共享 sandbox 引用——多个 session 看到的是同一个工作目录或远端容器。若希望各自独立运行时句柄，可先 `close_sandbox()` 再 `to(...)` 重开一个。
+3. `LocalBackend.close(...)` 仅在它自己 `mkdtemp` 出来的 working directory 上调 `rmtree`；用户通过 `spec.working_dir` 显式指定的目录会保留。
 
 **下一篇：** [沙箱后端](backends.md)

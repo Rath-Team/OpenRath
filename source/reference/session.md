@@ -31,11 +31,13 @@ Session state, chunk transcript, session loop, context compression, and lineage 
 | --- | --- | --- |
 | `Session.from_agent_prompt(prompt)` | `Session` | Creates a single `system` chunk. |
 | `Session.from_user_message(text)` | `Session` | Creates a single `user` chunk. |
-| `session.to(backend="local", spec=None)` | `Session` | Sets the sandbox target and closes the current handle. |
-| `session.require_sandbox()` | `BackendSandbox` | Returns or lazily opens the current sandbox. |
-| `session.take_sandbox()` | `BackendSandbox` | Takes the handle so the loop can attach it to the output session. |
-| `session.fork()` | `Session` | Copies chunk rows and sandbox target, with the parent pointing to the source session. |
-| `session.detach()` | `Session` | Copies chunk rows and sandbox target, then creates a new lineage root. |
+| `session.to(backend="local", spec=None)` | `Session` | Sets the sandbox target and releases the current handle (refcount − 1). |
+| `session.bind_sandbox(sandbox)` | `Session` | Releases the current handle and takes a reference on `sandbox` (refcount + 1). |
+| `session.require_sandbox()` | `BackendSandbox` | Returns or lazily opens the current sandbox; acquires one reference on first open. |
+| `session.close_sandbox()` | `Session` | Drops this session's reference; the backend closes when the count reaches zero. |
+| `session.fork()` | `Session` | Copies chunk rows and shares the sandbox reference (refcount + 1); parent points to the source session. |
+| `session.detach()` | `Session` | Copies chunk rows and shares the sandbox reference; creates a new lineage root. |
+| `session.merge(other)` | `Session` | Concatenates `self.rows + other.rows`. Both inputs must share the same sandbox (by identity) or both be unbound; sums `cumulative_usage`. |
 
 ### Chunk helpers
 | Function | Returns | Purpose |
@@ -56,7 +58,10 @@ run_session_loop(
     tools: list[FlowToolCall] | None = None,
     executor: SessionLoopExecutor | None = None,
     max_tool_rounds: int = 16,
-    chunk_print: ChunkAppendHook | None = None,
+    on_event: Callable[[RathLLMStreamDelta], None] | None = None,
+    persist: bool = False,
+    persist_path: Path | None = None,
+    sandbox_handle_id: str | None = None,
 ) -> Session
 ```
 
@@ -68,9 +73,11 @@ run_session_loop(
 | `tools` | Additional `FlowToolCall` instances. |
 | `executor` | Replacement point for completion and tool dispatch. |
 | `max_tool_rounds` | Maximum number of tool-call rounds. |
-| `chunk_print` | Optional hook called for each newly appended chunk. |
+| `on_event` | When set, each streamed `RathLLMStreamDelta` is forwarded here; the resolved chat client must satisfy `StreamingChatClient`. |
+| `persist` / `persist_path` | When truthy, every appended chunk is written to `.openrath/sessions/<out.id>.jsonl` (or the explicit path). |
+| `sandbox_handle_id` | Optional sandbox identifier persisted in the JSONL header for later reattach. |
 
-The returned `Session` starts with the user rows, then appends assistant rows and `tool_result` rows. The output session lineage parents are the user session and agent session.
+The output session shares the input user session's sandbox reference (refcount + 1). The returned `Session` starts with the user rows, then appends assistant rows and `tool_result` rows. The output session lineage parents are the user session and agent session.
 
 ### Compression
 ```python
@@ -82,17 +89,21 @@ run_session_compress(
     executor: SessionLoopExecutor | None = None,
     compress_instruction: str | None = None,
     register_sessions: bool = True,
-    chunk_print: ChunkAppendHook | None = None,
+    on_event: Callable[[RathLLMStreamDelta], None] | None = None,
+    persist: bool = False,
+    persist_path: Path | None = None,
+    sandbox_handle_id: str | None = None,
 ) -> Session
 ```
 
-Returns a user-only session. The compression request uses `tools=None` and `tool_choice="none"`. A model response with tool calls raises `RuntimeError`.
+Returns a user-only session. The compression request uses `tools=None` and `tool_choice="none"`. A model response with tool calls raises `RuntimeError`. `on_event` / `persist` behavior matches `run_session_loop`.
 
 ### Exceptions and edge behavior
 | Location | Behavior |
 | --- | --- |
 | `Session.require_sandbox()` | Raises `RuntimeError` when no backend target is set. |
-| `Session.take_sandbox()` | Raises `RuntimeError` when there is no sandbox and no backend target. |
+| `Session.merge(other)` | Raises `ValueError` when the two sessions reference different sandboxes (or different backend targets, when both unbound). |
+| `run_session_loop(on_event=...)` | Raises `TypeError` upfront when the resolved chat client does not implement `complete_stream(req)`. |
 | `run_session_loop(...)` | Non-JSON tool arguments, unknown tools, and tool execution exceptions are written as JSON error `tool_result` rows. |
 | `run_session_compress(...)` | Empty model content, tool calls, and unexpected finish reasons raise `RuntimeError`. |
 

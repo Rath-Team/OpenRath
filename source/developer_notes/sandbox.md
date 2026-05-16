@@ -104,11 +104,13 @@ Lifecycle order:
 | Stage | Method | Behavior |
 | --- | --- | --- |
 | target | `session.to("local", spec=...)` | Records the backend name and open spec. |
-| lazy open | `session.require_sandbox()` | Opens a sandbox handle from the target. |
-| transfer | `session.take_sandbox()` | Loop transfers the input session handle to the output session. |
-| close | `session.close_sandbox()` | Releases the current handle and keeps the backend target. |
+| lazy open | `session.require_sandbox()` | Opens a sandbox handle from the target and adds one reference. |
+| share | `out.bind_sandbox(user.sandbox)` | Loop / `fork()` / `merge()` increment the refcount so both sessions reference the same handle. |
+| close | `session.close_sandbox()` | Drops one reference. When the count reaches zero, the backend closes the handle. |
 
-`run_session_loop(...)` calls `user_session.take_sandbox()`. After the loop finishes, the input user session usually no longer holds `sandbox`; the output session owns the same handle.
+`BackendSandbox._refcount` tracks live references. Every `Session.sandbox` slot, every `with sandbox:` block, and every explicit `sb.acquire()` counts as one. There is no force-close path: the backend's `close(sb)` runs only when the final reference is released.
+
+`run_session_loop(...)` and `run_session_compress(...)` share the user session's sandbox with the returned session (refcount + 1). Both sessions end up holding the same handle; either side can `close_sandbox()` independently.
 
 ## local backend
 

@@ -132,22 +132,21 @@ Common methods:
 | Method | Behavior |
 | --- | --- |
 | `to("local", spec=...)` | Closes the current handle, sets the backend target, and returns the same session. |
-| `with_sandbox(sandbox)` | Binds an already-open sandbox handle. |
-| `require_sandbox()` | Returns the current handle; if only a backend target exists, opens it lazily. |
-| `take_sandbox()` | Takes the current handle; if only a backend target exists, opens it lazily and then takes it. |
-| `close_sandbox()` | Closes the current handle and keeps the backend target. |
+| `bind_sandbox(sandbox)` | Releases the current handle (if any) and takes a reference on `sandbox` (refcount + 1). |
+| `require_sandbox()` | Returns the current handle; if only a backend target exists, opens it lazily and acquires one reference. |
+| `close_sandbox()` | Drops this session's reference; the backend closes the handle when the count reaches zero. |
+| `fork()` / `detach()` / `merge(other)` | Duplicate the transcript and share the sandbox reference with the new session (refcount + 1). |
 
-The sandbox behavior of `fork()` is easy to misread: fork copies the backend target so the derived session knows which backend to open later, but any open handle stays on the source session.
+`fork()`, `detach()`, and `merge(other)` all share the open handle with the new session via `bind_sandbox`. `merge(other)` requires both sessions to share the same `BackendSandbox` (by identity) or both be unbound — otherwise it raises `ValueError`.
 
 ```python
 from rath.session import Session
 
 source = Session.from_user_message("Inspect project.").to("local")
-forked = source.fork()
-
-print(source.sandbox is None)
-print(forked.sandbox is None)
-print(forked.sandbox_backend)
+with source:
+    forked = source.fork()
+    assert source.sandbox is forked.sandbox  # shared reference
+    assert source.sandbox._refcount == 2
 ```
 
 ## run_session_loop State Transfer
@@ -155,7 +154,7 @@ print(forked.sandbox_backend)
 `run_session_loop(...)` does four things:
 
 1. Merges built-in tools with user-provided `FlowToolCall` objects.
-2. Takes the sandbox from the input user session and creates the output session.
+2. Shares the input user session's sandbox with the output session (refcount + 1).
 3. Runs LLM completions in a loop; if the assistant returns tool calls, executes tools and appends `tool_result`.
 4. When there are no tool calls, appends the final assistant row and returns the output session.
 
@@ -163,9 +162,9 @@ The state transfer is:
 
 | Location | Before loop | After loop |
 | --- | --- | --- |
-| Input user session | Holds original user rows and may hold a sandbox. | Sandbox is taken; `user_session.sandbox` becomes `None`. |
+| Input user session | Holds original user rows and may hold a sandbox. | Sandbox unchanged; the input session keeps its reference. |
 | agent session | Holds system rows. | Unchanged. |
-| Output session | Does not exist. | Holds user rows, assistant rows, tool result rows, and the sandbox. |
+| Output session | Does not exist. | Holds user rows, assistant rows, tool result rows, and a shared reference to the same sandbox. |
 
 Tool errors do not directly stop the loop. The current implementation writes errors as JSON `tool_result` chunks and sends that result back to the model. There are three cases:
 
@@ -184,7 +183,7 @@ Tool errors do not directly stop the loop. The current implementation writes err
 | Request content | agent session rows + user session rows + compression instruction. |
 | tool choice | Tools are forced off. |
 | Output content | Model text becomes the only `user` chunk. |
-| sandbox | Moved from the input user session to the output session. |
+| sandbox | Shared with the output session via `bind_sandbox` (refcount + 1); the input keeps its reference. |
 | lineage extras | `compression.lossy=True`, `compression.rows_out=1`. |
 
 This operation is lossy. It reduces context length, and the compressed session keeps only the summary text written by the model.
@@ -195,7 +194,7 @@ This operation is lossy. It reduces context length, and the compressed session k
 | --- | --- |
 | How a row becomes an LLM message | `src/rath/session/chunk.py::chunk_table_to_messages` |
 | When sandbox lazy open happens | `src/rath/session/session.py::_ensure_sandbox` |
-| How loop moves the sandbox | `take_sandbox()` in `src/rath/session/loop.py::run_session_loop` |
+| How loop shares the sandbox | `out.bind_sandbox(user_session.sandbox)` in `src/rath/session/loop.py::run_session_loop` |
 | How compress disables tools | `default_tool_choice="none"` in `src/rath/session/compress.py::run_session_compress` |
 | Whether fork/detach copy an open handle | `tests/session/test_session_fork_detach_merge.py` |
 
@@ -203,11 +202,10 @@ This operation is lossy. It reduces context length, and the compressed session k
 
 | Behavior | Current implementation |
 | --- | --- |
-| `take_sandbox()` without a backend target | Raises `RuntimeError("no sandbox to take")`. |
 | `require_sandbox()` without a backend target | Raises `RuntimeError` with guidance to call `session.to("local")` or `bind_sandbox(...)`. |
 | `require_sandbox()` with a bound closed sandbox | Raises `RuntimeError("session sandbox is closed")`. |
-| `fork()` / `detach()` | Copies chunk rows and sandbox target; keeps the source session's open handle on the source. |
-| `run_session_loop(...)` | Output session takes over the input user session's sandbox handle. |
+| `fork()` / `detach()` / `merge()` | Copy chunk rows and share the source session's sandbox reference (refcount + 1). |
+| `run_session_loop(...)` | Output session shares the input user session's sandbox reference (refcount + 1). |
 | malformed tool arguments | Writes JSON error `tool_result` and continues the loop. |
 | unknown tool | Writes JSON error `tool_result` and continues the loop. |
 | tool exception | Catches the exception and writes JSON error `tool_result`. |
