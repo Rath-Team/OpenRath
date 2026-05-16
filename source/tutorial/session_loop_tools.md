@@ -9,7 +9,7 @@ After you have a Session and sandbox, the agent loop turns model tool calls into
 | Tool schema | Built-in and custom tools are merged into the schema visible to the model. |
 | Tool round | The assistant emits tool calls, then the loop executes tools and appends `tool_result`. |
 | Output Session | The output Session inherits user-side rows and appends new rows. |
-| Sandbox migration | The input Session's sandbox handle moves to the output Session. |
+| Sandbox sharing | The input Session's sandbox handle is shared with the output Session through refcounting. |
 
 ## Step 1: Prepare Agent and User Sessions
 ```python
@@ -98,13 +98,13 @@ Observed behavior:
 - The `content` in the `tool_result` row is the tool output visible to the next model round.
 - The output Session still starts with user-side content; the agent system prompt is not copied into it.
 
-## Step 5: Confirm Sandbox Migration
+## Step 5: Confirm Sandbox Sharing
 ```python
 sandbox = out.require_sandbox()
 print(sandbox.backend.name)
 ```
 
-`run_session_loop(...)` takes the sandbox handle from the input user Session and binds it to the output Session. If another agent or Workflow runs later, tools can still use the same sandbox.
+`run_session_loop(...)` shares the input user Session's sandbox handle with the output Session (refcount +1). If another agent or Workflow runs later, tools can still use the same sandbox. Either Session can call `close_sandbox()` independently; the backend closes only after the last reference is released.
 
 ## Troubleshooting
 | Symptom | Check |

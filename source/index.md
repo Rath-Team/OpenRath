@@ -20,9 +20,8 @@ from rath.session import Session
 
 agent = flow.Agent(
     system_prompt="Use tools when helpful.",
-    provider=Provider(
-        base_url=os.environ.get("OPENAI_BASE_URL"),
-        api_key=os.environ["OPENAI_API_KEY"],
+    provider=Provider.from_config(
+        None,
         model=os.environ.get("OPENAI_DEFAULT_MODEL") or "gpt-5.5",
     ),
 )
@@ -36,14 +35,17 @@ out = agent(user)
 
 Tutorials use scripted LLM responses where reproducibility matters. Production
 agent workflows use the same `Session`, `FlowToolCall`, `Workflow`, and
-`Backend` abstractions with an OpenAI-compatible `Provider`.
+`Backend` abstractions with OpenAI-compatible or Anthropic `Provider`
+configuration.
 
 ## Where To Start
 
 | Path | Use it for | Entry |
 | --- | --- | --- |
 | Installation | Install OpenRath, configure model credentials, and connect a sandbox backend when needed. | [Installation](install.md) |
+| Project Status | Understand what is stable, what recently landed, and what still needs productization. | [Project Status](project_status.md) |
 | Tutorials | Learn from runnable code, then adapt examples including multi-agent workflows. | [Tutorials](tutorial/index.md) |
+| Blog | Read project updates, release announcements, and engineering notes. | [Blog](https://blog.openrath.com) |
 | Developer Notes | Understand runtime components, call boundaries, and how the docs map to source code. | [Developer Notes](developer_notes/index.md) |
 | API Reference | Look up public modules, function signatures, and integration points. | [API Reference](reference/index.md) |
 
@@ -56,7 +58,7 @@ agent workflows use the same `Session`, `FlowToolCall`, `Workflow`, and
 | `FlowToolCall` | Exposes JSON schemas to the model and Python callables to the runtime. |
 | `Workflow` | Composes agents and session transformations as ordinary Python modules. |
 | `AgentParam` | Stores the agent system session plus LLM routing options. |
-| `Provider` | Stores OpenAI-compatible chat completion identity and request parameters. |
+| `Provider` | Stores LLM routing, request parameters, retry/budget policy, and optional config lookup. |
 
 ## Runnable Workflows
 

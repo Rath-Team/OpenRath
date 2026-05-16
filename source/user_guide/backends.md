@@ -67,7 +67,7 @@ with backend.open() as sandbox:
 
 如果 `open(spec=None)`，本地后端会创建一个临时目录。若 `spec.working_dir` 存在，则直接使用该目录。
 
-注意：当前 `close(...)` 会 `shutil.rmtree(sandbox.handle)`，因此把真实项目目录绑定为 working directory 时要特别谨慎。
+注意：`close(...)` 只会删除 `LocalBackend` 自己创建的临时目录。用户通过 `spec.working_dir` 显式指定的目录会保留，但工具仍然会在其中读写文件，因此不要把真实项目目录暴露给不受信任的模型工具调用。
 
 ## `opensandbox` 后端
 

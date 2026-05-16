@@ -13,6 +13,7 @@ Session state, chunk transcript, session loop, context compression, and lineage 
 | `rath.session.primitives` | `src/rath/session/primitives.py` |
 | `rath.session.graph` | `src/rath/session/graph/` |
 | `rath.session.manager` | `src/rath/session/manager.py` |
+| `rath.session.persistence` | `src/rath/session/persistence/` |
 
 ## Public contract
 ### `Session`
@@ -26,6 +27,7 @@ Session state, chunk transcript, session loop, context compression, and lineage 
 | `parent_session_ids` | `tuple[UUID, ...]` | Lineage parents. |
 | `lineage_operator` | `str` | Operation that produced the current session. |
 | `lineage_kind` | `LineageKind` | Lineage operation kind. |
+| `cumulative_usage` | `RathLLMTokenUsage` \| `None` | Running token usage accumulated by loop/compress and summed by `merge()`. |
 
 | Method | Returns | Behavior |
 | --- | --- | --- |
@@ -38,6 +40,13 @@ Session state, chunk transcript, session loop, context compression, and lineage 
 | `session.fork()` | `Session` | Copies chunk rows and shares the sandbox reference (refcount + 1); parent points to the source session. |
 | `session.detach()` | `Session` | Copies chunk rows and shares the sandbox reference; creates a new lineage root. |
 | `session.merge(other)` | `Session` | Concatenates `self.rows + other.rows`. Both inputs must share the same sandbox (by identity) or both be unbound; sums `cumulative_usage`. |
+
+```{figure} ../_static/session-merge-lineage.png
+:alt: Session merge lineage
+
+`Session.merge(...)` joins compatible branches, preserves parent lineage, and
+keeps sandbox ownership explicit.
+```
 
 ### Chunk helpers
 | Function | Returns | Purpose |
@@ -79,6 +88,8 @@ run_session_loop(
 
 The output session shares the input user session's sandbox reference (refcount + 1). The returned `Session` starts with the user rows, then appends assistant rows and `tool_result` rows. The output session lineage parents are the user session and agent session.
 
+`executor` and `on_event` are mutually exclusive unless the caller manually wraps a streaming client in `StreamingExecutor`. When `on_event` is provided, the resolved client must implement `complete_stream(req)`; OpenAI supports this path, Anthropic currently does not.
+
 ### Compression
 ```python
 run_session_compress(
@@ -97,6 +108,39 @@ run_session_compress(
 ```
 
 Returns a user-only session. The compression request uses `tools=None` and `tool_choice="none"`. A model response with tool calls raises `RuntimeError`. `on_event` / `persist` behavior matches `run_session_loop`.
+
+### Persistence
+```{figure} ../_static/session-persistence-jsonl.png
+:alt: Append-only session persistence JSONL
+
+Session persistence writes a header, chunk records, and a trailer to JSONL; a
+missing trailer marks an interrupted run.
+```
+
+| API | Behavior |
+| --- | --- |
+| `SessionWriter(session, path=None, sandbox_handle_id=None)` | Opens an append-only JSONL writer and writes a header. |
+| `load_session(id, path=None)` | Parses a persisted session JSONL file into `PersistedSession`. |
+| `list_persisted_sessions()` | Lists header metadata and closed/crashed state for stored sessions. |
+| `delete_session(id)` | Deletes one persisted session file. |
+| `prune_sessions(older_than=...)` | Deletes persisted sessions older than a cutoff. |
+| `PersistedSession.to_resumable_pair(agent_prompt=None)` | Builds `(user_session, agent_session)` for another loop call without opening a sandbox. |
+
+Persistence records are newline-delimited JSON:
+
+| Record | Meaning |
+| --- | --- |
+| `header` | Session id, lineage, sandbox backend/spec, optional sandbox handle id. |
+| `chunk` | One appended chunk row. Inherited user rows are seeded before new loop output rows. |
+| `trailer` | Graceful close marker plus final cumulative usage. Missing trailer means the process likely crashed mid-write. |
+
+### Lineage export
+| API | Behavior |
+| --- | --- |
+| `session_to_jsonl_row(session)` | Projects one session into a JSON-ready lineage row. |
+| `export_jsonl_string(sessions)` | Returns JSONL for an iterable of sessions. |
+| `export_jsonl(sessions, path)` | Writes lineage JSONL to disk. |
+| `export_journal_jsonl(journal, path, skip_unknown=True)` | Resolves `LineageJournal.visit_order` through the registry and exports rows. |
 
 ### Exceptions and edge behavior
 | Location | Behavior |
@@ -123,6 +167,9 @@ Returns a user-only session. The compression request uses `tools=None` and `tool
 .. autoclass:: rath.session.SessionLoopExecutor
    :members:
 
+.. autoclass:: rath.session.loop.StreamingExecutor
+   :members:
+
 .. autofunction:: rath.session.run_session_compress
 
 .. autofunction:: rath.session.create_leaf_user
@@ -132,6 +179,36 @@ Returns a user-only session. The compression request uses `tools=None` and `tool
 .. autofunction:: rath.session.fork_session
 
 .. autofunction:: rath.session.detach_session
+
+.. autoclass:: rath.session.SessionWriter
+   :members:
+
+.. autofunction:: rath.session.load_session
+
+.. autofunction:: rath.session.list_persisted_sessions
+
+.. autofunction:: rath.session.delete_session
+
+.. autofunction:: rath.session.prune_sessions
+
+.. autoclass:: rath.session.PersistedSession
+   :members:
+
+.. autoclass:: rath.session.PersistedSessionHeader
+   :members:
+
+.. autoclass:: rath.session.PersistedSessionMeta
+   :members:
+
+.. autoexception:: rath.session.PersistenceError
+
+.. autofunction:: rath.session.graph.export.session_to_jsonl_row
+
+.. autofunction:: rath.session.graph.export.export_jsonl_string
+
+.. autofunction:: rath.session.graph.export.export_jsonl
+
+.. autofunction:: rath.session.graph.export.export_journal_jsonl
 ```
 
 [← API Reference](index.md)

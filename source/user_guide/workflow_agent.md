@@ -90,7 +90,7 @@ compressed = compressor.forward(out_session)
 `run_session_loop` 的关键行为：
 
 1. 合并内置工具与 `tools=[...]` 用户工具；
-2. 从 `user_session` 取走 sandbox，并绑定到输出 session；
+2. 与 `user_session` 共享 sandbox，并把引用绑定到输出 session；
 3. 注册 user、agent、output 三个 session；
 4. 把 `agent_session` messages 拼在用户历史之前；
 5. 调用 `executor.complete(req)`；
@@ -98,7 +98,7 @@ compressed = compressor.forward(out_session)
 7. 若无 tool calls，追加 assistant chunk 并返回；
 8. 最多执行 `max_tool_rounds` 轮工具调用。
 
-默认执行器是（`provider` 与传入 `run_session_loop` 的 `agent_provider` 相同）：
+默认执行器会通过 provider registry 构造客户端。OpenAI-compatible provider 等价于：
 
 ```python
 DefaultSessionLoopExecutor(RathOpenAIChatClient(provider))

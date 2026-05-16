@@ -11,11 +11,12 @@ This section organizes the public API by the actual package structure. Each page
 | Package | Contents |
 | --- | --- |
 | [`rath`](rath.md) | Package-level entrypoint. |
-| [`rath.session`](session.md) | `Session`, chunks, loop, compression, lineage, registry. |
-| [`rath.backend`](backend.md) | Backend abstractions, sandboxes, tool payloads, results, registry, stream. |
+| [`rath.session`](session.md) | `Session`, chunks, loop, compression, persistence, lineage, registry. |
+| [`rath.backend`](backend.md) | Backend abstractions, sandboxes, persistent sandbox identities, tool payloads, results, registry, stream. |
 | [`rath.flow`](flow.md) | `Workflow`, `AgentParam`, `Agent`, `Compressor`. |
-| [`rath.flow.tool`](flow_tool.md) | `FlowToolCall`, built-in system tools, backend tool factories, schema merging. |
-| [`rath.llm`](llm.md) | `Provider`, request/response types, OpenAI-compatible client. |
+| [`rath.flow.tool`](flow_tool.md) | `FlowToolCall`, built-in system tools, MCP adapters, backend tool factories, schema merging. |
+| [`rath.llm`](llm.md) | `Provider`, request/response types, OpenAI and Anthropic clients, client registry, streaming. |
+| [`rath.config`](config.md) | Persistent `~/.openrath/config.json` schema, path resolution, and store helpers. |
 | [`rath.utils`](utils.md) | Project-root and test environment helpers. |
 
 ```{toctree}
@@ -30,5 +31,6 @@ backend
 flow
 flow_tool
 llm
+config
 utils
 ```

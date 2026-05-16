@@ -13,6 +13,7 @@ Backend abstractions, sandbox handles, backend tool payloads, execution results,
 | `rath.backend.local` | `src/rath/backend/local.py` |
 | `rath.backend.opensandbox` | `src/rath/backend/opensandbox.py` |
 | `rath.backend.stream` | `src/rath/backend/stream.py` |
+| `rath.backend.persistence` | `src/rath/backend/persistence/` |
 
 ## Public contract
 ### Backend interface
@@ -21,9 +22,28 @@ Backend abstractions, sandbox handles, backend tool payloads, execution results,
 | `Backend.is_available()` | `bool` | Static availability check. |
 | `Backend.capabilities()` | `Capabilities` | Backend class-level capabilities. |
 | `Backend.supported_calls()` | `frozenset[type[BackendTool]]` | Supported payload types. |
-| `backend.open(spec=None)` | `BackendSandbox` | Opens a sandbox handle. |
+| `backend.open(spec=None)` | `BackendSandbox` | Opens a sandbox handle with `refcount == 0`; bind it to a session or enter its context before holding it. |
 | `backend.close(sandbox)` | `None` | Closes and releases resources. |
 | `backend.dispatch(sandbox, call)` | `ToolResult` \| `bool` | Executes the payload. |
+
+### Sandbox handle lifecycle
+```{figure} ../_static/sandbox-refcount-lifecycle.png
+:alt: Refcounted sandbox lifecycle
+
+Each `Session.sandbox` slot owns one sandbox reference; the backend closes the
+handle only after the final reference is released.
+```
+
+| API | Behavior |
+| --- | --- |
+| `sandbox.refcount` | Read-only live reference count. |
+| `sandbox.acquire()` | Adds one reference; raises `BackendSandboxClosed` if closed. |
+| `sandbox.release()` | Drops one reference; closes through the backend when the count reaches zero. |
+| `with sandbox:` | Acquires on enter and releases on exit. |
+| `sandbox.dispatch(call)` | Runs a backend payload unless the sandbox is closed. |
+| `sandbox.stream(buffer=0)` | Creates a FIFO worker stream bound to this sandbox. |
+
+Every `Session.sandbox` slot owns one reference. `Session.bind_sandbox(...)`, `Session.require_sandbox()`, `run_session_loop(...)`, `run_session_compress(...)`, `fork()`, `detach()`, and `merge()` all preserve this ownership rule.
 
 ### Sandbox spec
 | Field | Type | Description |
@@ -68,6 +88,31 @@ Backend abstractions, sandbox handles, backend tool payloads, execution results,
 | --- | --- |
 | `local` | Host-side subprocess plus filesystem workspace. Automatically registered after importing `rath.backend`. |
 | `opensandbox` | Optional SDK backend. The container root is `/workspace`; `working_dir` requests a host bind. |
+
+OpenSandbox uses `opensandbox/code-interpreter:v1.0.2` by default. If a requested host bind is rejected by the server allowlist, OpenRath retries once with an empty workspace unless `RATH_OPENSANDBOX_STRICT_WORKSPACE_BIND=1` is set.
+
+## Persistent sandbox identities
+`PersistentSandboxRegistry` stores reusable sandbox identities under `.openrath/sandboxes/`; it does not hold live `BackendSandbox` handles.
+
+```{figure} ../_static/sandbox-identity-registry.png
+:alt: Persistent sandbox identity registry
+
+Persistent sandbox records make local working directories and OpenSandbox remote
+ids discoverable across process boundaries without keeping live handles open.
+```
+
+| Backend | Storage |
+| --- | --- |
+| local | `.openrath/sandboxes/local/<uuid>/` working directory. |
+| opensandbox | `.openrath/sandboxes/opensandbox/<uuid>.json` remote sandbox record. |
+
+| API | Behavior |
+| --- | --- |
+| `alloc_local_id()` | Creates a fresh local sandbox directory. |
+| `ensure_local(id)` | Creates or reuses a local sandbox directory. |
+| `list_local()` / `delete_local(id)` / `prune_local(older_than=...)` | Local sandbox cleanup helpers. |
+| `record_remote(backend, remote_id, spec=None)` | Stores a remote sandbox identity. |
+| `load_remote(id)` / `list_remote()` / `touch_remote(id)` / `delete_remote(id)` | Remote record lifecycle helpers. |
 
 ## Autodoc
 ```{eval-rst}
@@ -123,6 +168,12 @@ Backend abstractions, sandbox handles, backend tool payloads, execution results,
    :members:
 
 .. autoclass:: rath.backend.Future
+   :members:
+
+.. autoclass:: rath.backend.persistence.PersistentSandboxRegistry
+   :members:
+
+.. autoclass:: rath.backend.persistence.RemoteSandboxRecord
    :members:
 
 .. autofunction:: rath.backend.get
