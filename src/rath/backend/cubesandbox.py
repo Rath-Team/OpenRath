@@ -322,4 +322,28 @@ class CubeSandboxBackend(Backend):
         return bool(native.files.exists(path))
 
     def _code_run(self, native: Any, call: BackendToolCodeRun) -> ToolResult:
-        raise NotImplementedError("Task 4")
+        if call.language not in _SUPPORTED_LANGUAGES:
+            return ToolExecutionFailure(
+                kind="unsupported_tool",
+                message=(
+                    f"backend {self.name!r} only supports python in code_run "
+                    f"(got language={call.language!r})"
+                ),
+                detail=call.language,
+            )
+        execution = native.run_code(call.code, language=call.language)
+        stdout_chunks = getattr(execution.logs, "stdout", []) or []
+        stderr_chunks = getattr(execution.logs, "stderr", []) or []
+        stdout = "".join(stdout_chunks).encode("utf-8")
+        stderr = "".join(stderr_chunks).encode("utf-8")
+        error = None
+        if execution.error is not None:
+            error = getattr(execution.error, "value", None) or repr(execution.error)
+        elif stderr:
+            error = stderr.decode("utf-8", errors="replace")
+        return CodeResult(
+            text=execution.text,
+            stdout=stdout,
+            stderr=stderr,
+            error=error,
+        )

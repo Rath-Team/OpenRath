@@ -165,3 +165,27 @@ def test_files_exists_returns_bool(fake_sdk: type[FakeSandbox]) -> None:
         missing = sb.dispatch(BackendToolFilesExists(path="missing.txt"))
     assert present is True
     assert missing is False
+
+
+from rath.backend import CodeResult
+
+
+def test_code_run_python_returns_text_and_stdout(
+    fake_sdk: type[FakeSandbox],
+) -> None:
+    backend = get("cubesandbox")
+    with backend.open() as sb:
+        r = sb.dispatch(BackendToolCodeRun(code="print(40+2)", language="python"))
+    assert isinstance(r, CodeResult)
+    assert r.text == "42"
+    assert r.stdout.startswith(b"ran ")
+    assert r.error is None
+
+
+def test_code_run_non_python_rejected(fake_sdk: type[FakeSandbox]) -> None:
+    backend = get("cubesandbox")
+    with backend.open() as sb:
+        r = sb.dispatch(BackendToolCodeRun(code='echo hi', language="bash"))
+    assert isinstance(r, ToolExecutionFailure)
+    assert r.kind == "unsupported_tool"
+    assert r.detail == "bash"
