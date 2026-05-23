@@ -54,3 +54,57 @@ def test_is_available_requires_sdk_and_template(monkeypatch: pytest.MonkeyPatch)
     monkeypatch.delenv("CUBE_TEMPLATE_ID", raising=False)
     monkeypatch.delenv("RATH_CUBESANDBOX_TEMPLATE_ID", raising=False)
     assert CubeSandboxBackend.is_available() is False
+
+
+import sys
+import types
+
+from tests.backends._fake_e2b import FakeSandbox
+
+
+@pytest.fixture
+def fake_sdk(monkeypatch: pytest.MonkeyPatch) -> type[FakeSandbox]:
+    """Install a stub ``e2b_code_interpreter`` module exposing ``FakeSandbox``."""
+
+    module = types.ModuleType("e2b_code_interpreter")
+    module.Sandbox = FakeSandbox  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "e2b_code_interpreter", module)
+    # The adapter already imported ``_E2BSandbox`` at module load time, so
+    # patch the bound reference directly.
+    import rath.backend.cubesandbox as adapter_mod
+
+    monkeypatch.setattr(adapter_mod, "_E2BSandbox", FakeSandbox, raising=False)
+    monkeypatch.setattr(adapter_mod, "_SDK_AVAILABLE", True, raising=False)
+    monkeypatch.setenv("CUBE_TEMPLATE_ID", "tpl-test")
+    return FakeSandbox
+
+
+def test_open_returns_handle_and_increments_count(
+    fake_sdk: type[FakeSandbox],
+) -> None:
+    backend = get("cubesandbox")
+    sb = backend.open()
+    try:
+        assert backend.sandbox_count() == 1
+        assert sb.handle.startswith("fake-")
+    finally:
+        backend.close(sb)
+    assert backend.sandbox_count() == 0
+
+
+def test_close_calls_kill_exactly_once(fake_sdk: type[FakeSandbox]) -> None:
+    backend = get("cubesandbox")
+    sb = backend.open()
+    native = backend._natives[sb.handle]  # type: ignore[attr-defined]
+    backend.close(sb)
+    backend.close(sb)  # idempotent
+    assert native.kill_count == 1
+
+
+def test_attach_reuses_remote_id(fake_sdk: type[FakeSandbox]) -> None:
+    backend = get("cubesandbox")
+    sb = backend.attach("tpl-remote-123")  # type: ignore[attr-defined]
+    try:
+        assert sb.handle == "tpl-remote-123"
+    finally:
+        backend.close(sb)
