@@ -47,6 +47,11 @@ try:
 except ImportError:  # pragma: no cover -- optional ``opensandbox`` extra
     pass
 
+try:
+    from rath.backend import cubesandbox as _cubesandbox  # noqa: F401
+except ImportError:  # pragma: no cover -- optional ``cubesandbox`` extra
+    pass
+
 __all__ = [
     "Backend",
     "BackendSandbox",
