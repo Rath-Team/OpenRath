@@ -108,3 +108,60 @@ def test_attach_reuses_remote_id(fake_sdk: type[FakeSandbox]) -> None:
         assert sb.handle == "tpl-remote-123"
     finally:
         backend.close(sb)
+
+
+from rath.backend import (
+    CommandResult,
+    FileContent,
+    FileEntries,
+    FileWriteResult,
+    ToolExecutionFailure,
+)
+
+
+def test_command_run_returns_command_result(fake_sdk: type[FakeSandbox]) -> None:
+    backend = get("cubesandbox")
+    with backend.open() as sb:
+        r = sb.dispatch(BackendToolCommandRun(cmd=["echo", "hi"]))
+    assert isinstance(r, CommandResult)
+    assert r.exit_code == 0
+    assert r.stdout == b"ok\n"
+
+
+def test_command_run_stdin_rejected(fake_sdk: type[FakeSandbox]) -> None:
+    backend = get("cubesandbox")
+    with backend.open() as sb:
+        r = sb.dispatch(BackendToolCommandRun(cmd=["cat"], stdin=b"x"))
+    assert isinstance(r, ToolExecutionFailure)
+    assert r.kind == "unsupported_tool"
+
+
+def test_files_write_read_roundtrip(fake_sdk: type[FakeSandbox]) -> None:
+    backend = get("cubesandbox")
+    with backend.open() as sb:
+        w = sb.dispatch(BackendToolFilesWrite(path="hello.txt", data="world"))
+        assert isinstance(w, FileWriteResult)
+        assert w.bytes_written == 5
+        r = sb.dispatch(BackendToolFilesRead(path="hello.txt"))
+    assert isinstance(r, FileContent)
+    assert r.data == "world"
+
+
+def test_files_list_returns_sorted_entries(fake_sdk: type[FakeSandbox]) -> None:
+    backend = get("cubesandbox")
+    with backend.open() as sb:
+        sb.dispatch(BackendToolFilesWrite(path="b.txt", data="2"))
+        sb.dispatch(BackendToolFilesWrite(path="a.txt", data="1"))
+        listing = sb.dispatch(BackendToolFilesList(path="."))
+    assert isinstance(listing, FileEntries)
+    assert [e.name for e in listing.entries] == ["a.txt", "b.txt"]
+
+
+def test_files_exists_returns_bool(fake_sdk: type[FakeSandbox]) -> None:
+    backend = get("cubesandbox")
+    with backend.open() as sb:
+        sb.dispatch(BackendToolFilesWrite(path="present.txt", data="x"))
+        present = sb.dispatch(BackendToolFilesExists(path="present.txt"))
+        missing = sb.dispatch(BackendToolFilesExists(path="missing.txt"))
+    assert present is True
+    assert missing is False

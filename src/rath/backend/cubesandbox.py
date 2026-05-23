@@ -10,12 +10,23 @@ from __future__ import annotations
 
 import logging
 import os
+import shlex
 from typing import Any, ClassVar
 
 from rath.backend.abc import Backend, BackendSandbox, BackendSandboxSpec
 from rath.backend.capabilities import Capabilities, IsolationLevel
 from rath.backend.registry import register
-from rath.backend.results import ToolResult
+from rath.backend.results import (
+    CodeResult,
+    CommandResult,
+    FileContent,
+    FileEntries,
+    FileEntry,
+    FileWriteResult,
+    ToolExecutionFailure,
+    ToolResult,
+    tool_failure_from,
+)
 from rath.backend.tool_types import (
     BackendTool,
     BackendToolCodeRun,
@@ -173,4 +184,142 @@ class CubeSandboxBackend(Backend):
     def dispatch(
         self, sandbox: BackendSandbox, call: BackendTool
     ) -> ToolResult | bool:
-        raise NotImplementedError("Task 3")
+        if sandbox.closed:
+            return ToolExecutionFailure(
+                kind="sandbox_closed",
+                message=f"backend sandbox {sandbox.handle!r} is already closed",
+            )
+        native = self._natives.get(sandbox.handle)
+        if native is None:
+            return ToolExecutionFailure(
+                kind="sandbox_closed",
+                message="native sandbox handle is missing; cannot dispatch",
+            )
+        try:
+            match call:
+                case BackendToolCommandRun():
+                    return self._command_run(native, call)
+                case BackendToolFilesRead():
+                    return self._files_read(native, call)
+                case BackendToolFilesWrite():
+                    return self._files_write(native, call)
+                case BackendToolFilesList():
+                    return self._files_list(native, call)
+                case BackendToolFilesExists():
+                    return self._files_exists(native, call)
+                case BackendToolCodeRun():
+                    return self._code_run(native, call)
+                case _:
+                    return ToolExecutionFailure(
+                        kind="unsupported_tool",
+                        message=(
+                            f"backend {self.name!r} does not support payload "
+                            f"{type(call).__name__!r}"
+                        ),
+                        detail=type(call).__name__,
+                    )
+        except TimeoutError as exc:
+            return tool_failure_from("timeout", exc)
+        except Exception as exc:  # pragma: no cover -- defensive
+            return tool_failure_from("dispatch_error", exc)
+
+    def _resolve(self, path: str) -> str:
+        """Resolve ``path`` under ``_SANDBOX_ROOT`` unless already absolute."""
+        if path.startswith("/"):
+            return path
+        if path in (".", "./"):
+            return self._SANDBOX_ROOT
+        if path.startswith("./"):
+            path = path[2:]
+        return f"{self._SANDBOX_ROOT}/{path}"
+
+    def _command_run(
+        self, native: Any, call: BackendToolCommandRun
+    ) -> ToolResult:
+        if call.stdin is not None:
+            return ToolExecutionFailure(
+                kind="unsupported_tool",
+                message=(
+                    f"backend {self.name!r} does not support stdin on commands.run"
+                ),
+                detail="BackendToolCommandRun",
+            )
+        cmd_str = call.cmd if isinstance(call.cmd, str) else shlex.join(call.cmd)
+        cwd = self._resolve(call.cwd) if call.cwd is not None else self._SANDBOX_ROOT
+        envs = dict(call.env) if call.env is not None else None
+        result = native.commands.run(
+            cmd_str, cwd=cwd, envs=envs, timeout=call.timeout
+        )
+        stdout = (
+            result.stdout.encode("utf-8")
+            if isinstance(result.stdout, str)
+            else result.stdout or b""
+        )
+        stderr = (
+            result.stderr.encode("utf-8")
+            if isinstance(result.stderr, str)
+            else result.stderr or b""
+        )
+        return CommandResult(
+            exit_code=int(result.exit_code or 0),
+            stdout=stdout,
+            stderr=stderr,
+            elapsed_ms=0.0,
+        )
+
+    def _files_read(
+        self, native: Any, call: BackendToolFilesRead
+    ) -> ToolResult:
+        path = self._resolve(call.path)
+        try:
+            data = native.files.read(path)
+        except FileNotFoundError as exc:
+            return tool_failure_from("file_not_found", exc, detail=path)
+        except Exception as exc:
+            msg = str(exc).lower()
+            if "not found" in msg or "404" in msg:
+                return tool_failure_from("file_not_found", exc, detail=path)
+            return tool_failure_from("sandbox_sdk_error", exc)
+        # Normalize to what ``BackendToolFilesRead.encoding`` asked for. The
+        # E2B SDK's ``files.read`` returns ``str`` by default; only convert
+        # when the caller's intent (encoding=None ⇒ bytes) disagrees.
+        if call.encoding is None and isinstance(data, str):
+            return FileContent(data=data.encode("utf-8"))
+        if call.encoding is not None and isinstance(data, bytes):
+            return FileContent(data=data.decode(call.encoding))
+        return FileContent(data=data)
+
+    def _files_write(
+        self, native: Any, call: BackendToolFilesWrite
+    ) -> FileWriteResult:
+        path = self._resolve(call.path)
+        native.files.write(path, call.data)
+        payload = (
+            call.data.encode("utf-8") if isinstance(call.data, str) else call.data
+        )
+        return FileWriteResult(bytes_written=len(payload))
+
+    def _files_list(
+        self, native: Any, call: BackendToolFilesList
+    ) -> FileEntries:
+        path = self._resolve(call.path)
+        raw = native.files.list(path)
+        entries = [
+            FileEntry(
+                name=item.name,
+                path=getattr(item, "path", f"{path.rstrip('/')}/{item.name}"),
+                is_dir=getattr(item, "type", "file") == "dir",
+            )
+            for item in raw
+        ]
+        entries.sort(key=lambda e: e.name)
+        return FileEntries(entries=tuple(entries))
+
+    def _files_exists(
+        self, native: Any, call: BackendToolFilesExists
+    ) -> bool:
+        path = self._resolve(call.path)
+        return bool(native.files.exists(path))
+
+    def _code_run(self, native: Any, call: BackendToolCodeRun) -> ToolResult:
+        raise NotImplementedError("Task 4")
