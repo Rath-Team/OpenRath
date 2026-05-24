@@ -77,13 +77,14 @@ class _SyncChatClientAsyncWrapper:
                 f"{type(self._sync).__name__} does not implement complete_stream; "
                 "the runtime should not have called acomplete_stream"
             )
+        streaming_sync: StreamingChatClient = self._sync
         queue: asyncio.Queue[Any] = asyncio.Queue(maxsize=64)
         sentinel = object()
         loop = asyncio.get_running_loop()
 
         def _drain() -> None:
             try:
-                it: Iterator[RathLLMStreamDelta] = self._sync.complete_stream(req)
+                it: Iterator[RathLLMStreamDelta] = streaming_sync.complete_stream(req)
                 for delta in it:
                     asyncio.run_coroutine_threadsafe(
                         queue.put(delta), loop

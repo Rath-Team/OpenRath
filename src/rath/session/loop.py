@@ -36,8 +36,6 @@ from rath.backend import (
 )
 from rath.flow.tool import (
     FlowToolCall,
-    merge_tools_for_loop,
-    tools_dict_to_schemas,
 )
 from rath.llm import (
     Provider,
@@ -47,7 +45,6 @@ from rath.llm import (
     RathLLMChatResponse,
     RathLLMFinishReason,
     RathLLMFunctionTool,
-    RathLLMMessage,
     RathLLMStreamDelta,
     RathLLMTokenUsage,
     RathLLMToolCallFunction,
@@ -57,13 +54,9 @@ from rath.llm import (
     chat_client_for,
 )
 from rath.llm.tool_args import parse_tool_arguments
-from rath.session.chat_request_build import provider_into_chat_request
 from rath.session.chunk import (
     ChunkRow,
     ChunkTable,
-    assistant_turn_chunk,
-    chunk_table_to_messages,
-    tool_feedback_chunk,
 )
 from rath.session.graph import LineageKind, LineageRecorder, SessionLineage
 from rath.session.manager import session_registry
@@ -495,12 +488,16 @@ def run_session_loop(
     reg.set_active(out)
 
     async def _coro() -> tuple[ChunkTable, RathLLMTokenUsage | None]:
+        # ``_arun_session_loop`` wraps sync executors via ``_SyncExecutorAsyncAdapter``;
+        # the cast is the type-checker hand-off for that runtime adapter.
+        from typing import cast
+
         materialized = await _arun_session_loop(
             user_session,
             agent_session,
             agent_provider=agent_provider,
             tools=tools,
-            executor=executor,
+            executor=cast(Any, executor),
             max_tool_rounds=max_tool_rounds,
             on_event=on_event,
             persist=persist,

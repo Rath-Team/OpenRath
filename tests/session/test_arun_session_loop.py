@@ -266,7 +266,6 @@ def test_arun_session_loop_same_key_tools_serialize(tmp_path: Any) -> None:
 
     in_flight = 0
     max_in_flight = 0
-    lock = asyncio.Lock  # only used inside __call__ via threading; not async
 
     import threading
 

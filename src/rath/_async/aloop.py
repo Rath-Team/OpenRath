@@ -28,6 +28,7 @@ from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
+from rath._async.awriter import _AsyncSessionWriter
 from rath._async.sync_to_async import (
     AsyncChatClientLike,
     ensure_async_chat_client,
@@ -62,7 +63,6 @@ from rath.session.loop import (
     _summarize_dispatch_result,
 )
 from rath.session.manager import session_registry
-from rath._async.awriter import _AsyncSessionWriter
 from rath.session.session import Session
 
 __all__ = [
@@ -153,7 +153,8 @@ class _SyncExecutorAsyncAdapter:
         self._sync = sync
 
     def tool_schemas(self) -> tuple[RathLLMFunctionTool, ...]:
-        return self._sync.tool_schemas()
+        schemas: tuple[RathLLMFunctionTool, ...] = self._sync.tool_schemas()
+        return schemas
 
     async def acomplete(self, req: RathLLMChatRequest) -> RathLLMChatResponse:
         return await asyncio.to_thread(self._sync.complete, req)
@@ -277,17 +278,19 @@ async def _adispatch_round(
         await asyncio.gather(*(_run_queue(q) for q in queues.values()))
 
     for idx, tc in enumerate(tool_calls):
-        body = bodies[idx]
-        if body is None:
+        maybe_body = bodies[idx]
+        if maybe_body is None:
             # Defensive — every idx should have a body by now.
-            body = json.dumps(
+            final_body = json.dumps(
                 {
                     "ok": False,
                     "error_kind": "internal_missing_result",
                     "message": "tool result missing after dispatch",
                 }
             )
-        row = tool_feedback_chunk(tc.id, tc.function.name, body)
+        else:
+            final_body = maybe_body
+        row = tool_feedback_chunk(tc.id, tc.function.name, final_body)
         rows_list.append(row)
         out.chunk_table = ChunkTable(rows=tuple(rows_list))
         if writer is not None:

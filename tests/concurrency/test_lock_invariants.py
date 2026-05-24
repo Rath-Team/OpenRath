@@ -20,8 +20,6 @@ from __future__ import annotations
 
 import asyncio
 
-import pytest
-
 from rath._async.runtime import runtime
 from rath.backend.opensandbox import OpenSandboxBackend
 

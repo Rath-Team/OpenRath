@@ -127,12 +127,12 @@ class Agent(Workflow):
             extras = ()
         if not extras:
             return session
-        from dataclasses import replace as _dc_replace
-
         from rath.session.chunk import ChunkTable as _CT
 
         merged = _CT(rows=tuple(extras) + session.chunk_table.rows)
-        return _dc_replace(session, chunk_table=merged)
+        forked = session.fork()
+        forked.chunk_table = merged
+        return forked
 
     def _commit_session(self, session: Session, *, wait: bool) -> None:
         """Best-effort commit of ``session``'s chat history into memory."""
