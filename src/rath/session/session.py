@@ -33,6 +33,27 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# Thread-local re-entrancy guard for tools running on the runtime's thread
+# pool. ``_arun_session_loop`` dispatches each tool through
+# ``asyncio.to_thread``; that worker thread sets this flag before calling
+# the tool body so any ``session.chunk_table`` read inside the tool
+# short-circuits the lazy ``synchronize()`` (which would otherwise wait on
+# the in-flight future the worker is part of, deadlocking).
+_TOOL_DISPATCH_TLS = threading.local()
+
+
+def _in_tool_dispatch() -> bool:
+    return getattr(_TOOL_DISPATCH_TLS, "depth", 0) > 0
+
+
+def _enter_tool_dispatch() -> None:
+    _TOOL_DISPATCH_TLS.depth = getattr(_TOOL_DISPATCH_TLS, "depth", 0) + 1
+
+
+def _exit_tool_dispatch() -> None:
+    _TOOL_DISPATCH_TLS.depth = max(0, getattr(_TOOL_DISPATCH_TLS, "depth", 0) - 1)
+
+
 def _coerce_sandbox_open_spec(
     spec: BackendSandboxSpec | str | None,
 ) -> BackendSandboxSpec | None:
@@ -198,8 +219,15 @@ class Session:
 
     @property
     def chunk_table(self) -> ChunkTable:
-        """Materialized transcript. Blocks on ``_pending`` if still in flight."""
-        if self._pending is not None:
+        """Materialized transcript. Blocks on ``_pending`` if still in flight.
+
+        Re-entrancy: when a tool dispatched by the runtime reads
+        ``session.chunk_table`` from inside its own producing future,
+        ``synchronize()`` would deadlock (the future cannot complete until
+        the tool returns). In that case we read the in-flight
+        ``_chunk_table`` directly — tools see the transcript as it grows.
+        """
+        if self._pending is not None and not _in_tool_dispatch():
             self.synchronize()
         return self._chunk_table
 
@@ -212,7 +240,7 @@ class Session:
 
     @property
     def cumulative_usage(self) -> RathLLMTokenUsage | None:
-        if self._pending is not None:
+        if self._pending is not None and not _in_tool_dispatch():
             self.synchronize()
         return self._cumulative_usage
 

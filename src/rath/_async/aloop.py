@@ -63,7 +63,26 @@ from rath.session.loop import (
     _summarize_dispatch_result,
 )
 from rath.session.manager import session_registry
-from rath.session.session import Session
+from rath.session.session import (
+    Session,
+    _enter_tool_dispatch,
+    _exit_tool_dispatch,
+)
+
+
+def _tool_body(tool: FlowToolCall, session: Session, args: Mapping[str, Any]) -> Any:
+    """Run ``tool(session, args)`` with the runtime tool-dispatch flag set.
+
+    The flag flips ``Session.chunk_table`` / ``cumulative_usage`` reads into
+    "raw" mode, so a tool body inspecting its own session does not deadlock
+    on the still-in-flight ``_pending`` future.
+    """
+    _enter_tool_dispatch()
+    try:
+        return tool(session, dict(args or {}))
+    finally:
+        _exit_tool_dispatch()
+
 
 __all__ = [
     "AsyncSessionLoopExecutor",
@@ -136,7 +155,10 @@ class _DefaultAsyncExecutor:
     ) -> Any:
         # Tools are synchronous (`FlowToolCall.__call__`); off-load to a
         # worker thread so a slow tool can't park the runtime loop.
-        return await asyncio.to_thread(tool, session, dict(arguments or {}))
+        # ``_tool_body`` sets the re-entrancy flag so reads of
+        # ``session.chunk_table`` from inside the tool see the in-flight
+        # transcript without trying to synchronize() the producing future.
+        return await asyncio.to_thread(_tool_body, tool, session, arguments)
 
 
 class _SyncExecutorAsyncAdapter:
@@ -165,9 +187,16 @@ class _SyncExecutorAsyncAdapter:
         tool: FlowToolCall,
         arguments: Mapping[str, Any],
     ) -> Any:
-        return await asyncio.to_thread(
-            self._sync.dispatch_tool, session, tool, dict(arguments or {})
-        )
+        sync = self._sync
+
+        def _call() -> Any:
+            _enter_tool_dispatch()
+            try:
+                return sync.dispatch_tool(session, tool, dict(arguments or {}))
+            finally:
+                _exit_tool_dispatch()
+
+        return await asyncio.to_thread(_call)
 
 
 def _resolve_async_executor(

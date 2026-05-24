@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from dataclasses import replace as _dc_replace
 
 import pytest
 
@@ -68,7 +67,8 @@ class _FakeBackend(MemoryBackend):
 def _user_session(*user_msgs: str) -> Session:
     sess = Session.from_agent_prompt("system")
     appended = sess.chunk_table.rows + tuple(user_text_chunk(m) for m in user_msgs)
-    return _dc_replace(sess, chunk_table=ChunkTable(rows=appended))
+    sess.chunk_table = ChunkTable(rows=appended)
+    return sess
 
 
 def test_default_recall_injection_runtime_checkable() -> None:

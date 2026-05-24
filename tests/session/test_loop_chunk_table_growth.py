@@ -114,13 +114,16 @@ def test_chunk_table_identity_is_stable_within_a_turn() -> None:
     with backend.open() as sandbox:
         user = Session.from_user_message("go").bind_sandbox(sandbox)
         agent = Session.from_agent_prompt("scripted")
-        run_session_loop(
+        out = run_session_loop(
             user,
             agent,
             agent_provider=Provider(),
             tools=[tool],
             executor=executor,
         )
+        # Lazy facade: block on the in-flight materialization before asserting
+        # that tools observed a stable ``chunk_table`` identity per turn.
+        out.synchronize()
 
     assert len(tool.observed_ids) == 6, tool.observed_ids
     turn1_ids = set(tool.observed_ids[:3])
