@@ -18,13 +18,16 @@ from rath.config.paths import resolve_config_dir
 __all__ = [
     "SESSIONS_DIR_NAME",
     "SESSION_FILE_SUFFIX",
+    "SESSION_PARTIAL_SUFFIX",
     "sessions_dir",
     "session_file",
+    "session_partial_file",
     "ensure_sessions_dir",
 ]
 
 SESSIONS_DIR_NAME = "sessions"
 SESSION_FILE_SUFFIX = ".jsonl"
+SESSION_PARTIAL_SUFFIX = ".jsonl.__partial__"
 
 
 def sessions_dir() -> Path:
@@ -39,6 +42,18 @@ def session_file(session_id: UUID | str) -> Path:
     ``str(id)`` so callers don't have to think about it.
     """
     return sessions_dir() / f"{session_id}{SESSION_FILE_SUFFIX}"
+
+
+def session_partial_file(session_id: UUID | str) -> Path:
+    """Return the WAL-style in-flight path ``sessions/<id>.jsonl.__partial__``.
+
+    The writer opens this path on construction, appends header + chunks +
+    trailer, and atomically renames to :func:`session_file` on graceful
+    close. A leftover ``.__partial__`` file is the durable signal that the
+    writing process crashed mid-session (or that the runtime drain timed
+    out and abandoned the writer).
+    """
+    return sessions_dir() / f"{session_id}{SESSION_PARTIAL_SUFFIX}"
 
 
 def ensure_sessions_dir() -> Path:

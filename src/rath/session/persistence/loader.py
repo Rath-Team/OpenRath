@@ -41,7 +41,9 @@ from rath.session.persistence._serialize import (
 from rath.session.persistence.errors import PersistenceError
 from rath.session.persistence.paths import (
     SESSION_FILE_SUFFIX,
+    SESSION_PARTIAL_SUFFIX,
     session_file,
+    session_partial_file,
     sessions_dir,
 )
 from rath.session.session import Session
@@ -154,7 +156,20 @@ def load_session(
     """
     target = (path or session_file(session_id)).resolve()
     if not target.is_file():
-        raise PersistenceError(f"persisted session file not found: {target}")
+        # Fall back to the in-flight WAL file. Callers usually want the
+        # final file but a crashed/abandoned session only leaves behind
+        # ``<id>.jsonl.__partial__``; surfacing that is more useful than a
+        # "not found" error.
+        if path is None:
+            partial = session_partial_file(session_id).resolve()
+            if partial.is_file():
+                target = partial
+            else:
+                raise PersistenceError(
+                    f"persisted session file not found: {target}"
+                )
+        else:
+            raise PersistenceError(f"persisted session file not found: {target}")
 
     header: PersistedSessionHeader | None = None
     header_origin_version: int = CURRENT_SCHEMA_VERSION
@@ -234,10 +249,16 @@ def delete_session(session_id: UUID | str, *, path: Path | None = None) -> bool:
     sandbox is also desired.
     """
     target = (path or session_file(session_id)).resolve()
-    if not target.is_file():
-        return False
-    target.unlink()
-    return True
+    removed = False
+    if target.is_file():
+        target.unlink()
+        removed = True
+    if path is None:
+        partial = session_partial_file(session_id).resolve()
+        if partial.is_file():
+            partial.unlink()
+            removed = True
+    return removed
 
 
 def prune_sessions(*, older_than: timedelta) -> list[UUID]:
@@ -270,7 +291,13 @@ def list_persisted_sessions() -> list[PersistedSessionMeta]:
         return []
     metas: list[PersistedSessionMeta] = []
     for entry in sorted(target_dir.iterdir()):
-        if not entry.is_file() or entry.suffix != SESSION_FILE_SUFFIX:
+        if not entry.is_file():
+            continue
+        name = entry.name
+        if not (
+            name.endswith(SESSION_FILE_SUFFIX)
+            or name.endswith(SESSION_PARTIAL_SUFFIX)
+        ):
             continue
         try:
             metas.append(_meta_from_file(entry))

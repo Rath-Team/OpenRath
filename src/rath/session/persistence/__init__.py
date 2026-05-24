@@ -34,9 +34,11 @@ from rath.session.persistence.loader import (
 )
 from rath.session.persistence.paths import (
     SESSION_FILE_SUFFIX,
+    SESSION_PARTIAL_SUFFIX,
     SESSIONS_DIR_NAME,
     ensure_sessions_dir,
     session_file,
+    session_partial_file,
     sessions_dir,
 )
 from rath.session.persistence.writer import SessionWriter
@@ -61,7 +63,9 @@ __all__ = [
     # Paths
     "SESSIONS_DIR_NAME",
     "SESSION_FILE_SUFFIX",
+    "SESSION_PARTIAL_SUFFIX",
     "sessions_dir",
     "session_file",
+    "session_partial_file",
     "ensure_sessions_dir",
 ]

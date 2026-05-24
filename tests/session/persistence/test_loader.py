@@ -91,7 +91,7 @@ def test_partial_final_line_dropped_silently(_isolate_openrath_home: Path) -> No
     writer.write_chunk(0, user_text_chunk("hello"))
     writer.abandon()
     # Append an unterminated, malformed line at the end.
-    with writer.path.open("a", encoding="utf-8") as fp:
+    with writer.partial_path.open("a", encoding="utf-8") as fp:
         fp.write('{"record_type": "chunk", "index": 1, "kind": "u')
     loaded = load_session(s.id)
     assert loaded.closed is False
@@ -105,7 +105,7 @@ def test_corrupt_full_line_raises_persistence_error(
     writer = SessionWriter(s)
     writer.write_chunk(0, user_text_chunk("hi"))
     writer.abandon()
-    with writer.path.open("a", encoding="utf-8") as fp:
+    with writer.partial_path.open("a", encoding="utf-8") as fp:
         fp.write("{this is not JSON}\n")
     with pytest.raises(PersistenceError, match="invalid JSON"):
         load_session(s.id)

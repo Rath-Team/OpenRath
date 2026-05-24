@@ -145,7 +145,11 @@ def test_persist_abandons_file_on_executor_exception(
         with pytest.raises(RuntimeError, match="boom"):
             out.synchronize()
 
-    matches = list(sessions_dir().glob("*.jsonl"))
-    assert len(matches) == 1
-    text = matches[0].read_text(encoding="utf-8")
+    # WAL: an abandoned writer keeps the in-flight file under the
+    # __partial__ suffix; the final .jsonl is never produced.
+    finals = list(sessions_dir().glob("*.jsonl"))
+    partials = list(sessions_dir().glob("*.jsonl.__partial__"))
+    assert finals == []
+    assert len(partials) == 1
+    text = partials[0].read_text(encoding="utf-8")
     assert "trailer" not in text

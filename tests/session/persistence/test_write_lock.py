@@ -21,10 +21,11 @@ def test_second_writer_against_same_id_fails(
     s = Session(chunk_table=ChunkTable(rows=()))
     w1 = SessionWriter(s)
     w1.write_chunk(0, user_text_chunk("first"))
-    # Same session id → same path; opening a second writer must refuse.
-    w2 = SessionWriter(s)
+    # Same session id → same partial path; the second writer opens its
+    # handle and grabs the lock during __init__, so the collision surfaces
+    # at construction time rather than on first write.
     with pytest.raises(PersistenceError, match="another process"):
-        w2.write_chunk(0, user_text_chunk("colliding"))
+        SessionWriter(s)
     w1.close()
 
 

@@ -61,7 +61,7 @@ from rath.session.loop import (
     _summarize_dispatch_result,
 )
 from rath.session.manager import session_registry
-from rath.session.persistence import SessionWriter
+from rath._async.awriter import _AsyncSessionWriter
 from rath.session.session import Session
 
 __all__ = [
@@ -194,7 +194,7 @@ async def _adispatch_round(
     tool_calls: tuple[Any, ...],
     table: dict[str, FlowToolCall],
     executor: AsyncSessionLoopExecutor,
-    writer: SessionWriter | None,
+    writer: _AsyncSessionWriter | None,
 ) -> None:
     """Run one assistant round's ``tool_calls`` with resource-keyed parallelism.
 
@@ -290,7 +290,7 @@ async def _adispatch_round(
         rows_list.append(row)
         out.chunk_table = ChunkTable(rows=tuple(rows_list))
         if writer is not None:
-            writer.write_chunk(len(rows_list) - 1, row)
+            await writer.awrite_chunk(len(rows_list) - 1, row)
 
 
 async def _arun_session_loop(
@@ -357,25 +357,25 @@ async def _arun_session_loop(
     reg.register(out)
     reg.set_active(out)
 
-    writer: SessionWriter | None = None
+    writer: _AsyncSessionWriter | None = None
     if persist or persist_path is not None:
-        writer = SessionWriter(
+        writer = _AsyncSessionWriter(
             out,
             sandbox_handle_id=sandbox_handle_id,
             path=persist_path,
         )
         for seed_index, seed_row in enumerate(rows_list):
-            writer.write_chunk(seed_index, seed_row)
+            await writer.awrite_chunk(seed_index, seed_row)
 
     tool_schemas = aexec.tool_schemas()
     if not tool_schemas:
         tool_schemas = tools_dict_to_schemas(table)
 
-    def _append_row(row: ChunkRow) -> None:
+    async def _append_row(row: ChunkRow) -> None:
         rows_list.append(row)
         out.chunk_table = ChunkTable(rows=tuple(rows_list))
         if writer is not None:
-            writer.write_chunk(len(rows_list) - 1, row)
+            await writer.awrite_chunk(len(rows_list) - 1, row)
 
     try:
         rounds_used = 0
@@ -399,7 +399,7 @@ async def _arun_session_loop(
             tcalls = msg.tool_calls
 
             if tcalls:
-                _append_row(
+                await _append_row(
                     assistant_turn_chunk(
                         tool_calls=tcalls, content=msg.content
                     )
@@ -409,7 +409,7 @@ async def _arun_session_loop(
                 )
                 continue
 
-            _append_row(
+            await _append_row(
                 assistant_turn_chunk(tool_calls=None, content=msg.content)
             )
             if choice.finish_reason in ("stop", "length", "content_filter"):
@@ -428,11 +428,14 @@ async def _arun_session_loop(
             out.lineage_extras = out.lineage_extras + (("loop.truncated", True),)
     except BaseException:
         if writer is not None:
-            writer.abandon()
+            try:
+                await writer.abandon()
+            except BaseException:
+                logger.exception("async session writer abandon failed")
         raise
 
     if writer is not None:
-        writer.close()
+        await writer.aclose()
 
     out.chunk_table = ChunkTable(rows=tuple(rows_list))
     reg.set_active(out)

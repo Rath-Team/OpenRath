@@ -24,15 +24,20 @@ def _new_session(*rows: ChunkRow) -> Session:
     return Session(chunk_table=ChunkTable(rows=tuple(rows)))
 
 
-def test_header_written_lazily_on_first_chunk(_isolate_openrath_home: Path) -> None:
+def test_header_written_immediately_on_construction(
+    _isolate_openrath_home: Path,
+) -> None:
     s = _new_session()
     writer = SessionWriter(s)
+    # WAL mode: header is written eagerly to the .__partial__ file.
+    assert writer.partial_path.is_file()
     assert not writer.path.exists()
     writer.write_chunk(0, user_text_chunk("hi"))
-    assert writer.path.is_file()
-    # Close so the advisory lock is released — on Windows the file is
-    # otherwise inaccessible for reading from the same process.
+    # Close so the advisory lock is released and the partial file is
+    # renamed to the final path.
     writer.close()
+    assert writer.path.is_file()
+    assert not writer.partial_path.exists()
     text = writer.path.read_text(encoding="utf-8")
     lines = [json.loads(line) for line in text.splitlines() if line.strip()]
     # header + chunk + trailer (close was called above).
@@ -48,9 +53,9 @@ def test_each_chunk_flushed_immediately(_isolate_openrath_home: Path) -> None:
     s = _new_session()
     writer = SessionWriter(s)
     writer.write_chunk(0, user_text_chunk("alpha"))
-    size_after_one = writer.path.stat().st_size
+    size_after_one = writer.partial_path.stat().st_size
     writer.write_chunk(1, assistant_turn_chunk(tool_calls=None, content="beta"))
-    size_after_two = writer.path.stat().st_size
+    size_after_two = writer.partial_path.stat().st_size
     assert size_after_two > size_after_one
 
 
@@ -67,21 +72,37 @@ def test_close_writes_trailer(_isolate_openrath_home: Path) -> None:
     assert lines[-1]["final_chunk_count"] == 1
 
 
-def test_close_without_chunks_is_noop(_isolate_openrath_home: Path) -> None:
+def test_close_without_chunks_writes_header_trailer(
+    _isolate_openrath_home: Path,
+) -> None:
+    """WAL header is eager — closing with zero chunks still emits a complete
+    JSONL with header + trailer; the partial file is renamed to final."""
     s = _new_session()
     writer = SessionWriter(s)
     writer.close()
-    assert not writer.path.exists()
+    assert writer.path.is_file()
+    assert not writer.partial_path.exists()
+    lines = [
+        json.loads(line)
+        for line in writer.path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert [line["record_type"] for line in lines] == ["header", "trailer"]
+    assert lines[-1]["final_chunk_count"] == 0
 
 
-def test_abandon_does_not_write_trailer(_isolate_openrath_home: Path) -> None:
+def test_abandon_leaves_partial_file(_isolate_openrath_home: Path) -> None:
+    """``abandon`` keeps the ``__partial__`` file as a crash signal — it is
+    never renamed to the final path and never grows a trailer."""
     s = _new_session()
     writer = SessionWriter(s)
     writer.write_chunk(0, user_text_chunk("partial"))
     writer.abandon()
+    assert writer.partial_path.is_file()
+    assert not writer.path.exists()
     lines = [
         json.loads(line)
-        for line in writer.path.read_text(encoding="utf-8").splitlines()
+        for line in writer.partial_path.read_text(encoding="utf-8").splitlines()
     ]
     assert all(line.get("record_type") != "trailer" for line in lines)
 
@@ -101,7 +122,9 @@ def test_context_manager_abandons_on_exception(_isolate_openrath_home: Path) -> 
         with writer:
             writer.write_chunk(0, user_text_chunk("partial"))
             raise RuntimeError("boom")
-    text = writer.path.read_text(encoding="utf-8")
+    assert writer.partial_path.is_file()
+    assert not writer.path.exists()
+    text = writer.partial_path.read_text(encoding="utf-8")
     assert '"record_type": "trailer"' not in text
 
 
