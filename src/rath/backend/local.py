@@ -108,9 +108,7 @@ class LocalBackend(Backend):
     def sandbox_count(self) -> int:
         return len(self._open_handles)
 
-    async def _aopen(
-        self, spec: BackendSandboxSpec | None = None
-    ) -> BackendSandbox:
+    async def _aopen(self, spec: BackendSandboxSpec | None = None) -> BackendSandbox:
         if spec is None or spec.working_dir is None:
             owns_working_dir = True
             working_dir = await asyncio.to_thread(
@@ -140,9 +138,7 @@ class LocalBackend(Backend):
         self._owned_handles.discard(sandbox.handle)
         sandbox.closed = True
         if owns_working_dir:
-            await asyncio.to_thread(
-                shutil.rmtree, sandbox.handle, ignore_errors=True
-            )
+            await asyncio.to_thread(shutil.rmtree, sandbox.handle, ignore_errors=True)
 
     async def _adispatch(
         self, sandbox: BackendSandbox, call: BackendTool

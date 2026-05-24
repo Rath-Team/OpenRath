@@ -51,9 +51,7 @@ def test_concurrent_dispatch_runs_in_parallel() -> None:
         start = time.perf_counter()
         with ThreadPoolExecutor(max_workers=workers) as pool:
             futures = [
-                pool.submit(
-                    sb.dispatch, BackendToolCommandRun(cmd=_sleep_cmd(sleep_s))
-                )
+                pool.submit(sb.dispatch, BackendToolCommandRun(cmd=_sleep_cmd(sleep_s)))
                 for _ in range(workers)
             ]
             results = [f.result() for f in futures]
@@ -112,20 +110,24 @@ def test_internal_async_hooks_match_sync_facade(tmp_path) -> None:
     rt = runtime()
     with backend.open() as sb:
         # Sync facade
-        sync_r = sb.dispatch(
-            BackendToolFilesWrite(path="via_sync.txt", data="hello")
-        )
+        sync_r = sb.dispatch(BackendToolFilesWrite(path="via_sync.txt", data="hello"))
         assert getattr(sync_r, "bytes_written", -1) == 5
 
         # Internal async hook
         async_r = rt.run(
-            backend._adispatch(sb, BackendToolFilesWrite(path="via_async.txt", data="hi"))
+            backend._adispatch(
+                sb, BackendToolFilesWrite(path="via_async.txt", data="hi")
+            )
         )
         assert getattr(async_r, "bytes_written", -1) == 2
 
         # Both files exist on disk.
-        sync_read = sb.dispatch(BackendToolFilesRead(path="via_sync.txt", encoding=None))
-        async_read = sb.dispatch(BackendToolFilesRead(path="via_async.txt", encoding=None))
+        sync_read = sb.dispatch(
+            BackendToolFilesRead(path="via_sync.txt", encoding=None)
+        )
+        async_read = sb.dispatch(
+            BackendToolFilesRead(path="via_async.txt", encoding=None)
+        )
         assert getattr(sync_read, "data", None) == b"hello"
         assert getattr(async_read, "data", None) == b"hi"
 

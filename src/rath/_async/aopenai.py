@@ -95,9 +95,7 @@ class RathOpenAIAsyncChatClient:
         self._provider = provider
         self._client: AsyncOpenAI | AsyncAzureOpenAI
 
-        use_azure_legacy = (
-            _is_azure_endpoint(base_url) and "/openai/v1" not in base_url
-        )
+        use_azure_legacy = _is_azure_endpoint(base_url) and "/openai/v1" not in base_url
         if use_azure_legacy:
             api_version = (
                 os.environ.get("OPENAI_API_VERSION")

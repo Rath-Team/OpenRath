@@ -140,9 +140,7 @@ def _stop_round() -> RathLLMChatResponse:
 
 
 @pytest.mark.parametrize("fanout", [1, 2, 4, 8, 16])
-def test_bench_loop_fanout(
-    benchmark: Any, fanout: int, tmp_path: Any
-) -> None:
+def test_bench_loop_fanout(benchmark: Any, fanout: int, tmp_path: Any) -> None:
     """One assistant round with ``fanout`` parallel-safe ``cheap_write`` calls."""
 
     backend = get("local")

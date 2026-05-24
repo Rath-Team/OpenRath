@@ -184,9 +184,7 @@ def load_session(
             if partial.is_file():
                 target = partial
             else:
-                raise PersistenceError(
-                    f"persisted session file not found: {target}"
-                )
+                raise PersistenceError(f"persisted session file not found: {target}")
         else:
             raise PersistenceError(f"persisted session file not found: {target}")
 
@@ -314,8 +312,7 @@ def list_persisted_sessions() -> list[PersistedSessionMeta]:
             continue
         name = entry.name
         if not (
-            name.endswith(SESSION_FILE_SUFFIX)
-            or name.endswith(SESSION_PARTIAL_SUFFIX)
+            name.endswith(SESSION_FILE_SUFFIX) or name.endswith(SESSION_PARTIAL_SUFFIX)
         ):
             continue
         try:

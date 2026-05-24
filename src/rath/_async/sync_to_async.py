@@ -86,15 +86,11 @@ class _SyncChatClientAsyncWrapper:
             try:
                 it: Iterator[RathLLMStreamDelta] = streaming_sync.complete_stream(req)
                 for delta in it:
-                    asyncio.run_coroutine_threadsafe(
-                        queue.put(delta), loop
-                    ).result()
+                    asyncio.run_coroutine_threadsafe(queue.put(delta), loop).result()
             except BaseException as exc:
                 asyncio.run_coroutine_threadsafe(queue.put(exc), loop).result()
             finally:
-                asyncio.run_coroutine_threadsafe(
-                    queue.put(sentinel), loop
-                ).result()
+                asyncio.run_coroutine_threadsafe(queue.put(sentinel), loop).result()
 
         task = asyncio.create_task(asyncio.to_thread(_drain))
         try:

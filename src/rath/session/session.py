@@ -191,9 +191,9 @@ class Session:
         self.lineage_kind = lineage_kind
         self.lineage_extras = lineage_extras
         self._cumulative_usage = cumulative_usage
-        self._pending: LazyValue[
-            tuple[ChunkTable, RathLLMTokenUsage | None]
-        ] | None = None
+        self._pending: LazyValue[tuple[ChunkTable, RathLLMTokenUsage | None]] | None = (
+            None
+        )
         self._sync_lock = threading.Lock()
 
     @property

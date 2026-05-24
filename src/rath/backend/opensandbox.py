@@ -280,9 +280,7 @@ class OpenSandboxBackend(Backend):
     def sandbox_count(self) -> int:
         return len(self._natives)
 
-    async def _aopen(
-        self, spec: BackendSandboxSpec | None = None
-    ) -> BackendSandbox:
+    async def _aopen(self, spec: BackendSandboxSpec | None = None) -> BackendSandbox:
         if not _SDK_AVAILABLE:  # pragma: no cover -- ``is_available()`` gate
             raise RuntimeError(
                 "opensandbox SDK is not installed; "

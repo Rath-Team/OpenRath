@@ -59,9 +59,9 @@ def test_rath_does_not_expose_async_subpackage() -> None:
     public = getattr(rath, "__all__", None)
     if public is not None:
         assert "_async" not in public
-        assert not any(name.startswith("a") and name[1:2].isupper() for name in public), (
-            "rath.__all__ must not include AsyncFoo-style names"
-        )
+        assert not any(
+            name.startswith("a") and name[1:2].isupper() for name in public
+        ), "rath.__all__ must not include AsyncFoo-style names"
 
 
 @pytest.mark.parametrize(

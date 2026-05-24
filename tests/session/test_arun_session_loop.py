@@ -62,7 +62,9 @@ class _ScriptedAsyncExecutor:
         return ()
 
 
-def _stop(text: str, *, model: str = "scripted", rid: str = "r-stop") -> RathLLMChatResponse:
+def _stop(
+    text: str, *, model: str = "scripted", rid: str = "r-stop"
+) -> RathLLMChatResponse:
     return RathLLMChatResponse(
         id=rid,
         choices=(
@@ -91,7 +93,9 @@ def _tool_call(name: str, args: dict[str, Any], *, call_id: str) -> RathLLMToolC
     )
 
 
-def _tool_round(*parts: RathLLMToolCallPart, rid: str = "r-tool") -> RathLLMChatResponse:
+def _tool_round(
+    *parts: RathLLMToolCallPart, rid: str = "r-tool"
+) -> RathLLMChatResponse:
     return RathLLMChatResponse(
         id=rid,
         choices=(
@@ -153,15 +157,11 @@ def test_arun_session_loop_write_file_via_tool_then_stop(tmp_path: Any) -> None:
     second = _stop("wrote it")
     executor = _ScriptedAsyncExecutor([first, second])
 
-    agent = AgentParam(
-        Session.from_agent_prompt("scripted assistant"), Provider()
-    )
+    agent = AgentParam(Session.from_agent_prompt("scripted assistant"), Provider())
 
     backend = get("local")
     with backend.open() as sandbox:
-        user = Session.from_user_message("Please write the file.").bind_sandbox(
-            sandbox
-        )
+        user = Session.from_user_message("Please write the file.").bind_sandbox(sandbox)
         out = runtime().run(
             _arun_session_loop(
                 user,
@@ -220,9 +220,7 @@ def test_arun_session_loop_parallel_safe_tools_overlap(tmp_path: Any) -> None:
                 fp.write(str(arguments["content"]))
             return True
 
-    executor = _ScriptedAsyncExecutor(
-        [_tool_round(*parts, rid="r-par"), _stop("done")]
-    )
+    executor = _ScriptedAsyncExecutor([_tool_round(*parts, rid="r-par"), _stop("done")])
     agent = AgentParam(Session.from_agent_prompt("a"), Provider())
     backend = get("local")
     with backend.open() as sandbox:
@@ -304,9 +302,7 @@ def test_arun_session_loop_same_key_tools_serialize(tmp_path: Any) -> None:
                 fp.write(str(arguments["content"]))
             return True
 
-    executor = _ScriptedAsyncExecutor(
-        [_tool_round(*parts, rid="r-same"), _stop("ok")]
-    )
+    executor = _ScriptedAsyncExecutor([_tool_round(*parts, rid="r-same"), _stop("ok")])
     agent = AgentParam(Session.from_agent_prompt("a"), Provider())
     backend = get("local")
     with backend.open() as sandbox:
@@ -328,9 +324,7 @@ def test_arun_session_loop_same_key_tools_serialize(tmp_path: Any) -> None:
 
 def test_arun_session_loop_unknown_tool_yields_error_payload() -> None:
     bogus = _tool_call("nope_tool", {"x": 1}, call_id="tc-x")
-    executor = _ScriptedAsyncExecutor(
-        [_tool_round(bogus, rid="r-bad"), _stop("done")]
-    )
+    executor = _ScriptedAsyncExecutor([_tool_round(bogus, rid="r-bad"), _stop("done")])
     agent = AgentParam(Session.from_agent_prompt("a"), Provider())
     backend = get("local")
     with backend.open() as sandbox:
@@ -382,9 +376,7 @@ def test_arun_session_loop_failing_tool_does_not_break_others(tmp_path: Any) -> 
         _tool_call("boom", {"k": "bad"}, call_id="tcB"),
         _tool_call("boom", {"k": "ok-b"}, call_id="tcC"),
     )
-    executor = _ScriptedAsyncExecutor(
-        [_tool_round(*parts, rid="r-mix"), _stop("done")]
-    )
+    executor = _ScriptedAsyncExecutor([_tool_round(*parts, rid="r-mix"), _stop("done")])
     agent = AgentParam(Session.from_agent_prompt("a"), Provider())
     backend = get("local")
     with backend.open() as sandbox:

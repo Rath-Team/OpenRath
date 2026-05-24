@@ -224,9 +224,7 @@ def test_default_resource_key_serializes_non_parallel_safe_tools() -> None:
     class _UnsafeCounted(_CountingTool):
         parallel_safe = False
 
-        def resource_key(
-            self, arguments: Mapping[str, Any]
-        ) -> tuple[str, ...]:  # type: ignore[override]
+        def resource_key(self, arguments: Mapping[str, Any]) -> tuple[str, ...]:  # type: ignore[override]
             # Use the default ABC behavior: non-parallel-safe → ("global",)
             return FlowToolCall.resource_key(self, arguments)
 

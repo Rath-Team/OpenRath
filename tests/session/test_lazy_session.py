@@ -140,7 +140,9 @@ def test_chunk_table_property_blocks_until_materialized() -> None:
         rows = out.chunk_table.rows
         assert out._pending is None
         assert any(
-            r.payload.get("content") == "payload" for r in rows if r.kind.value == "assistant"
+            r.payload.get("content") == "payload"
+            for r in rows
+            if r.kind.value == "assistant"
         )
 
 
@@ -197,7 +199,9 @@ def test_synchronize_is_idempotent_under_thread_race() -> None:
         # _chunk_table is stable across all observers
         rows = out._chunk_table.rows
         assert any(
-            r.payload.get("content") == "once" for r in rows if r.kind.value == "assistant"
+            r.payload.get("content") == "once"
+            for r in rows
+            if r.kind.value == "assistant"
         )
 
 

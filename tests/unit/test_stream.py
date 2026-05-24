@@ -50,9 +50,7 @@ class _RecordingBackend(Backend):
     def sandbox_count(self) -> int:
         return len(self._open_handles)
 
-    async def _aopen(
-        self, spec: BackendSandboxSpec | None = None
-    ) -> BackendSandbox:
+    async def _aopen(self, spec: BackendSandboxSpec | None = None) -> BackendSandbox:
         handle = f"fake-{len(self._open_handles)}"
         self._open_handles.add(handle)
         return BackendSandbox(backend=self, handle=handle, spec=spec)

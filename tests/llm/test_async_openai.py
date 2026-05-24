@@ -101,7 +101,9 @@ def test_acomplete_stream_yields_deltas(
 ) -> None:
     req = RathLLMChatRequest(
         messages=(
-            RathLLMMessage(role="user", content="Count from one to three, one number per line."),
+            RathLLMMessage(
+                role="user", content="Count from one to three, one number per line."
+            ),
         ),
         model=async_client.provider.model,
     )
@@ -119,4 +121,6 @@ def test_acomplete_stream_yields_deltas(
 
     text, finish = rt.run(drain())
     assert finish == "stop"
-    assert any(d.isdigit() for d in text), f"expected digits in streamed text, got {text!r}"
+    assert any(d.isdigit() for d in text), (
+        f"expected digits in streamed text, got {text!r}"
+    )

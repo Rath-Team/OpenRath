@@ -68,20 +68,14 @@ class LazyValue(Generic[T]):
         """Block for the future; raise its exception or return its value."""
         return self._future.result(timeout=timeout)
 
-    def exception(
-        self, timeout: float | None = None
-    ) -> BaseException | None:
+    def exception(self, timeout: float | None = None) -> BaseException | None:
         return self._future.exception(timeout=timeout)
 
-    def add_done_callback(
-        self, fn: Any
-    ) -> None:  # pragma: no cover -- thin proxy
+    def add_done_callback(self, fn: Any) -> None:  # pragma: no cover -- thin proxy
         self._future.add_done_callback(fn)
 
 
-def unraisable_warn(
-    lazy: LazyValue[Any], session_id: Any
-) -> None:
+def unraisable_warn(lazy: LazyValue[Any], session_id: Any) -> None:
     """Emit a warning if ``lazy`` failed but no one ever called ``synchronize()``.
 
     Installed via ``Session.__del__`` and as the future's done-callback for

@@ -170,9 +170,7 @@ class Backend(ABC):
     # ----- internal async hooks (subclasses MUST implement) ----------------
 
     @abstractmethod
-    async def _aopen(
-        self, spec: BackendSandboxSpec | None = None
-    ) -> BackendSandbox:
+    async def _aopen(self, spec: BackendSandboxSpec | None = None) -> BackendSandbox:
         """Open a fresh sandbox; the async implementation."""
 
     @abstractmethod
@@ -202,9 +200,7 @@ class Backend(ABC):
 
         _runtime().run(self._aclose(sandbox))
 
-    def dispatch(
-        self, sandbox: BackendSandbox, call: BackendTool
-    ) -> ToolResult | bool:
+    def dispatch(self, sandbox: BackendSandbox, call: BackendTool) -> ToolResult | bool:
         """Execute ``call`` against ``sandbox`` and return its result (sync facade)."""
         from rath._async.runtime import runtime as _runtime
 

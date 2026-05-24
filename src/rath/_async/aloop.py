@@ -213,10 +213,7 @@ async def _adispatch_round(
 
     for idx, tc in enumerate(tool_calls):
         tool_name = tc.function.name
-        if (
-            tc.function.arguments_parsed is None
-            or tc.function.arguments_parse_error
-        ):
+        if tc.function.arguments_parsed is None or tc.function.arguments_parse_error:
             raw_dump = tc.function.arguments or ""
             if len(raw_dump) > 2000:
                 raw_dump = raw_dump[:2000] + "...(truncated)"
@@ -238,7 +235,7 @@ async def _adispatch_round(
             key = flow_tool.resource_key(args)
         except Exception as exc:
             logger.exception(
-                "resource_key() raised for tool=%s; serializing on (\"global\",)",
+                'resource_key() raised for tool=%s; serializing on ("global",)',
                 tool_name,
             )
             pre_errors[idx] = _loop_tool_error_payload(
@@ -265,9 +262,7 @@ async def _adispatch_round(
                 )
                 bodies[idx] = _summarize_dispatch_result(flow_tool, raw)
             except Exception as exc:
-                logger.exception(
-                    "tool invocation failed for tool=%s", tool_name
-                )
+                logger.exception("tool invocation failed for tool=%s", tool_name)
                 bodies[idx] = _loop_tool_error_payload(
                     "tool_execution_exception",
                     f"{type(exc).__name__}: {exc}",
@@ -413,13 +408,9 @@ async def _arun_session_loop(
 
             if tcalls:
                 await _append_row(
-                    assistant_turn_chunk(
-                        tool_calls=tcalls, content=msg.content
-                    )
+                    assistant_turn_chunk(tool_calls=tcalls, content=msg.content)
                 )
-                await _adispatch_round(
-                    out, rows_list, tcalls, table, aexec, writer
-                )
+                await _adispatch_round(out, rows_list, tcalls, table, aexec, writer)
                 continue
 
             await _append_row(

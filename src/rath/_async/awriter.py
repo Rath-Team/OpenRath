@@ -169,9 +169,7 @@ class _AsyncSessionWriter:
                     return
                 index, row = item  # type: ignore[misc]
                 try:
-                    await asyncio.to_thread(
-                        self._writer.write_chunk, index, row
-                    )
+                    await asyncio.to_thread(self._writer.write_chunk, index, row)
                 except asyncio.CancelledError:
                     # abandon() is asking us to stop; propagate so the
                     # outer handler runs and the awaiter unblocks.

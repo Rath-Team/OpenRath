@@ -317,9 +317,7 @@ def test_bounded_queue_applies_backpressure(_isolate_openrath_home: Path) -> Non
         await w.awrite_chunk(1, user_text_chunk("b"))
         # Row 2: queue is full (1/1) — the producer must wait until the
         # drain finishes row 0 and pops row 1.
-        third = asyncio.create_task(
-            w.awrite_chunk(2, user_text_chunk("c"))
-        )
+        third = asyncio.create_task(w.awrite_chunk(2, user_text_chunk("c")))
         await asyncio.sleep(0.03)
         pending_when_full = not third.done()
 

@@ -92,9 +92,7 @@ class OpenRathRuntime:
             raise RuntimeError("runtime has not started")
         return loop
 
-    def submit(
-        self, coro: Coroutine[Any, Any, T]
-    ) -> concurrent.futures.Future[T]:
+    def submit(self, coro: Coroutine[Any, Any, T]) -> concurrent.futures.Future[T]:
         """Schedule ``coro`` on the background loop; return a sync Future.
 
         Never blocks. Safe to call from any thread, including from inside
