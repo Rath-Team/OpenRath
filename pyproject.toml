@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "openrath"
-version = "1.1.0"
+version = "1.2.0"
 description = "An open-source, torch-like API framework for dynamic multi-agent workflow."
 readme = "README.md"
 requires-python = ">=3.10,<3.14"
@@ -34,6 +34,9 @@ opensandbox = [
     "opensandbox>=0.1.7",
     "opensandbox-code-interpreter>=0.1.2",
     "opensandbox-server>=0.1.12",
+]
+openviking = [
+    "openviking>=0.2.6",
 ]
 
 [tool.ruff]

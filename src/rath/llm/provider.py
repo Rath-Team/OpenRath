@@ -35,7 +35,7 @@ class Provider:
     seed: int | None = None
     frequency_penalty: float | None = None
     presence_penalty: float | None = None
-    tool_choice: Any | None = None
+    tool_choice: Literal["auto", "none", "required"] | Mapping[str, Any] | None = None
     parallel_tool_calls: bool | None = None
     response_format: dict[str, Any] | None = None
     logit_bias: dict[str, int] | None = None

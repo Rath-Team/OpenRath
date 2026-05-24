@@ -104,30 +104,55 @@ def test_merge_shared_sandbox_bumps_refcount() -> None:
     assert sb.closed
 
 
-def test_merge_different_sandboxes_raises() -> None:
+def test_merge_keeps_first_sandbox_when_other_differs() -> None:
     backend = get("local")
     sb_a = backend.open()
     sb_b = backend.open()
     a = Session.from_user_message("a").bind_sandbox(sb_a)
     b = Session.from_user_message("b").bind_sandbox(sb_b)
     try:
-        with pytest.raises(ValueError, match="different sandboxes"):
-            a.merge(b)
+        m = a.merge(b)
+        assert m.sandbox is sb_a
+        # self.sandbox got an extra ref (1 from a, 1 from m == 2)
+        assert sb_a.refcount == 2
+        # other.sandbox is untouched — b still holds its sole reference
+        assert sb_b.refcount == 1
+        m.close_sandbox()
+        assert sb_a.refcount == 1
+        assert not sb_a.closed
     finally:
         a.close_sandbox()
         b.close_sandbox()
 
 
-def test_merge_one_bound_one_unbound_raises() -> None:
+def test_merge_one_bound_one_unbound_keeps_bound_sandbox() -> None:
     backend = get("local")
     sb = backend.open()
     a = Session.from_user_message("a").bind_sandbox(sb)
     b = Session.from_user_message("b")
     try:
-        with pytest.raises(ValueError, match="different sandboxes"):
-            a.merge(b)
+        m = a.merge(b)
+        assert m.sandbox is sb
+        assert sb.refcount == 2
+        m.close_sandbox()
+        assert sb.refcount == 1
     finally:
         a.close_sandbox()
+
+
+def test_merge_unbound_first_bound_second_yields_unbound_result() -> None:
+    backend = get("local")
+    sb = backend.open()
+    a = Session.from_user_message("a")
+    b = Session.from_user_message("b").bind_sandbox(sb)
+    try:
+        m = a.merge(b)
+        # self (a) was unbound, so merge result is unbound regardless of b
+        assert m.sandbox is None
+        # b keeps its own reference
+        assert sb.refcount == 1
+    finally:
+        b.close_sandbox()
 
 
 def test_merge_unbound_different_backends_raises() -> None:

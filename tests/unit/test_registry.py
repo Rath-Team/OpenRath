@@ -24,7 +24,7 @@ from rath.backend import (
     register,
     set_default,
 )
-from rath.backend.registry import _DEFAULT, _REGISTRY
+from rath.backend.registry import _DEFAULT, _INSTANCES, _REGISTRY
 
 
 @pytest.fixture
@@ -32,11 +32,14 @@ def registry_snapshot() -> Iterator[None]:
     """Save and restore private registry maps so tests can register fakes."""
     saved = dict(_REGISTRY)
     saved_default = dict(_DEFAULT)
+    saved_instances = dict(_INSTANCES)
     yield
     _REGISTRY.clear()
     _REGISTRY.update(saved)
     _DEFAULT.clear()
     _DEFAULT.update(saved_default)
+    _INSTANCES.clear()
+    _INSTANCES.update(saved_instances)
 
 
 class _FakeBase(Backend):
@@ -98,11 +101,11 @@ def test_register_duplicate_raises(registry_snapshot: None) -> None:
         register("test_dup")(type("R2", (_FakeBase,), {}))
 
 
-def test_get_returns_fresh_instance(registry_snapshot: None) -> None:
+def test_get_returns_singleton_instance(registry_snapshot: None) -> None:
     register("test_g")(type("R", (_FakeBase,), {}))
     a = get("test_g")
     b = get("test_g")
-    assert a is not b
+    assert a is b
     assert isinstance(a, _FakeBase)
 
 

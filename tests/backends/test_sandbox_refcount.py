@@ -8,6 +8,8 @@ decrements, and the backend is told to close exactly when the count hits zero.
 
 from __future__ import annotations
 
+import threading
+
 import pytest
 
 from rath.backend import get
@@ -104,6 +106,40 @@ def test_explicit_backend_close_marks_closed() -> None:
     sb = backend.open()
     backend.close(sb)
     assert sb.closed
+
+
+def test_concurrent_acquire_release_is_safe() -> None:
+    """Hammer acquire/release from many threads; refcount must stay coherent.
+
+    Each thread acquires then releases ``iters`` times. The sandbox starts
+    with one extra reference held by the main thread so the count never
+    reaches zero mid-test (we want to verify the lock under contention, not
+    the close-on-zero edge). At the end exactly one final release should
+    close the sandbox.
+    """
+    backend = get("local")
+    sb = backend.open()
+    sb.acquire()  # baseline ref so the count can't drain to zero mid-test
+
+    threads = 8
+    iters = 1000
+
+    def worker() -> None:
+        for _ in range(iters):
+            sb.acquire()
+            sb.release()
+
+    workers = [threading.Thread(target=worker) for _ in range(threads)]
+    for t in workers:
+        t.start()
+    for t in workers:
+        t.join()
+
+    assert sb.refcount == 1
+    assert not sb.closed
+    sb.release()
+    assert sb.closed
+    assert backend.sandbox_count() == 0
 
 
 @opensandbox_real

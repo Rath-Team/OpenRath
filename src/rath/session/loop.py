@@ -47,6 +47,7 @@ from rath.llm import (
     RathLLMChatResponse,
     RathLLMFinishReason,
     RathLLMFunctionTool,
+    RathLLMMessage,
     RathLLMStreamDelta,
     RathLLMTokenUsage,
     RathLLMToolCallFunction,
@@ -248,7 +249,7 @@ def resolve_executor(
     return DefaultSessionLoopExecutor(client)
 
 
-def _sync_loop_out_rows(out: Session, rows_list: list[Any]) -> None:
+def _sync_loop_out_rows(out: Session, rows_list: list[ChunkRow]) -> None:
     # Bypass the lazy property setter so this is callable from runtime
     # coroutines without poking the synchronize() lock.
     out._chunk_table = ChunkTable(rows=tuple(rows_list))
@@ -391,12 +392,18 @@ def _summarize_dispatch_result(tool: FlowToolCall, raw: Any) -> str:
 
 def _append_and_persist(
     out: Session,
-    rows_list: list[Any],
+    rows_list: list[ChunkRow],
     row: ChunkRow,
     writer: SessionWriter | None,
 ) -> None:
+    """Append ``row`` to ``rows_list`` (and JSONL if a writer is set).
+
+    Does **not** rebuild ``out.chunk_table`` per row — the caller materialises
+    once per assistant turn via :func:`_sync_loop_out_rows`, plus one final
+    rebuild after the loop. This keeps the loop O(rounds) rather than the
+    O(rows²) shape that comes from rebuilding the tuple on every append.
+    """
     rows_list.append(row)
-    _sync_loop_out_rows(out, rows_list)
     if writer is not None:
         writer.write_chunk(len(rows_list) - 1, row)
 
@@ -463,7 +470,7 @@ def run_session_loop(
     from rath._async.runtime import runtime
 
     # Pre-build ``out`` so callers can read .id / .sandbox / lineage eagerly.
-    rows_seed: list[Any] = list(user_session._chunk_table.rows)
+    rows_seed: list[ChunkRow] = list(user_session._chunk_table.rows)
     out = Session(
         chunk_table=ChunkTable(rows=tuple(rows_seed)),
         sandbox_backend=user_session.sandbox_backend,

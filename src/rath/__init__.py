@@ -20,9 +20,10 @@ from typing import Any
 from rath import (
     backend,
     flow,
+    memory,
 )
 
-__all__ = ["backend", "flow", "session"]
+__all__ = ["backend", "flow", "memory", "session"]
 
 
 def __getattr__(name: str) -> Any:

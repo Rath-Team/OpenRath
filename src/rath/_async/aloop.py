@@ -42,6 +42,7 @@ from rath.llm import (
     RathLLMChatRequest,
     RathLLMChatResponse,
     RathLLMFunctionTool,
+    RathLLMMessage,
     RathLLMStreamDelta,
     chat_client_for,
 )
@@ -377,14 +378,23 @@ async def _arun_session_loop(
         if writer is not None:
             await writer.awrite_chunk(len(rows_list) - 1, row)
 
+    # head is immutable after session start — compute once outside the loop.
+    head = chunk_table_to_messages(agent_session._chunk_table)
+    # Incrementally extend tail with only new rows so we don't re-flatten
+    # the whole chunk_table every round (ported from main).
+    _tail_rendered_up_to = 0
+    _tail_msgs: tuple[RathLLMMessage, ...] = ()
+
     try:
         rounds_used = 0
         finished = False
         for _ in range(max_tool_rounds):
             rounds_used += 1
-            head = chunk_table_to_messages(agent_session._chunk_table)
-            tail = chunk_table_to_messages(ChunkTable(rows=tuple(rows_list)))
-            messages = head + tail
+            if len(rows_list) > _tail_rendered_up_to:
+                new_slice = ChunkTable(rows=tuple(rows_list[_tail_rendered_up_to:]))
+                _tail_msgs = _tail_msgs + chunk_table_to_messages(new_slice)
+                _tail_rendered_up_to = len(rows_list)
+            messages = head + _tail_msgs
 
             req = provider_into_chat_request(
                 messages,

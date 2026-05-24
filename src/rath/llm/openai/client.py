@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Iterator
+from typing import Any, Iterator, cast
 
 from openai import (
     APIConnectionError,
@@ -57,6 +57,9 @@ def _config_provider_entry() -> Any:
     ``provider_kind="openai"`` entry. Errors are swallowed by design — the
     config file is a *fallback*, never a hard dependency. Lazy-imported so
     a vanilla ``import rath.llm`` does not touch the filesystem.
+
+    Since :meth:`ConfigStore.load` now caches by mtime, repeated calls are
+    effectively free (no disk re-read unless the file was modified).
     """
     try:
         from rath.config.store import ConfigStore
@@ -104,7 +107,7 @@ _STREAM_FINISH_REASONS = frozenset(
 
 def _coerce_stream_finish(value: Any) -> RathLLMFinishReason | None:
     if isinstance(value, str) and value in _STREAM_FINISH_REASONS:
-        return value  # type: ignore[return-value]
+        return cast(RathLLMFinishReason, value)
     return None
 
 

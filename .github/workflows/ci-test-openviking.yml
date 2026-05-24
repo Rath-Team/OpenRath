@@ -1,0 +1,53 @@
+name: Test OpenViking
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/rath/memory/**'
+      - 'src/rath/flow/agent.py'
+      - 'src/rath/flow/agent_param.py'
+      - 'src/rath/flow/memory_inject.py'
+      - 'tests/memory/**'
+      - 'scripts/launch_openviking.sh'
+      - 'pyproject.toml'
+      - 'uv.lock'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/rath/memory/**'
+      - 'src/rath/flow/agent.py'
+      - 'src/rath/flow/agent_param.py'
+      - 'src/rath/flow/memory_inject.py'
+      - 'tests/memory/**'
+      - 'scripts/launch_openviking.sh'
+      - 'pyproject.toml'
+      - 'uv.lock'
+
+permissions:
+  contents: read
+
+jobs:
+  test-openviking:
+    name: pytest (openviking)
+    runs-on: ubuntu-latest
+    # OpenViking tests require a running server with reachable embedding +
+    # VLM providers (GLM by default); allow failure until the CI
+    # environment is verified stable (mirrors the opensandbox job).
+    continue-on-error: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.12'
+      - name: Install OpenViking SDK
+        run: uv sync --extra openviking --frozen
+      - name: Start OpenViking server
+        run: bash scripts/launch_openviking.sh
+      - name: Export OPEN_VIKING_ROOT_API_KEY
+        run: |
+          key="$(python -c 'import json, pathlib; print(json.loads(pathlib.Path.home().joinpath(".openviking/ov.conf").read_text())["server"]["root_api_key"])')"
+          echo "OPEN_VIKING_ROOT_API_KEY=${key}" >> "$GITHUB_ENV"
+          echo "OPEN_VIKING_URL=http://127.0.0.1:1933" >> "$GITHUB_ENV"
+      - name: Run OpenViking tests
+        run: uv run pytest -m openviking

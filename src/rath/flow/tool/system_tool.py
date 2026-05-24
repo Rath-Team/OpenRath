@@ -7,6 +7,7 @@ payload and run :meth:`~rath.session.session.Session.require_sandbox`'s
 
 from __future__ import annotations
 
+import types as _types
 from collections.abc import Mapping, Sequence
 from threading import Lock
 from typing import Any
@@ -175,8 +176,15 @@ _SYSTEM: dict[str, FlowToolCall] | None = None
 _SYSTEM_LOCK = Lock()
 
 
-def global_system_tools() -> dict[str, FlowToolCall]:
-    """Process-wide built-in tools (singleton instances per name)."""
+def global_system_tools() -> Mapping[str, FlowToolCall]:
+    """Process-wide built-in tools (singleton instances per name, immutable view).
+
+    Returns a :class:`types.MappingProxyType` over the internal registry
+    so callers cannot accidentally mutate the global state via the
+    returned object. Callers that need a mutable working copy can still
+    do ``dict(global_system_tools())``; that explicit copy is local and
+    does not touch the underlying registry.
+    """
 
     global _SYSTEM
     with _SYSTEM_LOCK:
@@ -184,4 +192,4 @@ def global_system_tools() -> dict[str, FlowToolCall]:
             shell = RunShellCommandTool()
             write = WriteWorkspaceFileTool()
             _SYSTEM = {shell.name: shell, write.name: write}
-        return _SYSTEM
+        return _types.MappingProxyType(_SYSTEM)

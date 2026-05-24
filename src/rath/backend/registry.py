@@ -6,6 +6,7 @@ on classes; ``get(name)`` instantiates a backend on demand.
 
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable
 from typing import TypeVar
 
@@ -14,6 +15,8 @@ from rath.backend.errors import BackendNotFound
 
 _REGISTRY: dict[str, type[Backend]] = {}
 _DEFAULT: dict[str, str] = {}
+_INSTANCES: dict[str, Backend] = {}
+_INSTANCE_LOCK = threading.Lock()
 
 B = TypeVar("B", bound=Backend)
 
@@ -37,9 +40,19 @@ def list_names() -> list[str]:
 
 
 def get(name: str) -> Backend:
-    """Look up a backend by name and return a fresh instance."""
+    """Look up a backend by name and return the per-process singleton instance.
+
+    The same instance is returned for repeated calls with the same ``name``,
+    so per-backend caches (e.g. ``OpenSandboxBackend._natives``) and the
+    sandbox refcount are coherent across all sessions in the process.
+    """
     cls = _get_class(name)
-    return cls()
+    with _INSTANCE_LOCK:
+        inst = _INSTANCES.get(name)
+        if inst is None:
+            inst = cls()
+            _INSTANCES[name] = inst
+    return inst
 
 
 def get_class(name: str) -> type[Backend]:
@@ -62,7 +75,7 @@ def preferred(names: list[str]) -> Backend:
     """
     for n in names:
         if n in _REGISTRY and _REGISTRY[n].is_available():
-            return _REGISTRY[n]()
+            return get(n)
     available = [n for n in _REGISTRY if _REGISTRY[n].is_available()]
     raise BackendNotFound(name=", ".join(names), available=available)
 
@@ -93,3 +106,17 @@ def _reset() -> None:
     """Clear the registry. Test-only helper."""
     _REGISTRY.clear()
     _DEFAULT.clear()
+    with _INSTANCE_LOCK:
+        _INSTANCES.clear()
+
+
+def _reset_instances() -> None:
+    """Drop cached backend singletons without clearing class registrations.
+
+    Test-only helper: keeps ``LocalBackend`` / ``OpenSandboxBackend`` registered
+    but forces ``get(name)`` to construct fresh instances on next call. Useful
+    when a test wants an isolated backend (e.g. its own ``_open_handles`` set)
+    without re-registering classes.
+    """
+    with _INSTANCE_LOCK:
+        _INSTANCES.clear()

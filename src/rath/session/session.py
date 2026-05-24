@@ -131,10 +131,18 @@ class Session:
     synchronize.
 
     Sharing semantics: :func:`~rath.session.loop.run_session_loop`,
-    :func:`~rath.session.compress.run_session_compress`, :meth:`fork`, and
-    :meth:`merge` all bind the new session to the **same** sandbox object as the
-    source (refcount + 1). The source session keeps its reference. :meth:`detach`
-    is the exception — it copies only the backend name and spec, never the handle.
+    :func:`~rath.session.compress.run_session_compress`, :meth:`fork`,
+    :meth:`detach`, and :meth:`merge` all bind the new session to the **same**
+    sandbox object as the source (refcount + 1). The source session keeps its
+    reference. :meth:`detach` differs from :meth:`fork` only in lineage:
+    :meth:`fork` records ``parent_session_ids=(self.id,)``; :meth:`detach`
+    records an empty parent tuple. :meth:`merge` always keeps ``self.sandbox``
+    (the first session's); ``other.sandbox`` is ignored, and ``other`` keeps
+    its own reference.
+
+    Flat lineage (preferred graph substrate): :attr:`parent_session_ids` (ordered
+    parents), :attr:`lineage_operator`, :attr:`lineage_kind`, :attr:`lineage_extras`.
+    :attr:`lineage` is an optional legacy DTO tying loop outputs to producer sessions.
     """
 
     __slots__ = (
@@ -278,6 +286,49 @@ class Session:
             chunk_table=ChunkTable(rows=(user_text_chunk(text),)),
         )
 
+    @classmethod
+    def create(cls, kind: str = "user", text: str = "") -> Session:
+        """Friendly single-entry constructor with lineage stamping.
+
+        ``kind`` is one of:
+
+        - ``"user"`` — single USER chunk holding ``text``; stamps ``LEAF_USER``.
+        - ``"system"`` — single SYSTEM chunk holding ``text``; stamps ``LEAF_SYSTEM``.
+        - ``"empty"`` — zero-row transcript; ``text`` is ignored; no lineage stamp.
+
+        The returned session is **unbound** (no sandbox). Chain ``.to(backend)``
+        to pick a backend; the handle opens lazily on first use or
+        ``with session:``.
+        """
+        from rath.session.chunk import system_text_chunk, user_text_chunk
+
+        if kind == "user":
+            s = cls(chunk_table=ChunkTable(rows=(user_text_chunk(text),)))
+            LineageRecorder.stamp_new_session(
+                s,
+                parent_session_ids=(),
+                lineage_operator="Session.create",
+                lineage_kind=LineageKind.LEAF_USER,
+                lineage_extras=(("source", "Session.create"),),
+            )
+            return s
+        if kind == "system":
+            s = cls(chunk_table=ChunkTable(rows=(system_text_chunk(text),)))
+            LineageRecorder.stamp_new_session(
+                s,
+                parent_session_ids=(),
+                lineage_operator="Session.create",
+                lineage_kind=LineageKind.LEAF_SYSTEM,
+                lineage_extras=(("source", "Session.create"),),
+            )
+            return s
+        if kind == "empty":
+            return cls(chunk_table=ChunkTable(rows=()))
+        raise ValueError(
+            f"Session.create: unknown kind {kind!r}; "
+            "expected one of 'user', 'system', 'empty'"
+        )
+
     def to(
         self,
         backend: str = "local",
@@ -392,12 +443,19 @@ class Session:
         return detached
 
     def merge(self, other: "Session") -> "Session":
-        """Concatenate ``self.rows + other.rows`` into a new session."""
-        if self.sandbox is not other.sandbox:
-            raise ValueError(
-                "cannot merge sessions with different sandboxes: "
-                f"self.sandbox={self.sandbox!r} vs other.sandbox={other.sandbox!r}"
-            )
+        """Concatenate ``self.rows + other.rows`` into a new session.
+
+        The merged session **always keeps** ``self.sandbox`` — the first
+        session's. ``other.sandbox`` is ignored regardless of whether it is
+        the same instance, a different one, or ``None``; ``other`` keeps its
+        own reference. Refcount on ``self.sandbox`` is bumped by 1 when set.
+        :attr:`cumulative_usage` is summed across both inputs. Lineage parents
+        are ``(self.id, other.id)``, kind is :attr:`LineageKind.OP_MERGE`.
+
+        The only remaining hard constraint: when **both** sessions are unbound
+        and they declare different ``sandbox_backend`` targets, merging is
+        ambiguous — raises :class:`ValueError`.
+        """
         if (
             self.sandbox is None
             and other.sandbox is None

@@ -62,6 +62,9 @@ def _config_provider_entry() -> Any:
     Returns ``None`` if the config file is absent, malformed, or has no
     ``provider_kind="anthropic"`` entry. Errors are swallowed by design —
     config is a fallback below explicit kwargs and env vars.
+
+    Since :meth:`ConfigStore.load` now caches by mtime, repeated calls are
+    effectively free (no disk re-read unless the file was modified).
     """
     try:
         from rath.config.store import ConfigStore

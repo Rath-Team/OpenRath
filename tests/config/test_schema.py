@@ -20,9 +20,53 @@ def test_defaults_round_trip_to_known_shape() -> None:
     payload = cfg.model_dump(mode="json")
     assert payload == {
         "version": SCHEMA_VERSION,
-        "llm": {"default_provider": None, "providers": {}},
+        "llm": {
+            "default_provider": None,
+            "embedding_provider": None,
+            "vlm_provider": None,
+            "providers": {},
+        },
         "mcp": {"default_enabled": [], "servers": {}},
     }
+
+
+def test_llm_config_accepts_embedding_and_vlm_provider() -> None:
+    c = LLMConfig(
+        default_provider="chat",
+        embedding_provider="embed",
+        vlm_provider="vis",
+        providers={
+            "chat": LLMProviderConfig(provider_kind="openai", model="gpt-x"),
+            "embed": LLMProviderConfig(provider_kind="openai", model="emb-x"),
+            "vis": LLMProviderConfig(provider_kind="openai", model="glm-4.6v"),
+        },
+    )
+    assert c.embedding_provider == "embed"
+    assert c.vlm_provider == "vis"
+    # Round-trip through json preserves the new fields.
+    dumped = c.model_dump(mode="json")
+    rebuilt = LLMConfig.model_validate(dumped)
+    assert rebuilt.embedding_provider == "embed"
+    assert rebuilt.vlm_provider == "vis"
+
+
+def test_legacy_config_without_new_fields_loads_with_none_defaults() -> None:
+    """A pre-existing config.json missing the new keys must keep loading."""
+    legacy = {
+        "version": 1,
+        "llm": {
+            "default_provider": "x",
+            "providers": {
+                "x": {"provider_kind": "openai", "model": "y"},
+            },
+        },
+        "mcp": {"default_enabled": [], "servers": {}},
+    }
+    cfg = RathConfig.model_validate(legacy)
+    assert cfg.llm.embedding_provider is None
+    assert cfg.llm.vlm_provider is None
+    # Default chat path still works.
+    assert cfg.llm.default_provider == "x"
 
 
 def test_llm_provider_rejects_unknown_provider_kind() -> None:

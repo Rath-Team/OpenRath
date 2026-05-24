@@ -39,4 +39,4 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: uv sync --dev --frozen
-      - run: uv run pytest -m 'not opensandbox and not live_llm'
+      - run: uv run pytest -m 'not opensandbox and not openviking and not live_llm'

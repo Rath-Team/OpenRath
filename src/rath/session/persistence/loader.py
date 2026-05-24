@@ -115,16 +115,35 @@ class PersistedSession:
         prompt (if any) extracted from the persisted history, or
         ``agent_prompt`` if provided to override.
 
-        Sandbox is rebound to the **same spec** (e.g. the stable
-        ``working_dir`` on Local) so a resumed run picks up where it left
-        off, but the sandbox itself is opened lazily by the next consumer —
-        :meth:`to_resumable_pair` performs no I/O.
+        Sandbox handling depends on the recorded backend:
+
+        * ``opensandbox`` with a ``sandbox_handle_id`` — reattach immediately
+          via :meth:`PersistentSandboxRegistry.reattach_remote` so the
+          resumed session targets the same remote container instead of
+          spinning up a fresh one. Performs I/O against the registry index
+          file and the OpenSandbox backend's ``attach``.
+        * Local (or no recorded handle) — keep the spec on the unbound
+          session; the next consumer opens lazily.
         """
         user = Session(
             chunk_table=self.chunk_table,
             sandbox_backend=self.header.sandbox_backend,
             _sandbox_open_spec=self.header.sandbox_spec,
         )
+
+        if (
+            self.header.sandbox_backend == "opensandbox"
+            and self.header.sandbox_handle_id
+        ):
+            from rath.backend.persistence.registry import PersistentSandboxRegistry
+
+            try:
+                handle_uuid = UUID(self.header.sandbox_handle_id)
+            except ValueError:
+                handle_uuid = None
+            if handle_uuid is not None:
+                sandbox = PersistentSandboxRegistry().reattach_remote(handle_uuid)
+                user.bind_sandbox(sandbox)
 
         if agent_prompt is not None:
             agent = Session.from_agent_prompt(agent_prompt)

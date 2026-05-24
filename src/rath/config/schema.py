@@ -44,9 +44,19 @@ class LLMProviderConfig(BaseModel):
 
 
 class LLMConfig(BaseModel):
-    """The ``llm`` section: named providers + which one is the default."""
+    """The ``llm`` section: named providers + which one is the default.
+
+    ``default_provider`` is the chat fallback. ``embedding_provider`` and
+    ``vlm_provider`` are independent overrides used by
+    :class:`rath.llm.embedding.EmbeddingProvider` and
+    :class:`rath.llm.vlm.VLMProvider`; when unset, those clients fall back
+    to ``default_provider``'s ``api_key``/``base_url`` with a sensible
+    default model.
+    """
 
     default_provider: str | None = None
+    embedding_provider: str | None = None
+    vlm_provider: str | None = None
     providers: dict[str, LLMProviderConfig] = Field(default_factory=dict)
 
     model_config = ConfigDict(extra="allow")

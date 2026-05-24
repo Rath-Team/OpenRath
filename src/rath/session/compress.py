@@ -86,8 +86,11 @@ def run_session_compress(
 
     head = chunk_table_to_messages(agent_session.chunk_table)
     tail = chunk_table_to_messages(user_session.chunk_table)
+    # P2-fix: single unpack instead of two tuple concats.
     messages: tuple[RathLLMMessage, ...] = (
-        head + tail + (RathLLMMessage(role="user", content=instruction),)
+        *head,
+        *tail,
+        RathLLMMessage(role="user", content=instruction),
     )
 
     prefs = replace(agent_provider, tool_choice=None)
