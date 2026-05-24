@@ -249,7 +249,9 @@ def resolve_executor(
 
 
 def _sync_loop_out_rows(out: Session, rows_list: list[Any]) -> None:
-    out.chunk_table = ChunkTable(rows=tuple(rows_list))
+    # Bypass the lazy property setter so this is callable from runtime
+    # coroutines without poking the synchronize() lock.
+    out._chunk_table = ChunkTable(rows=tuple(rows_list))
 
 
 def _accumulate_usage_and_check_budget(
@@ -272,14 +274,16 @@ def _accumulate_usage_and_check_budget(
     """
     if resp.usage is None:
         return
-    prev_total = (
-        out.cumulative_usage.total_tokens if out.cumulative_usage is not None else 0
-    )
-    out.cumulative_usage = add_usage(out.cumulative_usage, resp.usage)
+    # Access the private slot directly so this helper is safe to call from
+    # the runtime coroutine, where reading ``out.cumulative_usage`` (the
+    # lazy property) would deadlock on the still-pending future.
+    current = out._cumulative_usage
+    prev_total = current.total_tokens if current is not None else 0
+    out._cumulative_usage = add_usage(current, resp.usage)
     cap = provider.budget_total_tokens
-    if cap is None or out.cumulative_usage is None:
+    if cap is None or out._cumulative_usage is None:
         return
-    new_total = out.cumulative_usage.total_tokens
+    new_total = out._cumulative_usage.total_tokens
     if new_total <= cap or prev_total > cap:
         return
     callback = provider.on_budget_exceeded
@@ -292,7 +296,7 @@ def _accumulate_usage_and_check_budget(
             new_total,
         )
         return
-    callback(out, out.cumulative_usage)
+    callback(out, out._cumulative_usage)
 
 
 def _loop_tool_error_payload(
@@ -409,6 +413,7 @@ def run_session_loop(
     persist: bool = False,
     persist_path: Path | None = None,
     sandbox_handle_id: str | None = None,
+    lazy: bool = True,
 ) -> Session:
     """Run one multi-turn assistant pass with optional tool rounds.
 
@@ -436,19 +441,31 @@ def run_session_loop(
 
     Message assembly concatenates ``agent_session.chunk_table`` ahead of the
     user rows for the LLM; head rows stay out of ``out.chunk_table``.
+
+    When ``lazy=True`` (the default), the returned :class:`Session` is a lazy
+    handle: lineage attributes, ``id``, and ``sandbox`` are set immediately,
+    but the transcript materialises only when the caller reads
+    ``out.chunk_table`` (or calls ``out.synchronize()``). The runtime
+    executes the loop on a background asyncio loop so multiple
+    ``run_session_loop`` calls can overlap.
     """
+    # Lazy inputs (Phase 4): join before submitting (concurrency invariant 7).
+    if user_session._pending is not None:
+        user_session.synchronize()
+    if agent_session._pending is not None:
+        agent_session.synchronize()
 
-    table = merge_tools_for_loop(tools)
+    # The async loop materialises in-process. The lazy=False path lets
+    # callers opt out of the lazy facade for tests/debugging — same return
+    # shape, just block synchronously in the runtime.
+    from rath._async.aloop import _arun_session_loop
+    from rath._async.lazy import LazyValue
+    from rath._async.runtime import runtime
 
-    executor = resolve_executor(
-        agent_provider=agent_provider, executor=executor, on_event=on_event
-    )
-
-    prefs = agent_provider
-
-    rows_list: list[Any] = list(user_session.chunk_table.rows)
+    # Pre-build ``out`` so callers can read .id / .sandbox / lineage eagerly.
+    rows_seed: list[Any] = list(user_session._chunk_table.rows)
     out = Session(
-        chunk_table=ChunkTable(rows=tuple(rows_list)),
+        chunk_table=ChunkTable(rows=tuple(rows_seed)),
         sandbox_backend=user_session.sandbox_backend,
         _sandbox_open_spec=user_session._sandbox_open_spec,
         lineage=SessionLineage(
@@ -470,126 +487,27 @@ def run_session_loop(
     reg.register(out)
     reg.set_active(out)
 
-    writer: SessionWriter | None = None
-    if persist or persist_path is not None:
-        writer = SessionWriter(
-            out,
+    async def _coro() -> tuple[ChunkTable, RathLLMTokenUsage | None]:
+        materialized = await _arun_session_loop(
+            user_session,
+            agent_session,
+            agent_provider=agent_provider,
+            tools=tools,
+            executor=executor,
+            max_tool_rounds=max_tool_rounds,
+            on_event=on_event,
+            persist=persist,
+            persist_path=persist_path,
             sandbox_handle_id=sandbox_handle_id,
-            path=persist_path,
+            out=out,
         )
-        # Seed the JSONL with any rows inherited from the user session so the
-        # persisted transcript matches ``out.chunk_table`` exactly.
-        for seed_index, seed_row in enumerate(rows_list):
-            writer.write_chunk(seed_index, seed_row)
+        return materialized._chunk_table, materialized._cumulative_usage
 
-    tool_schemas = executor.tool_schemas()
-    if not tool_schemas:
-        tool_schemas = tools_dict_to_schemas(table)
-
-    try:
-        for _ in range(max_tool_rounds):
-            head = chunk_table_to_messages(agent_session.chunk_table)
-            tail = chunk_table_to_messages(ChunkTable(rows=tuple(rows_list)))
-            messages = head + tail
-
-            req = provider_into_chat_request(
-                messages,
-                tool_schemas,
-                prefs,
-                default_tool_choice="auto",
-            )
-            resp = executor.complete(req)
-            _accumulate_usage_and_check_budget(out, resp, prefs)
-            choice = resp.primary_choice
-            msg = choice.message
-            tcalls = msg.tool_calls
-
-            if tcalls:
-                _append_and_persist(
-                    out,
-                    rows_list,
-                    assistant_turn_chunk(tool_calls=tcalls, content=msg.content),
-                    writer,
-                )
-                for tc in tcalls:
-                    tool_name = tc.function.name
-                    if (
-                        tc.function.arguments_parsed is None
-                        or tc.function.arguments_parse_error
-                    ):
-                        raw_dump = tc.function.arguments or ""
-                        if len(raw_dump) > 2000:
-                            raw_dump = raw_dump[:2000] + "...(truncated)"
-                        body = _loop_tool_error_payload(
-                            "invalid_tool_arguments",
-                            (
-                                f"tool {tool_name!r} returned non-JSON "
-                                "or unparseable arguments"
-                            ),
-                            detail=raw_dump,
-                        )
-                    else:
-                        flow_tool = table.get(tool_name)
-                        if flow_tool is None:
-                            body = _loop_tool_error_payload(
-                                "unknown_tool",
-                                f"unknown tool {tool_name!r}",
-                            )
-                        else:
-                            try:
-                                raw = executor.dispatch_tool(
-                                    out,
-                                    flow_tool,
-                                    tc.function.arguments_parsed or {},
-                                )
-                                body = _summarize_dispatch_result(flow_tool, raw)
-                            except Exception as exc:
-                                logger.exception(
-                                    "tool invocation failed for tool=%s", tool_name
-                                )
-                                body = _loop_tool_error_payload(
-                                    "tool_execution_exception",
-                                    f"{type(exc).__name__}: {exc}",
-                                    detail=type(exc).__name__,
-                                )
-                    _append_and_persist(
-                        out,
-                        rows_list,
-                        tool_feedback_chunk(tc.id, tool_name, body),
-                        writer,
-                    )
-                continue
-
-            _append_and_persist(
-                out,
-                rows_list,
-                assistant_turn_chunk(tool_calls=None, content=msg.content),
-                writer,
-            )
-            if choice.finish_reason in ("stop", "length", "content_filter"):
-                break
-        else:
-            # Loop exhausted max_tool_rounds without a natural finish_reason.
-            # The last row may be a tool_result, which is easy to mistake for
-            # a mid-run failure. Warn and stamp lineage so callers can detect
-            # truncation programmatically.
-            logger.warning(
-                "run_session_loop hit max_tool_rounds=%d without "
-                "finish_reason in (stop, length, content_filter); "
-                "last row may be a tool_result",
-                max_tool_rounds,
-            )
-            out.lineage_extras = out.lineage_extras + (("loop.truncated", True),)
-    except BaseException:
-        if writer is not None:
-            writer.abandon()
-        raise
-
-    if writer is not None:
-        writer.close()
-
-    out.chunk_table = ChunkTable(rows=tuple(rows_list))
-    reg.set_active(out)
+    fut = runtime().submit(_coro())
+    lazy_val = LazyValue(fut)
+    out._set_pending(lazy_val)
+    if not lazy:
+        out.synchronize()
     return out
 
 

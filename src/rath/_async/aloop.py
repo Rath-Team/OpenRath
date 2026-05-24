@@ -138,6 +138,36 @@ class _DefaultAsyncExecutor:
         return await asyncio.to_thread(tool, session, dict(arguments or {}))
 
 
+class _SyncExecutorAsyncAdapter:
+    """Wrap a sync :class:`SessionLoopExecutor` so the async loop can drive it.
+
+    Sync ``complete()`` runs on the runtime loop's worker pool via
+    :func:`asyncio.to_thread`; same for ``dispatch_tool``. Scripted test
+    executors keep working without rewrites.
+    """
+
+    __slots__ = ("_sync",)
+
+    def __init__(self, sync: Any) -> None:
+        self._sync = sync
+
+    def tool_schemas(self) -> tuple[RathLLMFunctionTool, ...]:
+        return self._sync.tool_schemas()
+
+    async def acomplete(self, req: RathLLMChatRequest) -> RathLLMChatResponse:
+        return await asyncio.to_thread(self._sync.complete, req)
+
+    async def adispatch_tool(
+        self,
+        session: Session,
+        tool: FlowToolCall,
+        arguments: Mapping[str, Any],
+    ) -> Any:
+        return await asyncio.to_thread(
+            self._sync.dispatch_tool, session, tool, dict(arguments or {})
+        )
+
+
 def _resolve_async_executor(
     *,
     agent_provider: Provider,
@@ -146,11 +176,14 @@ def _resolve_async_executor(
 ) -> AsyncSessionLoopExecutor:
     if executor is not None and on_event is not None:
         raise ValueError(
-            "on_event with a custom async executor is not supported; "
+            "on_event with a custom executor is not supported; "
             "wire streaming inside your executor's acomplete instead."
         )
     if executor is not None:
-        return executor
+        # Either already an AsyncSessionLoopExecutor, or a sync one — wrap.
+        if hasattr(executor, "acomplete"):
+            return executor
+        return _SyncExecutorAsyncAdapter(executor)
     client = ensure_async_chat_client(chat_client_for(agent_provider))
     return _DefaultAsyncExecutor(client, on_event)
 
@@ -272,12 +305,16 @@ async def _arun_session_loop(
     persist: bool = False,
     persist_path: Path | None = None,
     sandbox_handle_id: str | None = None,
+    out: Session | None = None,
 ) -> Session:
     """Async session loop. Returns the materialized ``out`` :class:`Session`.
 
     This is the runtime-internal coroutine. The public sync façade
-    :func:`rath.session.loop.run_session_loop` schedules it on the runtime
-    and either blocks (today) or returns a lazy ``Session`` (Phase 4).
+    :func:`rath.session.loop.run_session_loop` builds the ``out`` :class:`Session`
+    eagerly (so callers can immediately read ``out.id``, ``out.sandbox``,
+    lineage attrs), attaches a :class:`LazyValue` to ``out._pending``, and
+    submits this coroutine. Reading ``out.chunk_table`` later blocks on
+    ``_pending`` and publishes the final values.
     """
     table = merge_tools_for_loop(tools)
     aexec = _resolve_async_executor(
@@ -288,24 +325,32 @@ async def _arun_session_loop(
 
     prefs = agent_provider
 
-    rows_list: list[Any] = list(user_session.chunk_table.rows)
-    out = Session(
-        chunk_table=ChunkTable(rows=tuple(rows_list)),
-        sandbox_backend=user_session.sandbox_backend,
-        _sandbox_open_spec=user_session._sandbox_open_spec,
-        lineage=SessionLineage(
-            producer_user_session_id=user_session.id,
-            producer_system_session_id=agent_session.id,
-        ),
-    )
-    if user_session.sandbox is not None and not user_session.sandbox.closed:
-        out.bind_sandbox(user_session.sandbox)
-    LineageRecorder.stamp_new_session(
-        out,
-        parent_session_ids=(user_session.id, agent_session.id),
-        lineage_operator="run_session_loop",
-        lineage_kind=LineageKind.OP_SESSION_LOOP,
-    )
+    # Be careful: ``user_session.chunk_table`` triggers synchronize() if the
+    # input is itself a lazy session. Sync facades should join lazy inputs
+    # before calling us; here we read via the property and trust the caller.
+    rows_list: list[Any] = list(user_session._chunk_table.rows)
+    if out is None:
+        out = Session(
+            chunk_table=ChunkTable(rows=tuple(rows_list)),
+            sandbox_backend=user_session.sandbox_backend,
+            _sandbox_open_spec=user_session._sandbox_open_spec,
+            lineage=SessionLineage(
+                producer_user_session_id=user_session.id,
+                producer_system_session_id=agent_session.id,
+            ),
+        )
+        if user_session.sandbox is not None and not user_session.sandbox.closed:
+            out.bind_sandbox(user_session.sandbox)
+        LineageRecorder.stamp_new_session(
+            out,
+            parent_session_ids=(user_session.id, agent_session.id),
+            lineage_operator="run_session_loop",
+            lineage_kind=LineageKind.OP_SESSION_LOOP,
+        )
+    else:
+        # Sync facade pre-built ``out`` and pre-stamped lineage; seed the
+        # staging table with the user rows.
+        out._chunk_table = ChunkTable(rows=tuple(rows_list))
     reg = session_registry()
     reg.register(user_session)
     reg.register(agent_session)
@@ -337,7 +382,7 @@ async def _arun_session_loop(
         finished = False
         for _ in range(max_tool_rounds):
             rounds_used += 1
-            head = chunk_table_to_messages(agent_session.chunk_table)
+            head = chunk_table_to_messages(agent_session._chunk_table)
             tail = chunk_table_to_messages(ChunkTable(rows=tuple(rows_list)))
             messages = head + tail
 
@@ -372,8 +417,10 @@ async def _arun_session_loop(
                 break
 
         if not finished and rounds_used >= max_tool_rounds:
-            logger.warning(
-                "_arun_session_loop hit max_tool_rounds=%d without "
+            # Emit on rath.session.loop so existing test filters keep working
+            # and the sync/async paths look identical from the outside.
+            logging.getLogger("rath.session.loop").warning(
+                "run_session_loop hit max_tool_rounds=%d without "
                 "finish_reason in (stop, length, content_filter); "
                 "last row may be a tool_result",
                 max_tool_rounds,

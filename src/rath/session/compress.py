@@ -67,6 +67,13 @@ def run_session_compress(
     ``persist_path``) with a trailer.
     """
 
+    # Concurrency invariant 7: auto-join lazy inputs before reading their
+    # chunk_table.
+    if user_session._pending is not None:
+        user_session.synchronize()
+    if agent_session._pending is not None:
+        agent_session.synchronize()
+
     executor = resolve_executor(
         agent_provider=agent_provider, executor=executor, on_event=on_event
     )

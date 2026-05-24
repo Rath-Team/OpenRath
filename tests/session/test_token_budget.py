@@ -119,6 +119,7 @@ def test_budget_exceeded_invokes_callback() -> None:
             agent_provider=agent.provider,
             executor=executor,
         )
+        out.synchronize()
     assert len(seen) == 1
     cb_session, cb_usage = seen[0]
     assert cb_session is out
@@ -148,13 +149,14 @@ def test_budget_callback_raising_aborts_loop() -> None:
     backend = get("local")
     with backend.open() as sb:
         user = Session.from_user_message("hi").bind_sandbox(sb)
+        out = run_session_loop(
+            user,
+            agent.agent_session,
+            agent_provider=agent.provider,
+            executor=executor,
+        )
         with pytest.raises(BudgetExceededError, match="hit cap"):
-            run_session_loop(
-                user,
-                agent.agent_session,
-                agent_provider=agent.provider,
-                executor=executor,
-            )
+            out.synchronize()
 
 
 class _NoopTool(FlowToolCall):
@@ -254,6 +256,7 @@ def test_budget_callback_fires_only_on_first_crossing() -> None:
             tools=[noop],
             executor=executor,
         )
+        out.synchronize()
 
     assert len(seen) == 1, f"callback fired {len(seen)}x, want exactly 1"
     assert seen[0] == 120, (
@@ -285,13 +288,14 @@ def test_budget_warning_emits_only_on_first_crossing(
     with backend.open() as sb:
         user = Session.from_user_message("hi").bind_sandbox(sb)
         with caplog.at_level(logging.WARNING, logger="rath.session.loop"):
-            run_session_loop(
+            out = run_session_loop(
                 user,
                 agent.agent_session,
                 agent_provider=agent.provider,
                 tools=[noop],
                 executor=executor,
             )
+            out.synchronize()
 
     budget_warnings = [
         rec for rec in caplog.records if "budget_total_tokens" in rec.message
@@ -321,6 +325,7 @@ def test_budget_without_callback_emits_warning(
                 agent_provider=agent.provider,
                 executor=executor,
             )
+            out.synchronize()
 
     assert out.cumulative_usage is not None
     assert any("budget_total_tokens" in rec.message for rec in caplog.records)

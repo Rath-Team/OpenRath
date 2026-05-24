@@ -52,6 +52,10 @@ class Workflow:
         raise NotImplementedError
 
     def __call__(self, session: Session) -> Session:
+        # Concurrency invariant 7: consuming a lazy session auto-joins its
+        # in-flight materialization before ``forward`` reads ``chunk_table``.
+        if session._pending is not None:
+            session.synchronize()
         return self.forward(session)
 
     def __repr__(self) -> str:

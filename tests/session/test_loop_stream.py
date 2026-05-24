@@ -61,13 +61,14 @@ def test_on_event_refuses_non_streaming_client(monkeypatch: pytest.MonkeyPatch) 
     backend = get("local")
     with backend.open() as sb:
         user = Session.from_user_message("hi").bind_sandbox(sb)
-        with pytest.raises(TypeError, match="StreamingChatClient"):
-            run_session_loop(
-                user,
-                agent.agent_session,
-                agent_provider=agent.provider,
-                on_event=lambda _d: None,
-            )
+        out = run_session_loop(
+            user,
+            agent.agent_session,
+            agent_provider=agent.provider,
+            on_event=lambda _d: None,
+        )
+        with pytest.raises(TypeError, match="complete_stream|StreamingChatClient"):
+            out.synchronize()
 
 
 def test_on_event_with_custom_executor_raises() -> None:
@@ -76,14 +77,15 @@ def test_on_event_with_custom_executor_raises() -> None:
         user = Session.from_user_message("hi").bind_sandbox(sb)
         agent = AgentParam(Session.from_agent_prompt("sys"), Provider())
         scripted = StreamingExecutor(_ScriptedStreamingClient([]), lambda _d: None)
+        out = run_session_loop(
+            user,
+            agent.agent_session,
+            agent_provider=agent.provider,
+            executor=scripted,
+            on_event=lambda _d: None,
+        )
         with pytest.raises(ValueError, match="custom executor"):
-            run_session_loop(
-                user,
-                agent.agent_session,
-                agent_provider=agent.provider,
-                executor=scripted,
-                on_event=lambda _d: None,
-            )
+            out.synchronize()
 
 
 def test_streaming_executor_emits_deltas_and_settles_to_chunk() -> None:
@@ -108,6 +110,7 @@ def test_streaming_executor_emits_deltas_and_settles_to_chunk() -> None:
             agent_provider=agent.provider,
             executor=executor,
         )
+        out.synchronize()
 
     assert len(events) == 3
     assistant_rows = [

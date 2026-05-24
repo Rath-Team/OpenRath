@@ -345,12 +345,13 @@ def test_default_executor_requires_api_key_somewhere(
     )
     with backend.open() as sb:
         user = Session.from_user_message("x").bind_sandbox(sb)
+        out = run_session_loop(
+            user,
+            agent.agent_session,
+            agent_provider=agent.provider,
+        )
         with pytest.raises(ValueError, match="No API key found"):
-            run_session_loop(
-                user,
-                agent.agent_session,
-                agent_provider=agent.provider,
-            )
+            out.synchronize()
 
 
 def test_max_tool_rounds_truncation_emits_warning_and_lineage(
@@ -376,6 +377,7 @@ def test_max_tool_rounds_truncation_emits_warning_and_lineage(
                 executor=executor,
                 max_tool_rounds=2,
             )
+            out.synchronize()
 
     assert ("loop.truncated", True) in out.lineage_extras
     assert any("max_tool_rounds" in rec.message for rec in caplog.records)

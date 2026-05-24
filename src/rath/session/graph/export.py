@@ -28,8 +28,13 @@ __all__ = [
 
 
 def cumulative_usage_to_jsonable(session: Session) -> dict[str, int] | None:
-    """Project ``session.cumulative_usage`` into a JSON-ready dict (or ``None``)."""
-    usage = session.cumulative_usage
+    """Project ``session.cumulative_usage`` into a JSON-ready dict (or ``None``).
+
+    Reads ``_cumulative_usage`` directly so persistence-layer callers running
+    inside an in-flight materialization (where ``session._pending`` is still
+    set) don't recursively trip :meth:`Session.synchronize` on themselves.
+    """
+    usage = session._cumulative_usage
     if usage is None:
         return None
     return {
