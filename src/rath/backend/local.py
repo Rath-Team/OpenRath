@@ -2,10 +2,29 @@
 
 Always available. Relative paths in tool calls are resolved against the sandbox
 working directory; absolute paths pass through unchanged.
+
+The implementation is async-internal: ``_aopen`` / ``_aclose`` / ``_adispatch``
+are the canonical entry points. Each blocking primitive (``subprocess.run``,
+``Path.write_bytes`` …) is offloaded to a thread pool via
+:func:`asyncio.to_thread`, so multiple ``dispatch`` calls funnelled through
+:class:`rath._async.runtime.OpenRathRuntime` run truly in parallel even though
+the underlying syscalls are synchronous.
+
+Per 阶段 0 of the upgrade plan:
+
+- The handle sets ``_open_handles`` / ``_owned_handles`` are mutated only from
+  the runtime loop thread (总则 9). Read access from the host thread reads
+  ``sandbox_count()`` only, which is a single ``len()`` and is GIL-atomic.
+- No ``asyncio.Lock`` is needed here because every ``_adispatch`` invocation
+  for the same sandbox runs an isolated worker thread per call; there is no
+  shared in-process mutable state between calls beyond the working dir, and
+  filesystem race semantics match the host OS's normal semantics — same as
+  the previous sync implementation.
 """
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import os
 import shutil
@@ -89,31 +108,45 @@ class LocalBackend(Backend):
     def sandbox_count(self) -> int:
         return len(self._open_handles)
 
-    def open(self, spec: BackendSandboxSpec | None = None) -> BackendSandbox:
+    async def _aopen(
+        self, spec: BackendSandboxSpec | None = None
+    ) -> BackendSandbox:
         if spec is None or spec.working_dir is None:
             owns_working_dir = True
-            working_dir = tempfile.mkdtemp(prefix="rath-local-")
+            working_dir = await asyncio.to_thread(
+                tempfile.mkdtemp, prefix="rath-local-"
+            )
         else:
             owns_working_dir = False
             working_dir = spec.working_dir
-        Path(working_dir).mkdir(parents=True, exist_ok=True)
+        await asyncio.to_thread(
+            lambda: Path(working_dir).mkdir(parents=True, exist_ok=True)
+        )
         sandbox = BackendSandbox(backend=self, handle=working_dir, spec=spec)
+        # Mutate the handle sets from the runtime loop thread only (总则 9).
         self._open_handles.add(working_dir)
         if owns_working_dir:
             self._owned_handles.add(working_dir)
         return sandbox
 
-    def close(self, sandbox: BackendSandbox) -> None:
+    async def _aclose(self, sandbox: BackendSandbox) -> None:
         if sandbox.closed:
             return
+        # See total set membership before marking closed so concurrent
+        # ``_aclose`` invocations on the same handle are idempotent: only
+        # the first will see ``owns_working_dir == True``.
         self._open_handles.discard(sandbox.handle)
         owns_working_dir = sandbox.handle in self._owned_handles
         self._owned_handles.discard(sandbox.handle)
         sandbox.closed = True
         if owns_working_dir:
-            shutil.rmtree(sandbox.handle, ignore_errors=True)
+            await asyncio.to_thread(
+                shutil.rmtree, sandbox.handle, ignore_errors=True
+            )
 
-    def dispatch(self, sandbox: BackendSandbox, call: BackendTool) -> ToolResult | bool:
+    async def _adispatch(
+        self, sandbox: BackendSandbox, call: BackendTool
+    ) -> ToolResult | bool:
         if sandbox.closed:
             return ToolExecutionFailure(
                 kind="sandbox_closed",
@@ -121,17 +154,17 @@ class LocalBackend(Backend):
             )
         match call:
             case BackendToolCommandRun():
-                return self._command_run(sandbox, call)
+                return await asyncio.to_thread(self._command_run, sandbox, call)
             case BackendToolFilesRead():
-                return self._files_read(sandbox, call)
+                return await asyncio.to_thread(self._files_read, sandbox, call)
             case BackendToolFilesWrite():
-                return self._files_write(sandbox, call)
+                return await asyncio.to_thread(self._files_write, sandbox, call)
             case BackendToolFilesList():
-                return self._files_list(sandbox, call)
+                return await asyncio.to_thread(self._files_list, sandbox, call)
             case BackendToolFilesExists():
-                return self._files_exists(sandbox, call)
+                return await asyncio.to_thread(self._files_exists, sandbox, call)
             case BackendToolCodeRun():
-                return self._code_run(sandbox, call)
+                return await asyncio.to_thread(self._code_run, sandbox, call)
             case _:
                 exc = UnsupportedBackendTool(type(call), self.name)
                 return tool_failure_from(

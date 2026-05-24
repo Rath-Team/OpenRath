@@ -1,7 +1,20 @@
-"""Backend abstract base, sandbox handle, and sandbox spec."""
+"""Backend abstract base, sandbox handle, and sandbox spec.
+
+Backends expose a *synchronous* public API (``open`` / ``close`` /
+``dispatch``) and an internal *asynchronous* protocol
+(``_aopen`` / ``_aclose`` / ``_adispatch``). The sync methods funnel into
+the internal coroutines via :class:`rath._async.runtime.OpenRathRuntime`,
+which is the single background event loop OpenRath shares across all
+subsystems.
+
+Subclasses MUST implement the async hooks. The sync defaults provided here
+schedule each call on the runtime; this gives any backend true cross-call
+concurrency for free as long as its async implementation is non-blocking.
+"""
 
 from __future__ import annotations
 
+import threading
 from abc import ABC, abstractmethod
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -53,25 +66,35 @@ class BackendSandbox:
     spec: BackendSandboxSpec | None = None
     closed: bool = field(default=False)
     _refcount: int = field(default=0, repr=False)
+    # ``_refcount`` is read/written from both the host thread (sync facade)
+    # and the runtime loop thread (async session loop). Per 阶段 0 总则 5
+    # the field is guarded by a per-instance lock.
+    _refcount_lock: threading.Lock = field(
+        default_factory=threading.Lock, repr=False, compare=False
+    )
 
     @property
     def refcount(self) -> int:
         """Current number of live references; read-only mirror of internal state."""
-        return self._refcount
+        with self._refcount_lock:
+            return self._refcount
 
     def acquire(self) -> "BackendSandbox":
         """Add one reference; return ``self`` for chaining."""
-        if self.closed:
-            raise BackendSandboxClosed(self.handle)
-        self._refcount += 1
+        with self._refcount_lock:
+            if self.closed:
+                raise BackendSandboxClosed(self.handle)
+            self._refcount += 1
         return self
 
     def release(self) -> None:
         """Drop one reference; close via the backend when the count hits zero."""
-        if self.closed:
-            return
-        self._refcount -= 1
-        if self._refcount <= 0:
+        with self._refcount_lock:
+            if self.closed:
+                return
+            self._refcount -= 1
+            should_close = self._refcount <= 0
+        if should_close:
             self.backend.close(self)
 
     def __enter__(self) -> "BackendSandbox":
@@ -111,8 +134,11 @@ class Backend(ABC):
        :func:`rath.backend.register`.
     2. Implement the static ``is_available``, ``capabilities`` and
        ``supported_calls`` classmethods.
-    3. Implement the instance methods ``sandbox_count``, ``open``, ``close``
-       and ``dispatch``.
+    3. Implement the instance method ``sandbox_count``.
+    4. Implement the async hooks ``_aopen``, ``_aclose`` and ``_adispatch``.
+       The sync ``open`` / ``close`` / ``dispatch`` defaults below route
+       these through :class:`rath._async.runtime.OpenRathRuntime` so a
+       single background loop services every subsystem concurrently.
     """
 
     name: ClassVar[str]
@@ -141,22 +167,45 @@ class Backend(ABC):
     def sandbox_count(self) -> int:
         """Return the number of open sandboxes managed by this instance."""
 
-    @abstractmethod
-    def open(self, spec: BackendSandboxSpec | None = None) -> BackendSandbox:
-        """Open a fresh sandbox and return its handle."""
+    # ----- internal async hooks (subclasses MUST implement) ----------------
 
     @abstractmethod
+    async def _aopen(
+        self, spec: BackendSandboxSpec | None = None
+    ) -> BackendSandbox:
+        """Open a fresh sandbox; the async implementation."""
+
+    @abstractmethod
+    async def _aclose(self, sandbox: BackendSandbox) -> None:
+        """Close ``sandbox`` and release resources; idempotent."""
+
+    @abstractmethod
+    async def _adispatch(
+        self, sandbox: BackendSandbox, call: BackendTool
+    ) -> ToolResult | bool:
+        """Execute ``call`` against ``sandbox``; the async implementation."""
+
+    # ----- public sync facade (default routes through the runtime) ---------
+
+    def open(self, spec: BackendSandboxSpec | None = None) -> BackendSandbox:
+        """Open a fresh sandbox and return its handle (sync facade)."""
+        from rath._async.runtime import runtime as _runtime
+
+        return _runtime().run(self._aopen(spec))
+
     def close(self, sandbox: BackendSandbox) -> None:
-        """Close ``sandbox`` and release resources.
+        """Close ``sandbox`` and release resources (sync facade).
 
         Calling close on an already-closed sandbox is a no-op.
         """
+        from rath._async.runtime import runtime as _runtime
 
-    @abstractmethod
-    def dispatch(self, sandbox: BackendSandbox, call: BackendTool) -> ToolResult | bool:
-        """Execute ``call`` against ``sandbox`` and return its result.
+        _runtime().run(self._aclose(sandbox))
 
-        Implementations should raise
-        :class:`~rath.backend.UnsupportedBackendTool` for call types not in
-        :meth:`supported_calls`.
-        """
+    def dispatch(
+        self, sandbox: BackendSandbox, call: BackendTool
+    ) -> ToolResult | bool:
+        """Execute ``call`` against ``sandbox`` and return its result (sync facade)."""
+        from rath._async.runtime import runtime as _runtime
+
+        return _runtime().run(self._adispatch(sandbox, call))

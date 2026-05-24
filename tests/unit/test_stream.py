@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import time
 
 import pytest
@@ -48,18 +49,22 @@ class _RecordingBackend(Backend):
     def sandbox_count(self) -> int:
         return len(self._open_handles)
 
-    def open(self, spec: BackendSandboxSpec | None = None) -> BackendSandbox:
+    async def _aopen(
+        self, spec: BackendSandboxSpec | None = None
+    ) -> BackendSandbox:
         handle = f"fake-{len(self._open_handles)}"
         self._open_handles.add(handle)
         return BackendSandbox(backend=self, handle=handle, spec=spec)
 
-    def close(self, sandbox: BackendSandbox) -> None:
+    async def _aclose(self, sandbox: BackendSandbox) -> None:
         self._open_handles.discard(sandbox.handle)
         sandbox.closed = True
 
-    def dispatch(self, sandbox: BackendSandbox, call: BackendTool) -> ToolResult | bool:
+    async def _adispatch(
+        self, sandbox: BackendSandbox, call: BackendTool
+    ) -> ToolResult | bool:
         if self.delay:
-            time.sleep(self.delay)
+            await asyncio.sleep(self.delay)
         self.dispatched.append(call)
         return CommandResult(exit_code=0, stdout=b"", stderr=b"", elapsed_ms=0.0)
 
@@ -160,7 +165,7 @@ def test_future_propagates_exception() -> None:
     """If dispatch raises, awaiting the future must re-raise."""
 
     class _BoomBackend(_RecordingBackend):
-        def dispatch(
+        async def _adispatch(
             self, sandbox: BackendSandbox, call: BackendTool
         ) -> ToolResult | bool:
             raise RuntimeError("kaboom")

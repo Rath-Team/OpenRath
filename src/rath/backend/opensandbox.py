@@ -9,8 +9,21 @@ Rath requests a host bind of that path at ``/workspace``.
 The bind source must exist where the server runtime runs (e.g. Docker host),
 not only where Rath runs.
 
-Runs the async SDK on a dedicated thread loop and exposes blocking :meth:`open`,
-:meth:`close`, and :meth:`dispatch`.
+The implementation is async-native: ``_aopen`` / ``_aclose`` / ``_adispatch``
+run on :class:`rath._async.runtime.OpenRathRuntime`'s shared loop. The
+historic ``DedicatedEventLoopThread`` indirection is gone.
+
+Per-sandbox concurrency controls (阶段 0 of the upgrade plan):
+
+- ``_exec_locks[handle]`` — an :class:`asyncio.Lock` serialises
+  ``commands.run`` / ``code.run`` on the same sandbox (the SDK does not
+  guarantee safety for overlapping interactive sessions).
+- ``_fs_locks[handle][resolved_path]`` — per-path locks serialise concurrent
+  writes to the same file inside one sandbox. Reads do not lock.
+- Both lock dicts are created lazily inside ``_adispatch`` so the locks
+  are bound to the runtime loop (总则 1). The path-keyed dict carries an
+  insertion-ordered LRU of at most ``_FS_LOCK_LRU`` entries; eviction
+  skips entries whose lock is currently held (总则 2).
 """
 
 from __future__ import annotations
@@ -20,6 +33,7 @@ import logging
 import os
 import shlex
 import stat as stat_module
+from collections import OrderedDict
 from collections.abc import Sequence
 from datetime import timedelta
 from pathlib import Path
@@ -27,7 +41,6 @@ from typing import Any, ClassVar
 
 from rath.backend.abc import Backend, BackendSandbox, BackendSandboxSpec
 from rath.backend.capabilities import Capabilities, IsolationLevel
-from rath.backend.dedicated_loop import shared_opensandbox_loop
 from rath.backend.registry import register
 from rath.backend.results import (
     CodeResult,
@@ -233,9 +246,14 @@ class OpenSandboxBackend(Backend):
         }
     )
 
+    _FS_LOCK_LRU: ClassVar[int] = 64
+
     def __init__(self) -> None:
         self._natives: dict[str, Any] = {}
-        self._runner = shared_opensandbox_loop()
+        # Locks are populated lazily inside ``_adispatch`` so they bind to
+        # the runtime loop (总则 1). Empty dict construction here is safe.
+        self._exec_locks: dict[str, asyncio.Lock] = {}
+        self._fs_locks: dict[str, OrderedDict[str, asyncio.Lock]] = {}
 
     @classmethod
     def is_available(cls) -> bool:
@@ -262,7 +280,9 @@ class OpenSandboxBackend(Backend):
     def sandbox_count(self) -> int:
         return len(self._natives)
 
-    def open(self, spec: BackendSandboxSpec | None = None) -> BackendSandbox:
+    async def _aopen(
+        self, spec: BackendSandboxSpec | None = None
+    ) -> BackendSandbox:
         if not _SDK_AVAILABLE:  # pragma: no cover -- ``is_available()`` gate
             raise RuntimeError(
                 "opensandbox SDK is not installed; "
@@ -280,7 +300,7 @@ class OpenSandboxBackend(Backend):
             if spec is not None and spec.entrypoint is not None
             else list(self._DEFAULT_ENTRYPOINT)
         )
-        return self._runner.run(self._open_coro(image, timeout, env, entrypoint, spec))
+        return await self._open_coro(image, timeout, env, entrypoint, spec)
 
     def attach(
         self,
@@ -303,12 +323,14 @@ class OpenSandboxBackend(Backend):
         Raises whatever :func:`opensandbox.Sandbox.connect` raises when the
         remote id is missing / expired / unauthorized.
         """
+        from rath._async.runtime import runtime as _runtime
+
         if not _SDK_AVAILABLE:  # pragma: no cover -- gated by is_available()
             raise RuntimeError(
                 "opensandbox SDK is not installed; "
                 "install with `pip install rath[opensandbox]`"
             )
-        return self._runner.run(self._attach_coro(remote_id, spec))
+        return _runtime().run(self._attach_coro(remote_id, spec))
 
     async def _attach_coro(
         self,
@@ -344,19 +366,66 @@ class OpenSandboxBackend(Backend):
         self._natives[native.id] = native
         return BackendSandbox(backend=self, handle=native.id, spec=spec)
 
-    def close(self, sandbox: BackendSandbox) -> None:
+    async def _aclose(self, sandbox: BackendSandbox) -> None:
         if sandbox.closed:
             return
         sandbox.closed = True
         native = self._natives.pop(sandbox.handle, None)
+        # Drop per-sandbox locks. Eviction is safe even if some path-lock is
+        # currently held: the holder coroutine retains its own reference to
+        # the lock object, and the table only routes new lookups.
+        self._exec_locks.pop(sandbox.handle, None)
+        self._fs_locks.pop(sandbox.handle, None)
         if native is not None:
-            self._runner.run(self._close_coro(native))
+            await self._close_coro(native)
 
     async def _close_coro(self, native: Any) -> None:
         await native.kill()
         await native.close()
 
-    def dispatch(self, sandbox: BackendSandbox, call: BackendTool) -> ToolResult | bool:
+    def _exec_lock_for(self, handle: str) -> asyncio.Lock:
+        """Get / lazy-create the per-sandbox exec lock (loop-bound, 总则 1)."""
+        lock = self._exec_locks.get(handle)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._exec_locks[handle] = lock
+        return lock
+
+    def _fs_lock_for(self, handle: str, path: str) -> asyncio.Lock:
+        """Get / lazy-create a per-path write lock under ``handle``.
+
+        Implements an LRU-style bound of ``_FS_LOCK_LRU`` entries per sandbox.
+        Eviction (总则 2) only drops entries whose lock is currently unlocked,
+        so an active holder is never silently replaced by a fresh lock that
+        would let another writer past mutual exclusion.
+        """
+        table = self._fs_locks.get(handle)
+        if table is None:
+            table = OrderedDict()
+            self._fs_locks[handle] = table
+        lock = table.get(path)
+        if lock is None:
+            lock = asyncio.Lock()
+            table[path] = lock
+            if len(table) > self._FS_LOCK_LRU:
+                # Walk insertion order, drop the first unlocked entry. If
+                # everything is locked (extreme contention), leave the table
+                # oversized rather than break mutual exclusion.
+                for victim_path in list(table.keys()):
+                    if victim_path == path:
+                        continue
+                    victim = table[victim_path]
+                    if not victim.locked():
+                        table.pop(victim_path, None)
+                        break
+        else:
+            # Touch for LRU ordering.
+            table.move_to_end(path)
+        return lock
+
+    async def _adispatch(
+        self, sandbox: BackendSandbox, call: BackendTool
+    ) -> ToolResult | bool:
         if sandbox.closed:
             return ToolExecutionFailure(
                 kind="sandbox_closed",
@@ -369,26 +438,31 @@ class OpenSandboxBackend(Backend):
                 message="native sandbox handle is missing; cannot dispatch",
             )
         try:
-            return self._runner.run(self._dispatch_coro(native, call))
+            return await self._dispatch_coro(sandbox.handle, native, call)
         except TimeoutError as exc:
             return tool_failure_from("timeout", exc)
         except Exception as exc:
             return tool_failure_from("dispatch_error", exc)
 
-    async def _dispatch_coro(self, native: Any, call: BackendTool) -> ToolResult | bool:
+    async def _dispatch_coro(
+        self, handle: str, native: Any, call: BackendTool
+    ) -> ToolResult | bool:
         match call:
             case BackendToolCommandRun():
-                return await self._command_run(native, call)
+                async with self._exec_lock_for(handle):
+                    return await self._command_run(native, call)
             case BackendToolFilesRead():
                 return await self._files_read(native, call)
             case BackendToolFilesWrite():
-                return await self._files_write(native, call)
+                async with self._fs_lock_for(handle, self._resolve(call.path)):
+                    return await self._files_write(native, call)
             case BackendToolFilesList():
                 return await self._files_list(native, call)
             case BackendToolFilesExists():
                 return await self._files_exists(native, call)
             case BackendToolCodeRun():
-                return await self._code_run(native, call)
+                async with self._exec_lock_for(handle):
+                    return await self._code_run(native, call)
             case _:
                 return ToolExecutionFailure(
                     kind="unsupported_tool",

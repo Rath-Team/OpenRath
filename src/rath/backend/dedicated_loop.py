@@ -1,61 +1,55 @@
-"""Single background event loop for async-only SDK clients (OpenSandbox).
+"""Deprecated thin shim around :class:`rath._async.runtime.OpenRathRuntime`.
 
-Exposes blocking :meth:`DedicatedEventLoopThread.run` for synchronous call sites while
-keeping one long-lived loop for connection state bound to async httpx / OpenSandbox.
+The historical ``DedicatedEventLoopThread`` lived here so the OpenSandbox
+backend had a private asyncio loop for its async-only SDK. As of the
+async-runtime refactor, all OpenRath subsystems share a single process-wide
+loop hosted by :class:`OpenRathRuntime`, which exposes the same blocking
+``run(coro)`` semantics.
+
+This module is kept for one release as a compatibility shim. New code MUST
+import from :mod:`rath._async.runtime`.
 """
 
 from __future__ import annotations
 
-import asyncio
-import threading
-from typing import Any, Coroutine, TypeVar
+import warnings
+from collections.abc import Coroutine
+from typing import Any, TypeVar
+
+from rath._async.runtime import OpenRathRuntime, runtime
 
 T = TypeVar("T")
 
 
 class DedicatedEventLoopThread:
-    """Thread hosting ``asyncio`` loop; :meth:`run` blocks the caller until completion."""
+    """Deprecated wrapper around the global :class:`OpenRathRuntime`.
 
-    __slots__ = ("_loop", "_ready", "_thread")
+    .. deprecated::
+       Import :func:`rath._async.runtime.runtime` and call ``.run(coro)``
+       directly. This class will be removed in a future release.
+    """
+
+    __slots__ = ("_rt",)
 
     def __init__(self) -> None:
-        self._loop: asyncio.AbstractEventLoop | None = None
-        self._ready = threading.Event()
-
-        def _runner() -> None:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            self._loop = loop
-            self._ready.set()
-            loop.run_forever()
-
-        self._thread = threading.Thread(
-            target=_runner,
-            daemon=True,
-            name="rath-asyncio-backend",
+        warnings.warn(
+            "DedicatedEventLoopThread is deprecated; use "
+            "rath._async.runtime.runtime() instead",
+            DeprecationWarning,
+            stacklevel=2,
         )
-        self._thread.start()
-        if not self._ready.wait(timeout=60.0):
-            raise RuntimeError("background asyncio loop failed to start")
-        if self._loop is None:
-            raise RuntimeError("asyncio loop is unset")
+        self._rt: OpenRathRuntime = runtime()
 
     def run(self, coro: Coroutine[Any, Any, T]) -> T:
-        loop = self._loop
-        assert loop is not None
-        fut = asyncio.run_coroutine_threadsafe(coro, loop)
-        return fut.result()
-
-
-_OPENSANDBOX_ASYNC: DedicatedEventLoopThread | None = None
-_OPENSANDBOX_LOCK = threading.Lock()
+        return self._rt.run(coro)
 
 
 def shared_opensandbox_loop() -> DedicatedEventLoopThread:
-    """Process-wide dedicated loop for OpenSandbox async SDK usage."""
-
-    global _OPENSANDBOX_ASYNC
-    with _OPENSANDBOX_LOCK:
-        if _OPENSANDBOX_ASYNC is None:
-            _OPENSANDBOX_ASYNC = DedicatedEventLoopThread()
-        return _OPENSANDBOX_ASYNC
+    """Deprecated accessor returning a wrapper over the process-wide runtime."""
+    warnings.warn(
+        "shared_opensandbox_loop() is deprecated; use "
+        "rath._async.runtime.runtime() instead",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+    return DedicatedEventLoopThread()

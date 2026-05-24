@@ -90,6 +90,11 @@ def flow_tool_code_run(
 
 
 class RunShellCommandTool(FlowToolCall):
+    parallel_safe = False
+
+    def resource_key(self, arguments: Mapping[str, Any]) -> tuple[str, ...]:
+        return ("exec",)
+
     @property
     def name(self) -> str:
         return "run_shell_command"
@@ -128,6 +133,15 @@ class RunShellCommandTool(FlowToolCall):
 
 
 class WriteWorkspaceFileTool(FlowToolCall):
+    parallel_safe = True
+
+    def resource_key(self, arguments: Mapping[str, Any]) -> tuple[str, ...]:
+        try:
+            path = str(arguments["path"])
+        except KeyError:
+            return ("fs:write", "<unknown>")
+        return ("fs:write", path)
+
     @property
     def name(self) -> str:
         return "write_workspace_file"
