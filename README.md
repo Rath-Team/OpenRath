@@ -1,6 +1,8 @@
 # OpenRath
 
-![OpenRath logo](assets/readme/logo.png)
+<p align="center">
+  <img src="assets/readme/logos/openrath-logo-white.png" alt="OpenRath logo" width="860" />
+</p>
 
 <p align="center">
   <a href="https://pypi.org/project/openrath/"><img src="https://img.shields.io/pypi/v/openrath.svg" alt="PyPI"></a>
@@ -32,6 +34,10 @@ It turns agent runtime state into explicit, composable Python objects:
 
 ## OpenRath in the PyTorch Lens
 
+<p align="center">
+  <img src="assets/readme/diagrams/pytorch-lens.png" alt="OpenRath in the PyTorch Lens" width="860" />
+</p>
+
 | PyTorch idea | OpenRath idea | What it means |
 | --- | --- | --- |
 | `Tensor` | `Session` | The flowing runtime value: ordered chunks, placement, lineage, and usage. |
@@ -45,6 +51,10 @@ Most agent frameworks begin with an agent loop. OpenRath begins with **Session**
 
 OpenRath is designed for this: many agents collaborating across many branchable sessions, while still tracing every role, workspace, memory write, and final output.
 
+<p align="center">
+  <img src="assets/readme/diagrams/paradigm-map.png" alt="Multi-Agent Multi-Session Map" width="860" />
+</p>
+
 | Paradigm | Typical shape | Example |
 | --- | --- | --- |
 | Single agent, single session | One model over one conversation | ChatGPT-style chat |
@@ -57,6 +67,10 @@ OpenRath is designed for this: many agents collaborating across many branchable 
 ## Why the Multi-Agent-Multi-Session Paradigm
 
 An agent is a transformation layer on Session, so what really needs to be forked, merged, reused, and traced is the Session dataflow—not a separate message history maintained by each agent.
+
+<p align="center">
+  <img src="assets/readme/diagrams/multi-agent-multi-session.png" alt="Why Multi-Agent Multi-Session" width="860" />
+</p>
 
 OpenRath's design addresses the problems that appear when agent systems move from one assistant to large clusters:
 
