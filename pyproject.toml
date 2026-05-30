@@ -53,6 +53,18 @@ convention = "google"
 [tool.hatch.build.targets.wheel]
 packages = ["src/rath"]
 
+[tool.hatch.build.targets.sdist]
+# Ship only source-package essentials. Without an explicit include list,
+# hatchling packs the whole working tree (docs assets, transient venvs, etc.),
+# which bloated the sdist to tens of MB.
+include = [
+    "src/rath",
+    "README.md",
+    "README_zh.md",
+    "LICENSE",
+    "pyproject.toml",
+]
+
 [dependency-groups]
 dev = [
     "mypy>=1.20.2",
