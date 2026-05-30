@@ -61,6 +61,7 @@ class Agent(Workflow):
         memory: MemoryArg = None,
         memory_inject: MemoryInjectionPolicy | None = None,
         commit_on_forward: bool = False,
+        description: str = "",
     ):
         """Build a single-agent workflow.
 
@@ -83,7 +84,7 @@ class Agent(Workflow):
         with the callback wired up. The resolved chat client must satisfy
         :class:`~rath.llm.StreamingChatClient`.
         """
-        super().__init__()
+        super().__init__(description=description)
         if provider is None and model is None:
             raise ValueError(
                 'flow.Agent requires either provider=Provider(...) or model="..."',

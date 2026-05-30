@@ -110,3 +110,17 @@ def test_workflow_registers_agent_and_runs_loop() -> None:
         if r.kind == ChunkKind.ASSISTANT
     ]
     assert any(c == "from workflow" for c in assistant_chunks)
+
+
+def test_workflow_description_defaults_empty_and_roundtrips() -> None:
+    """``description`` is a first-class Workflow field used by Selector routing;
+    it defaults to "" and must not be mistaken for an AgentParam attribute."""
+    from rath import flow
+
+    base = Workflow()
+    assert base.description == ""
+
+    a = flow.Agent("You are concise.", model="gpt-5.5", description="answers tersely")
+    assert a.description == "answers tersely"
+    # description is a plain str, not registered as an agent
+    assert "description" not in dict(a.named_agents())

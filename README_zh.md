@@ -27,6 +27,7 @@
 - **Tool** 是暴露给模型的“算子调用”。
 - **Agent** 是可复用、可组合的 Session 变换层。
 - **Workflow** 把多个 Agent/Workflow 组合成更大的系统。
+- **Selector** 在运行时于自描述的 Workflow 之间路由，使 `if` / `while` 控制流仍是普通 Python。
 
 ---
 
@@ -40,6 +41,7 @@
 | `Function` | `Tool` | 带模型可见 schema 和运行时行为的 callable operation。 |
 | `nn.Linear` | `Agent` | 用 prompt、provider、tools、memory 把一个 Session 映射成另一个 Session 的可复用层。 |
 | `nn.Module` | `Workflow` | 组合 Agent、Tool、Session transform 和嵌套 Workflow 的容器。 |
+| 控制流 | `Selector` | 由 LLM 驱动的路由器，在运行时挑选下一个该运行的 Workflow，让 Agent 间的 `if` / `while` 动态控制流成为可能。 |
 
 大多数 Agent 框架从 agent loop 开始。OpenRath 从 **Session** 开始。当一个应用同时需要多个 Agent、多个分支、持久记忆、沙箱执行和可追踪谱系时，这个差异会变得很关键。
 
@@ -226,6 +228,16 @@ def forward(self, session: Session) -> Session:
 
 一个 Workflow 可以串联多个 Agent、fork Session、压缩上下文、调用工具、分发到子 Workflow，并返回新的 Session。因为输入和输出都是 `Session`，嵌套 Workflow 时不需要为每一层发明新的 state format。
 
+若路由需要在运行时依据对话内容决定，`flow.Selector` 是一个由 LLM 驱动、面向自描述 Workflow（各自带 `description`）的路由器。它返回下一个该运行的 Workflow，或在任务结束时返回空操作 `flow.EmptyWorkflow`——于是 `if` / `while` 仍是普通 Python：
+
+```python
+selector = flow.Selector(provider)
+while not isinstance(
+    nxt := selector.forward(session, triage, tech, wrapup), flow.EmptyWorkflow
+):
+    session = nxt(session)
+```
+
 ---
 
 ## 快速安装
@@ -283,6 +295,7 @@ python example/01_hello_agent.py
 | 08 | [`08_compress.py`](example/08_compress.py) | 用 `flow.Compressor` 把长 Session 压缩成更小的上下文 Session。 | 是 |
 | 09 | [`09_memory.py`](example/09_memory.py) | 使用 local memory backend 进行 remember、recall，并可选 commit 一次真实对话。 | 否 |
 | 10 | [`10_provider_variation.py`](example/10_provider_variation.py) | 通过修改 `Provider` 切换模型厂商，同时保持 Session 和 Workflow 代码稳定。 | 是 |
+| 11 | [`11_dynamic_selector.py`](example/11_dynamic_selector.py) | 用 `flow.Selector` 在自描述的 Workflow 之间路由：`if` 分支与在 `flow.EmptyWorkflow` 时结束的 `while` 循环。 | 是 |
 
 更多设置和 shared helpers 见 [`example/README.md`](example/README.md)。
 

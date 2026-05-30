@@ -22,12 +22,14 @@ def _indent_child_module_repr(body: str, spaces: int = 2) -> str:
 class Workflow:
     """Collects attached ``AgentParam`` instances and subclasses run sessions here."""
 
-    __slots__ = ("_agents",)
+    __slots__ = ("_agents", "description")
 
     _agents: dict[str, AgentParam]
+    description: str
 
-    def __init__(self) -> None:
+    def __init__(self, description: str = "") -> None:
         object.__setattr__(self, "_agents", {})
+        self.description = description
 
     def __setattr__(self, name: str, value: Any) -> None:
         if isinstance(value, AgentParam):

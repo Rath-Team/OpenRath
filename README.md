@@ -29,6 +29,7 @@ It turns agent runtime state into explicit, composable Python objects:
 - **Tool** is the operator-like callable surface exposed to the model.
 - **Agent** is a reusable, composable session transformation layer.
 - **Workflow** composes multiple agents and workflows into larger systems.
+- **Selector** routes between self-describing workflows at runtime, so `if` / `while` control flow stays plain Python.
 
 ---
 
@@ -46,6 +47,7 @@ It turns agent runtime state into explicit, composable Python objects:
 | `Function` | `Tool` | A callable operation with model-visible schema and runtime behavior. |
 | `nn.Linear` | `Agent` | A reusable layer that maps one session to another using a prompt, provider, tools, and memory. |
 | `nn.Module` | `Workflow` | A composable container for agents, tools, session transforms, and nested workflows. |
+| control flow | `Selector` | An LLM-backed router that picks the next workflow at runtime, enabling dynamic `if` / `while` over agents. |
 
 Most agent frameworks begin with an agent loop. OpenRath begins with **Session**. That difference matters when one application needs multiple agents, multiple branches, durable memory, sandboxed execution, and traceable lineage at the same time.
 
@@ -240,6 +242,16 @@ def forward(self, session: Session) -> Session:
 
 A workflow can chain agents, fork sessions, compress context, call tools, dispatch to child workflows, and return a new session. Because the input and output are both `Session`, workflows can be nested without inventing a new state format at each layer.
 
+For routing that depends on the conversation at runtime, `flow.Selector` is an LLM-backed router over self-describing workflows (each carries a `description`). It returns the next workflow to run, or a no-op `flow.EmptyWorkflow` when the task is done — so `if` / `while` stay plain Python:
+
+```python
+selector = flow.Selector(provider)
+while not isinstance(
+    nxt := selector.forward(session, triage, tech, wrapup), flow.EmptyWorkflow
+):
+    session = nxt(session)
+```
+
 ---
 
 ## Quick Install
@@ -297,6 +309,7 @@ python example/01_hello_agent.py
 | 08 | [`08_compress.py`](example/08_compress.py) | Use `flow.Compressor` to reduce a long session into a smaller context session. | yes |
 | 09 | [`09_memory.py`](example/09_memory.py) | Use the local memory backend to remember, recall, and optionally commit a live turn. | no |
 | 10 | [`10_provider_variation.py`](example/10_provider_variation.py) | Swap model vendors by changing `Provider`, while keeping Session and Workflow code stable. | yes |
+| 11 | [`11_dynamic_selector.py`](example/11_dynamic_selector.py) | Route between self-describing workflows with `flow.Selector`: `if` branching and a `while` loop that ends on `flow.EmptyWorkflow`. | yes |
 
 Read [`example/README.md`](example/README.md) for setup details and shared helpers.
 

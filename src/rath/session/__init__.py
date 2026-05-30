@@ -51,6 +51,7 @@ from rath.session.primitives import (
     fork_session,
 )
 from rath.session.provider_builtin import DefaultSessionLoopExecutor
+from rath.session.select import select_session
 from rath.session.session import Session
 
 __all__ = [
@@ -83,6 +84,7 @@ __all__ = [
     "SessionRegistry",
     "run_session_compress",
     "run_session_loop",
+    "select_session",
     "session_registry",
     "system_text_chunk",
     "tool_feedback_chunk",

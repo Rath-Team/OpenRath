@@ -18,8 +18,9 @@ class Compressor(Workflow):
         provider: Provider,
         *,
         on_event: Callable[[RathLLMStreamDelta], None] | None = None,
+        description: str = "",
     ):
-        super().__init__()
+        super().__init__(description=description)
         self._on_event = on_event
         self.agent = AgentParam(
             agent_session=Session.from_agent_prompt(compress_instruction),
