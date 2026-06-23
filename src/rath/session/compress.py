@@ -158,7 +158,18 @@ def _completion_body(resp: RathLLMChatResponse) -> str | None:
             "run_session_compress: model returned tool calls but tools are disabled"
         )
     fr = choice.finish_reason
-    if fr not in ("stop", "length", "content_filter"):
+    if fr == "length":
+        # The summary REPLACES the entire prior transcript. A summary cut off by
+        # the output-token limit would silently drop the tail of the history
+        # with no signal, so refuse it rather than promote a truncated summary
+        # as the canonical replacement.
+        raise RuntimeError(
+            "run_session_compress: the summary hit the model output-token limit "
+            "(finish_reason='length') and is truncated; it would replace the "
+            "whole transcript and silently drop history. Retry with a larger "
+            "output-token budget."
+        )
+    if fr not in ("stop", "content_filter"):
         raise RuntimeError(f"run_session_compress: unexpected finish_reason={fr!r}")
     content = msg.content
     return None if content is None else str(content)
