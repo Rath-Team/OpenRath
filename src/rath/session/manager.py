@@ -5,15 +5,26 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from threading import Lock
 from uuid import UUID
+from weakref import WeakValueDictionary
 
 from rath.session.session import Session
 
 
 @dataclass
 class SessionRegistry:
-    """Maps session ids to instances and records which session is active."""
+    """Maps session ids to instances and records which session is active.
 
-    _by_id: dict[UUID, Session] = field(default_factory=dict)
+    The id->instance map holds **weak** references: a session is evicted
+    automatically once no other reference keeps it alive. Without this a
+    long-running process leaks every session (and its full transcript)
+    forever, since each loop registers three of them per turn and there is
+    no eviction path. ``get`` already returns ``None`` for absent ids, so a
+    collected session reads as "unknown", which is the intended contract.
+    """
+
+    _by_id: "WeakValueDictionary[UUID, Session]" = field(
+        default_factory=WeakValueDictionary
+    )
     _active_id: UUID | None = None
     _lock: Lock = field(default_factory=Lock)
 
