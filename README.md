@@ -9,6 +9,7 @@
   <a href="https://pypi.org/project/openrath/"><img src="https://img.shields.io/pypi/pyversions/openrath.svg" alt="Python"></a>
   <a href="https://github.com/Rath-Team/OpenRath/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-BSD--3--Clause-blue.svg" alt="License"></a>
   <a href="https://docs.openrath.com"><img src="https://img.shields.io/badge/docs-openrath.com-blue" alt="Docs"></a>
+  <a href="https://arxiv.org/abs/2606.19409"><img src="https://img.shields.io/badge/arXiv-2606.19409-b31b1b.svg?logo=arxiv&amp;logoColor=white" alt="arXiv"></a>
 </p>
 
 <div align="center">
