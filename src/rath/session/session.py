@@ -181,6 +181,7 @@ class Session:
         "_cumulative_usage",
         "_pending",
         "_sync_lock",
+        "_sandbox_lock",
         "__weakref__",
     )
 
@@ -216,6 +217,9 @@ class Session:
             None
         )
         self._sync_lock = threading.Lock()
+        # Serializes lazy sandbox open so parallel first-use tool calls cannot
+        # each open + acquire a backend sandbox and orphan all but the last.
+        self._sandbox_lock = threading.Lock()
 
     @property
     def chunk_table(self) -> ChunkTable:
@@ -376,19 +380,26 @@ class Session:
         return self
 
     def _ensure_sandbox(self) -> None:
+        # Fast path: already open. Re-check under the lock before opening so two
+        # parallel first-use tool calls cannot both open + acquire a backend
+        # sandbox (the loser of the race would be silently orphaned — an
+        # acquired handle, possibly a leaked remote container, never released).
         if self.sandbox is not None and not self.sandbox.closed:
             return
-        if self.sandbox is not None and self.sandbox.closed:
-            self.sandbox = None
-        if self.sandbox_backend is None:
-            raise RuntimeError(
-                'session has no sandbox backend; call session.to("local") '
-                "or session.bind_sandbox(...)"
-            )
-        open_spec = _coerce_sandbox_open_spec(self._sandbox_open_spec)
-        sb = get(self.sandbox_backend).open(open_spec)
-        sb.acquire()
-        self.sandbox = sb
+        with self._sandbox_lock:
+            if self.sandbox is not None and not self.sandbox.closed:
+                return
+            if self.sandbox is not None and self.sandbox.closed:
+                self.sandbox = None
+            if self.sandbox_backend is None:
+                raise RuntimeError(
+                    'session has no sandbox backend; call session.to("local") '
+                    "or session.bind_sandbox(...)"
+                )
+            open_spec = _coerce_sandbox_open_spec(self._sandbox_open_spec)
+            sb = get(self.sandbox_backend).open(open_spec)
+            sb.acquire()
+            self.sandbox = sb
 
     def __enter__(self) -> Session:
         if self._cm_depth == 0:
