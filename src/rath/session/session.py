@@ -252,6 +252,25 @@ class Session:
     def cumulative_usage(self, value: RathLLMTokenUsage | None) -> None:
         self._cumulative_usage = value
 
+    def text(self) -> str | None:
+        """Return the model's final answer: the last assistant message text.
+
+        Walks the transcript from the end and returns the ``content`` of the
+        most recent assistant chunk that carries non-empty text, skipping
+        assistant turns that are pure tool calls (``content is None``). Returns
+        ``None`` when the session holds no assistant text yet.
+
+        This is the most common thing a caller does after running a workflow;
+        reading ``chunk_table`` here blocks on lazy materialization as usual.
+        """
+        for row in reversed(self.chunk_table.rows):
+            if row.kind != ChunkKind.ASSISTANT:
+                continue
+            content = row.payload.get("content")
+            if content is not None and str(content).strip():
+                return str(content)
+        return None
+
     def synchronize(self) -> Session:
         """Block until ``_pending`` resolves; publish staged values; return self.
 
