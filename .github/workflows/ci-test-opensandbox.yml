@@ -66,4 +66,8 @@ jobs:
           echo "OpenSandbox server failed to start" >&2
           exit 1
       - name: Run OpenSandbox tests
-        run: uv run pytest -m opensandbox
+        # Backend tests hit a real Docker daemon; the server can race
+        # stdout capture against exit_code on small jobs. Allow each
+        # test up to 2 reruns to ride out transient infra flakes
+        # (pytest-rerunfailures is a dev dep).
+        run: uv run pytest -m opensandbox --reruns 2 --reruns-delay 2
