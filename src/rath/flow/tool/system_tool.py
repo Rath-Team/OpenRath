@@ -97,11 +97,19 @@ def flow_tool_code_run(
     return session.require_sandbox().dispatch(call)
 
 
-def _path_resource_key(prefix: str, arguments: Mapping[str, Any]) -> tuple[str, ...]:
+# All filesystem tools share one resource-key namespace so that any mix of
+# operations on the SAME path (write+read, write+stat, ...) lands in one serial
+# lane and runs in transcript order. Distinct paths still fan out in parallel.
+# Using a per-operation prefix here (``fs:write`` vs ``fs:read``) would let a
+# write and a read of the same path run concurrently and race.
+_FS_RESOURCE_NAMESPACE = "fs"
+
+
+def _path_resource_key(arguments: Mapping[str, Any]) -> tuple[str, ...]:
     try:
-        return (prefix, str(arguments["path"]))
+        return (_FS_RESOURCE_NAMESPACE, str(arguments["path"]))
     except KeyError:
-        return (prefix, "<unknown>")
+        return (_FS_RESOURCE_NAMESPACE, "<unknown>")
 
 
 class FlowToolCommandRun(FlowToolCall):
@@ -154,7 +162,7 @@ class FlowToolFilesWrite(FlowToolCall):
     parallel_safe = True
 
     def resource_key(self, arguments: Mapping[str, Any]) -> tuple[str, ...]:
-        return _path_resource_key("fs:write", arguments)
+        return _path_resource_key(arguments)
 
     @property
     def name(self) -> str:
@@ -190,7 +198,7 @@ class FlowToolFilesRead(FlowToolCall):
     parallel_safe = True
 
     def resource_key(self, arguments: Mapping[str, Any]) -> tuple[str, ...]:
-        return _path_resource_key("fs:read", arguments)
+        return _path_resource_key(arguments)
 
     @property
     def name(self) -> str:
@@ -233,7 +241,7 @@ class FlowToolFilesList(FlowToolCall):
     parallel_safe = True
 
     def resource_key(self, arguments: Mapping[str, Any]) -> tuple[str, ...]:
-        return _path_resource_key("fs:list", arguments)
+        return _path_resource_key(arguments)
 
     @property
     def name(self) -> str:
@@ -264,7 +272,7 @@ class FlowToolFilesExists(FlowToolCall):
     parallel_safe = True
 
     def resource_key(self, arguments: Mapping[str, Any]) -> tuple[str, ...]:
-        return _path_resource_key("fs:stat", arguments)
+        return _path_resource_key(arguments)
 
     @property
     def name(self) -> str:
