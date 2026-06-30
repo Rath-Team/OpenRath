@@ -254,3 +254,389 @@ class TestCompleteStream:
         call_kwargs = mock_completion.call_args[1]
         assert call_kwargs["drop_params"] is True
         assert call_kwargs["stream"] is True
+
+    @patch("rath.llm.litellm.client.litellm_completion")
+    def test_stream_yields_deltas_from_chunks(
+        self, mock_completion: MagicMock
+    ) -> None:
+        chunk1 = MagicMock()
+        chunk1.model_dump.return_value = {
+            "id": "chatcmpl-stream",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"role": "assistant", "content": "hel"},
+                    "finish_reason": None,
+                }
+            ],
+            "model": "openai/gpt-4o-mini",
+        }
+        chunk2 = MagicMock()
+        chunk2.model_dump.return_value = {
+            "id": "chatcmpl-stream",
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"content": "lo"},
+                    "finish_reason": "stop",
+                }
+            ],
+            "model": "openai/gpt-4o-mini",
+        }
+        mock_completion.return_value = iter([chunk1, chunk2])
+
+        client = RathLiteLLMChatClient(
+            Provider(provider_kind="litellm", model="openai/gpt-4o-mini")
+        )
+        req = RathLLMChatRequest(
+            messages=(RathLLMMessage(role="user", content="hi"),),
+        )
+        deltas = list(client.complete_stream(req))
+        assert len(deltas) >= 2
+        contents = [d.content_delta for d in deltas if d.content_delta]
+        assert "hel" in contents
+        assert "lo" in contents
+
+    @patch("rath.llm.litellm.client.litellm_completion")
+    def test_stream_empty_chunks_handled(self, mock_completion: MagicMock) -> None:
+        empty_chunk = MagicMock()
+        empty_chunk.model_dump.return_value = {
+            "id": "chatcmpl-stream",
+            "choices": [],
+            "model": "openai/gpt-4o-mini",
+        }
+        mock_completion.return_value = iter([empty_chunk])
+
+        client = RathLiteLLMChatClient(
+            Provider(provider_kind="litellm", model="openai/gpt-4o-mini")
+        )
+        req = RathLLMChatRequest(
+            messages=(RathLLMMessage(role="user", content="hi"),),
+        )
+        deltas = list(client.complete_stream(req))
+        assert isinstance(deltas, list)
+
+
+class TestExceptionHandling:
+    """Verify that litellm-specific exceptions propagate correctly."""
+
+    @patch("rath.llm.litellm.client.litellm_completion")
+    def test_auth_error_propagates(self, mock_completion: MagicMock) -> None:
+        from litellm.exceptions import AuthenticationError
+
+        mock_completion.side_effect = AuthenticationError(
+            message="Invalid API key",
+            model="openai/gpt-4o-mini",
+            llm_provider="openai",
+        )
+
+        client = RathLiteLLMChatClient(
+            Provider(
+                provider_kind="litellm",
+                model="openai/gpt-4o-mini",
+                api_key="sk-invalid",
+            )
+        )
+        req = RathLLMChatRequest(
+            messages=(RathLLMMessage(role="user", content="hi"),),
+        )
+        with pytest.raises(AuthenticationError):
+            client.complete(req)
+
+    @patch("rath.llm.litellm.client.litellm_completion")
+    def test_not_found_error_propagates(self, mock_completion: MagicMock) -> None:
+        from litellm.exceptions import NotFoundError
+
+        mock_completion.side_effect = NotFoundError(
+            message="Model not found",
+            model="openai/nonexistent-model",
+            llm_provider="openai",
+        )
+
+        client = RathLiteLLMChatClient(
+            Provider(
+                provider_kind="litellm",
+                model="openai/nonexistent-model",
+            )
+        )
+        req = RathLLMChatRequest(
+            messages=(RathLLMMessage(role="user", content="hi"),),
+        )
+        with pytest.raises(NotFoundError):
+            client.complete(req)
+
+    @patch("rath.llm.litellm.client.litellm_completion")
+    def test_rate_limit_is_retried(self, mock_completion: MagicMock) -> None:
+        from litellm.exceptions import RateLimitError
+
+        mock_response = MagicMock()
+        mock_response.model_dump.return_value = {
+            "id": "test-id",
+            "choices": [
+                {
+                    "index": 0,
+                    "finish_reason": "stop",
+                    "message": {"role": "assistant", "content": "ok"},
+                }
+            ],
+            "created": 1234567890,
+            "model": "openai/gpt-4o-mini",
+            "usage": {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6},
+        }
+        mock_completion.side_effect = [
+            RateLimitError(
+                message="Rate limit exceeded",
+                model="openai/gpt-4o-mini",
+                llm_provider="openai",
+            ),
+            mock_response,
+        ]
+
+        client = RathLiteLLMChatClient(
+            Provider(
+                provider_kind="litellm",
+                model="openai/gpt-4o-mini",
+                retry_max_attempts=2,
+                retry_base_seconds=0.0,
+            )
+        )
+        req = RathLLMChatRequest(
+            messages=(RathLLMMessage(role="user", content="hi"),),
+        )
+        resp = client.complete(req)
+        assert resp.primary_choice.message.content == "ok"
+        assert mock_completion.call_count == 2
+
+    @patch("rath.llm.litellm.client.litellm_completion")
+    def test_rate_limit_exhausts_retries(self, mock_completion: MagicMock) -> None:
+        from litellm.exceptions import RateLimitError
+
+        mock_completion.side_effect = RateLimitError(
+            message="Rate limit exceeded",
+            model="openai/gpt-4o-mini",
+            llm_provider="openai",
+        )
+
+        client = RathLiteLLMChatClient(
+            Provider(
+                provider_kind="litellm",
+                model="openai/gpt-4o-mini",
+                retry_max_attempts=2,
+                retry_base_seconds=0.0,
+            )
+        )
+        req = RathLLMChatRequest(
+            messages=(RathLLMMessage(role="user", content="hi"),),
+        )
+        with pytest.raises(RateLimitError):
+            client.complete(req)
+        assert mock_completion.call_count == 2
+
+    @patch("rath.llm.litellm.client.litellm_completion")
+    def test_timeout_is_retried(self, mock_completion: MagicMock) -> None:
+        from litellm.exceptions import Timeout
+
+        mock_response = MagicMock()
+        mock_response.model_dump.return_value = {
+            "id": "test-id",
+            "choices": [
+                {
+                    "index": 0,
+                    "finish_reason": "stop",
+                    "message": {"role": "assistant", "content": "finally"},
+                }
+            ],
+            "created": 1234567890,
+            "model": "openai/gpt-4o-mini",
+            "usage": {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6},
+        }
+        mock_completion.side_effect = [
+            Timeout(
+                message="Request timed out",
+                model="openai/gpt-4o-mini",
+                llm_provider="openai",
+            ),
+            mock_response,
+        ]
+
+        client = RathLiteLLMChatClient(
+            Provider(
+                provider_kind="litellm",
+                model="openai/gpt-4o-mini",
+                retry_max_attempts=2,
+                retry_base_seconds=0.0,
+            )
+        )
+        req = RathLLMChatRequest(
+            messages=(RathLLMMessage(role="user", content="hi"),),
+        )
+        resp = client.complete(req)
+        assert resp.primary_choice.message.content == "finally"
+
+    @patch("rath.llm.litellm.client.litellm_completion")
+    def test_context_window_exceeded_propagates(
+        self, mock_completion: MagicMock
+    ) -> None:
+        from litellm.exceptions import ContextWindowExceededError
+
+        mock_completion.side_effect = ContextWindowExceededError(
+            message="Context window exceeded",
+            model="openai/gpt-4o-mini",
+            llm_provider="openai",
+        )
+
+        client = RathLiteLLMChatClient(
+            Provider(provider_kind="litellm", model="openai/gpt-4o-mini")
+        )
+        req = RathLLMChatRequest(
+            messages=(RathLLMMessage(role="user", content="x" * 100000),),
+        )
+        with pytest.raises(ContextWindowExceededError):
+            client.complete(req)
+
+
+class TestMalformedResponses:
+    """Verify graceful handling of empty/null/malformed responses."""
+
+    @patch("rath.llm.litellm.client.litellm_completion")
+    def test_empty_choices(self, mock_completion: MagicMock) -> None:
+        mock_response = MagicMock()
+        mock_response.model_dump.return_value = {
+            "id": "test-id",
+            "choices": [],
+            "created": 1234567890,
+            "model": "openai/gpt-4o-mini",
+            "usage": {"prompt_tokens": 5, "completion_tokens": 0, "total_tokens": 5},
+        }
+        mock_completion.return_value = mock_response
+
+        client = RathLiteLLMChatClient(
+            Provider(provider_kind="litellm", model="openai/gpt-4o-mini")
+        )
+        req = RathLLMChatRequest(
+            messages=(RathLLMMessage(role="user", content="hi"),),
+        )
+        resp = client.complete(req)
+        assert len(resp.choices) == 0
+
+    @patch("rath.llm.litellm.client.litellm_completion")
+    def test_null_content_in_response(self, mock_completion: MagicMock) -> None:
+        mock_response = MagicMock()
+        mock_response.model_dump.return_value = {
+            "id": "test-id",
+            "choices": [
+                {
+                    "index": 0,
+                    "finish_reason": "stop",
+                    "message": {"role": "assistant", "content": None},
+                }
+            ],
+            "created": 1234567890,
+            "model": "openai/gpt-4o-mini",
+            "usage": {"prompt_tokens": 5, "completion_tokens": 0, "total_tokens": 5},
+        }
+        mock_completion.return_value = mock_response
+
+        client = RathLiteLLMChatClient(
+            Provider(provider_kind="litellm", model="openai/gpt-4o-mini")
+        )
+        req = RathLLMChatRequest(
+            messages=(RathLLMMessage(role="user", content="hi"),),
+        )
+        resp = client.complete(req)
+        assert resp.primary_choice.message.content is None
+
+    @patch("rath.llm.litellm.client.litellm_completion")
+    def test_missing_usage_in_response(self, mock_completion: MagicMock) -> None:
+        mock_response = MagicMock()
+        mock_response.model_dump.return_value = {
+            "id": "test-id",
+            "choices": [
+                {
+                    "index": 0,
+                    "finish_reason": "stop",
+                    "message": {"role": "assistant", "content": "ok"},
+                }
+            ],
+            "created": 1234567890,
+            "model": "openai/gpt-4o-mini",
+        }
+        mock_completion.return_value = mock_response
+
+        client = RathLiteLLMChatClient(
+            Provider(provider_kind="litellm", model="openai/gpt-4o-mini")
+        )
+        req = RathLLMChatRequest(
+            messages=(RathLLMMessage(role="user", content="hi"),),
+        )
+        resp = client.complete(req)
+        assert resp.usage is None
+
+
+class TestModelStringFormat:
+    """Verify model strings are passed through correctly in provider-prefixed format."""
+
+    @patch("rath.llm.litellm.client.litellm_completion")
+    def test_provider_prefixed_model_passed_through(
+        self, mock_completion: MagicMock
+    ) -> None:
+        mock_response = MagicMock()
+        mock_response.model_dump.return_value = {
+            "id": "test-id",
+            "choices": [
+                {
+                    "index": 0,
+                    "finish_reason": "stop",
+                    "message": {"role": "assistant", "content": "ok"},
+                }
+            ],
+            "created": 1234567890,
+            "model": "anthropic/claude-sonnet-4-20250514",
+            "usage": {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6},
+        }
+        mock_completion.return_value = mock_response
+
+        client = RathLiteLLMChatClient(
+            Provider(
+                provider_kind="litellm",
+                model="anthropic/claude-sonnet-4-20250514",
+            )
+        )
+        req = RathLLMChatRequest(
+            messages=(RathLLMMessage(role="user", content="hi"),),
+        )
+        client.complete(req)
+
+        call_kwargs = mock_completion.call_args[1]
+        assert call_kwargs["model"] == "anthropic/claude-sonnet-4-20250514"
+
+    @patch("rath.llm.litellm.client.litellm_completion")
+    def test_model_from_env_fallback(
+        self, mock_completion: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LITELLM_MODEL", "gemini/gemini-2.0-flash")
+
+        mock_response = MagicMock()
+        mock_response.model_dump.return_value = {
+            "id": "test-id",
+            "choices": [
+                {
+                    "index": 0,
+                    "finish_reason": "stop",
+                    "message": {"role": "assistant", "content": "ok"},
+                }
+            ],
+            "created": 1234567890,
+            "model": "gemini/gemini-2.0-flash",
+            "usage": {"prompt_tokens": 5, "completion_tokens": 1, "total_tokens": 6},
+        }
+        mock_completion.return_value = mock_response
+
+        client = RathLiteLLMChatClient(Provider(provider_kind="litellm"))
+        req = RathLLMChatRequest(
+            messages=(RathLLMMessage(role="user", content="hi"),),
+        )
+        client.complete(req)
+
+        call_kwargs = mock_completion.call_args[1]
+        assert call_kwargs["model"] == "gemini/gemini-2.0-flash"
