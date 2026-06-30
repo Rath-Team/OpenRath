@@ -31,7 +31,7 @@ Repository = "https://github.com/Rath-Team/OpenRath"
 
 [project.optional-dependencies]
 litellm = [
-    "litellm>=1.55.0,<2.0",
+    "litellm>=1.80,<1.88",
 ]
 opensandbox = [
     "opensandbox>=0.1.7",
