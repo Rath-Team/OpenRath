@@ -23,6 +23,11 @@ from rath.llm.anthropic import (
     build_anthropic_stream_kwargs,
     normalize_anthropic_response,
 )
+
+try:
+    from rath.llm.litellm import RathLiteLLMChatClient
+except ImportError:
+    RathLiteLLMChatClient = None  # type: ignore[assignment,misc]
 from rath.llm.base import ChatClient, StreamingChatClient
 from rath.llm.budget import BudgetExceededError
 from rath.llm.chat_request import (
@@ -72,6 +77,7 @@ __all__ = [
     # Built-in adapters
     "RathOpenAIChatClient",
     "RathAnthropicChatClient",
+    "RathLiteLLMChatClient",
     # Embedding adapter (sync, OpenAI-compatible)
     "EmbeddingProvider",
     "RathOpenAIEmbeddingClient",
