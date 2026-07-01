@@ -15,7 +15,9 @@ from rath.llm import (
     registered_kinds,
 )
 from rath.llm.chat_request import RathLLMChatRequest, RathLLMMessage
-from rath.llm.litellm import RathLiteLLMChatClient
+
+pytest.importorskip("litellm")
+from rath.llm.litellm import RathLiteLLMChatClient  # noqa: E402  -- importorskip gated
 
 
 @pytest.fixture(autouse=True)
@@ -256,9 +258,7 @@ class TestCompleteStream:
         assert call_kwargs["stream"] is True
 
     @patch("rath.llm.litellm.client.litellm_completion")
-    def test_stream_yields_deltas_from_chunks(
-        self, mock_completion: MagicMock
-    ) -> None:
+    def test_stream_yields_deltas_from_chunks(self, mock_completion: MagicMock) -> None:
         chunk1 = MagicMock()
         chunk1.model_dump.return_value = {
             "id": "chatcmpl-stream",

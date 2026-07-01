@@ -101,7 +101,7 @@ class RathLiteLLMChatClient:
 
         def _call() -> RathLLMChatResponse:
             response = litellm_completion(**kwargs)
-            return normalize_chat_completion(response)  # type: ignore[arg-type]
+            return normalize_chat_completion(response)
 
         return retry_with_backoff(
             _call,
