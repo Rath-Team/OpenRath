@@ -549,9 +549,7 @@ class Session:
         block = _format_chunks_block(
             self._chunk_table.rows, edge=_SESSION_REPR_CHUNK_EDGE
         )
-        return (
-            f"{cls_name}(id={short_id},\n  chunks={block},\n  operator={self.lineage_operator!r},\n)"
-        )
+        return f"{cls_name}(id={short_id},\n  chunks={block},\n  operator={self.lineage_operator!r},\n)"
 
     def __repr__(self) -> str:
         return self.__str__()
