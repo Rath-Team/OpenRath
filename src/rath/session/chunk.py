@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Iterator
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Mapping, cast
+from typing import Any, Mapping, cast, overload
 
 from rath.llm import RathLLMMessage, RathLLMToolCallPart
 
@@ -74,6 +75,19 @@ class ChunkTable:
     """Append-only chronological chunk list."""
 
     rows: tuple[ChunkRow, ...] = ()
+
+    def __len__(self) -> int:
+        return len(self.rows)
+
+    @overload
+    def __getitem__(self, index: int) -> ChunkRow: ...
+    @overload
+    def __getitem__(self, index: slice) -> tuple[ChunkRow, ...]: ...
+    def __getitem__(self, index: int | slice) -> ChunkRow | tuple[ChunkRow, ...]:
+        return self.rows[index]
+
+    def __iter__(self) -> Iterator[ChunkRow]:
+        return iter(self.rows)
 
     def extend(self, *additional: ChunkRow) -> ChunkTable:
         return ChunkTable(rows=self.rows + tuple(additional))

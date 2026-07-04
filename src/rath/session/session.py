@@ -542,15 +542,14 @@ class Session:
 
     def __str__(self) -> str:
         cls_name = type(self).__name__
+        short_id = str(self.id).split("-", 1)[0]
         # Avoid triggering synchronize() in repr -- show pending state instead.
         if self._pending is not None:
-            return f"{cls_name}(pending …, operator={self.lineage_operator!r})"
+            return f"{cls_name}(id={short_id}, pending …, operator={self.lineage_operator!r})"
         block = _format_chunks_block(
             self._chunk_table.rows, edge=_SESSION_REPR_CHUNK_EDGE
         )
-        return (
-            f"{cls_name}(\n  chunks={block},\n  operator={self.lineage_operator!r},\n)"
-        )
+        return f"{cls_name}(id={short_id},\n  chunks={block},\n  operator={self.lineage_operator!r},\n)"
 
     def __repr__(self) -> str:
         return self.__str__()
