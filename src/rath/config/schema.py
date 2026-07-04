@@ -35,7 +35,7 @@ class LLMProviderConfig(BaseModel):
     to ``extra="allow"``.
     """
 
-    provider_kind: Literal["openai", "anthropic"] = "openai"
+    provider_kind: Literal["openai", "anthropic", "litellm"] = "openai"
     model: str | None = None
     api_key: str | None = None
     base_url: str | None = None

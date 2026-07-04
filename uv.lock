@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.10, <3.14"
 resolution-markers = [
     "python_full_version >= '3.13'",
@@ -1805,7 +1805,7 @@ wheels = [
 
 [[package]]
 name = "openrath"
-version = "1.2.0"
+version = "1.2.1"
 source = { editable = "." }
 dependencies = [
     { name = "anthropic" },
@@ -1815,6 +1815,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+litellm = [
+    { name = "litellm" },
+]
 opensandbox = [
     { name = "opensandbox" },
     { name = "opensandbox-code-interpreter" },
@@ -1846,6 +1849,7 @@ docs = [
 [package.metadata]
 requires-dist = [
     { name = "anthropic", specifier = ">=0.40.0" },
+    { name = "litellm", marker = "extra == 'litellm'", specifier = ">=1.80,<1.88" },
     { name = "mcp", specifier = ">=1.0.0" },
     { name = "openai", specifier = ">=1.0.0" },
     { name = "opensandbox", marker = "extra == 'opensandbox'", specifier = ">=0.1.7" },
@@ -1854,7 +1858,7 @@ requires-dist = [
     { name = "openviking", marker = "extra == 'openviking'", specifier = ">=0.2.6" },
     { name = "pydantic", specifier = ">=2.0.0,<3" },
 ]
-provides-extras = ["opensandbox", "openviking"]
+provides-extras = ["litellm", "opensandbox", "openviking"]
 
 [package.metadata.requires-dev]
 dev = [
