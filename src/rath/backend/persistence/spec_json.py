@@ -42,10 +42,12 @@ def spec_from_jsonable(raw: dict[str, Any] | None) -> BackendSandboxSpec | None:
     if raw is None:
         return None
     timeout_s = raw.get("timeout_seconds")
+    entrypoint = raw.get("entrypoint")
+    env = raw.get("env")
     return BackendSandboxSpec(
         image=raw.get("image"),
-        entrypoint=tuple(raw["entrypoint"]) if raw.get("entrypoint") else None,
-        env=dict(raw["env"]) if raw.get("env") else None,
+        entrypoint=tuple(entrypoint) if entrypoint is not None else None,
+        env=dict(env) if env is not None else None,
         timeout=timedelta(seconds=float(timeout_s)) if timeout_s is not None else None,
         working_dir=raw.get("working_dir"),
     )
