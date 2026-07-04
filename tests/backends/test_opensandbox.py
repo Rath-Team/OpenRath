@@ -106,6 +106,7 @@ def test_unsupported_language_returns_failure() -> None:
         assert r.kind == "unsupported_tool"
 
 
+@pytest.mark.timeout(600)
 def test_code_run_python_round_trip() -> None:
     """Smoke that ``codes.run`` produces both stdout and a result text."""
     backend = get("opensandbox")
