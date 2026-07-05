@@ -9,6 +9,7 @@ mirrors :class:`~rath.backend.abc.Backend`.
 
 from __future__ import annotations
 
+import threading
 from abc import ABC, abstractmethod
 from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
@@ -101,25 +102,34 @@ class MemoryStore:
     spec: MemoryStoreSpec | None = None
     closed: bool = field(default=False)
     _refcount: int = field(default=0, repr=False)
+    # Match ``BackendSandbox`` lifecycle locking: serialize refcount updates,
+    # then let ``release`` call ``backend.close`` outside the lock.
+    _refcount_lock: threading.Lock = field(
+        default_factory=threading.Lock, repr=False, compare=False
+    )
 
     @property
     def refcount(self) -> int:
         """Current number of live references; read-only mirror of internal state."""
-        return self._refcount
+        with self._refcount_lock:
+            return self._refcount
 
     def acquire(self) -> "MemoryStore":
         """Add one reference; return ``self`` for chaining."""
-        if self.closed:
-            raise MemoryStoreClosed(self.handle)
-        self._refcount += 1
+        with self._refcount_lock:
+            if self.closed:
+                raise MemoryStoreClosed(self.handle)
+            self._refcount += 1
         return self
 
     def release(self) -> None:
         """Drop one reference; close via the backend when the count hits zero."""
-        if self.closed:
-            return
-        self._refcount -= 1
-        if self._refcount <= 0:
+        with self._refcount_lock:
+            if self.closed:
+                return
+            self._refcount -= 1
+            should_close = self._refcount <= 0
+        if should_close:
             self.backend.close(self)
 
     def __enter__(self) -> "MemoryStore":

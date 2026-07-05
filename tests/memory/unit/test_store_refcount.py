@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import threading
+import time
+
 import pytest
 
 from rath.memory.abc import MemoryStore, MemoryStoreSpec
@@ -20,6 +23,38 @@ class _FakeBackend:
     def close(self, store: MemoryStore) -> None:
         self.close_calls.append(store)
         store.closed = True
+
+
+class _YieldingRefcount:
+    """Refcount test double that makes read/modify/write races deterministic."""
+
+    def __init__(self, value: int) -> None:
+        self.value = value
+
+    def __iadd__(self, amount: int) -> "_YieldingRefcount":
+        current = self.value
+        time.sleep(0.01)
+        self.value = current + amount
+        return self
+
+    def __isub__(self, amount: int) -> "_YieldingRefcount":
+        current = self.value
+        time.sleep(0.01)
+        self.value = current - amount
+        return self
+
+    def __le__(self, other: object) -> bool:
+        if not isinstance(other, int):
+            return NotImplemented
+        return self.value <= other
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, int):
+            return NotImplemented
+        return self.value == other
+
+    def __repr__(self) -> str:
+        return repr(self.value)
 
 
 def _make_store(backend: _FakeBackend | None = None) -> MemoryStore:
@@ -83,6 +118,53 @@ def test_nested_context_manager_tracks_refcount():
         assert fake.close_calls == []
     assert store.refcount == 0
     assert fake.close_calls == [store]
+
+
+def test_concurrent_acquire_release_is_safe():
+    """Hammer acquire/release from many threads; refcount must stay coherent."""
+    fake = _FakeBackend()
+    store = _make_store(fake)
+    store.acquire()  # baseline ref so the count cannot drain to zero mid-test
+
+    threads = 8
+    iters = 1000
+
+    def worker() -> None:
+        for _ in range(iters):
+            store.acquire()
+            store.release()
+
+    workers = [threading.Thread(target=worker) for _ in range(threads)]
+    for t in workers:
+        t.start()
+    for t in workers:
+        t.join()
+
+    assert store.refcount == 1
+    assert store.closed is False
+    assert fake.close_calls == []
+    store.release()
+    assert store.closed is True
+    assert fake.close_calls == [store]
+
+
+def test_concurrent_acquire_serializes_refcount_mutation():
+    store = _make_store()
+    store._refcount = _YieldingRefcount(1)  # type: ignore[assignment]
+    ready = threading.Barrier(3)
+
+    def worker() -> None:
+        ready.wait()
+        store.acquire()
+
+    workers = [threading.Thread(target=worker) for _ in range(2)]
+    for t in workers:
+        t.start()
+    ready.wait()
+    for t in workers:
+        t.join()
+
+    assert store.refcount == 3
 
 
 def test_acquire_after_close_raises_memory_store_closed():
