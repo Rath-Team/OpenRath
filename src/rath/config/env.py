@@ -30,6 +30,7 @@ __all__ = [
     "env_flag",
     "resolve_env",
     "env_reference_rows",
+    "env_reference_markdown",
     "all_env_specs",
 ]
 
@@ -134,6 +135,23 @@ def env_reference_rows() -> list[dict[str, str]]:
             }
         )
     return rows
+
+
+def env_reference_markdown() -> str:
+    """Render the env reference as a stable markdown table (feeds the docs).
+
+    Secrets never print a default value (they have none), so the Default
+    column stays blank for them — no secret material can leak into docs.
+    """
+    header = "| Name | Kind | Consumers | Default |"
+    sep = "| --- | --- | --- | --- |"
+    lines = [header, sep]
+    for row in env_reference_rows():
+        lines.append(
+            f"| `{row['name']}` | {row['kind']} | {row['consumers']} "
+            f"| {row['default']} |"
+        )
+    return "\n".join(lines) + "\n"
 
 
 # --- Declarations (the single source of truth) ------------------------------
