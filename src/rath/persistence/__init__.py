@@ -11,5 +11,21 @@ concurrent writers to the same path.
 from __future__ import annotations
 
 from rath.persistence.atomic import atomic_write_json, atomic_write_text
+from rath.persistence.gc import GCReport, gc
+from rath.persistence.manifest import (
+    LAYOUT_VERSION,
+    ManifestVersionError,
+    check_manifest,
+    ensure_manifest,
+)
 
-__all__ = ["atomic_write_text", "atomic_write_json"]
+__all__ = [
+    "atomic_write_text",
+    "atomic_write_json",
+    "gc",
+    "GCReport",
+    "ensure_manifest",
+    "check_manifest",
+    "ManifestVersionError",
+    "LAYOUT_VERSION",
+]
