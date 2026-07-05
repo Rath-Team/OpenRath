@@ -8,6 +8,7 @@ subset Agent uses (``MemoryOpFind`` and ``MemoryOpCommit``).
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass, field
 
 import pytest
@@ -25,7 +26,7 @@ from rath.memory.results import (
     MemoryResult,
 )
 from rath.session import Session, session_registry
-from rath.session.chunk import ChunkKind
+from rath.session.chunk import ChunkKind, ChunkRow
 from tests.session.scripted_loop_executor import ScriptedSessionLoopExecutor
 
 
@@ -38,6 +39,7 @@ def _clear_active_session_registry() -> None:
 @dataclass
 class _FakeBackend(MemoryBackend):
     find_hits: tuple[MemoryHit, ...] = ()
+    commit_error: Exception | None = None
     ops_seen: list[MemoryOp] = field(default_factory=list)
 
     @classmethod
@@ -77,10 +79,17 @@ class _FakeBackend(MemoryBackend):
         if isinstance(op, MemoryOpFind):
             return MemoryFindResult(hits=self.find_hits)
         if isinstance(op, MemoryOpCommit):
+            if self.commit_error is not None:
+                raise self.commit_error
             return MemoryCommitResult(
                 task_id="task-x", archived_uri="memory://session/s/", extracted_count=-1
             )
         raise NotImplementedError(f"fake: no handler for {type(op).__name__}")
+
+
+class _FailingInjection:
+    def inject(self, session: Session, store: object) -> tuple[ChunkRow, ...]:
+        raise RuntimeError("recall exploded")
 
 
 def _scripted_response(text: str) -> RathLLMChatResponse:
@@ -178,3 +187,53 @@ def test_forward_without_commit_does_not_dispatch_commit() -> None:
     sess = Session.from_user_message("nothing important")
     agent.forward(sess)
     assert not any(isinstance(op, MemoryOpCommit) for op in backend.ops_seen)
+
+
+def test_forward_logs_warning_when_memory_injection_fails(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    backend = _FakeBackend(find_hits=())
+    store = backend.open()
+    exec_ = ScriptedSessionLoopExecutor([_scripted_response("ack")])
+    agent = Agent(
+        "system",
+        model="gpt-5.5",
+        memory=store,
+        memory_inject=_FailingInjection(),
+    )
+    agent._executor_override = exec_
+    sess = Session.from_user_message("remember me")
+
+    with caplog.at_level(logging.WARNING, logger="rath.flow.agent"):
+        out = agent.forward(sess)
+
+    assert out.text() == "ack"
+    assert any(
+        "memory injection failed" in rec.getMessage() and rec.exc_info
+        for rec in caplog.records
+    )
+
+
+def test_forward_logs_warning_when_auto_commit_fails(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    backend = _FakeBackend(find_hits=(), commit_error=RuntimeError("commit exploded"))
+    store = backend.open()
+    exec_ = ScriptedSessionLoopExecutor([_scripted_response("ack")])
+    agent = Agent(
+        "system",
+        model="gpt-5.5",
+        memory=store,
+        commit_on_forward=True,
+    )
+    agent._executor_override = exec_
+    sess = Session.from_user_message("remember me")
+
+    with caplog.at_level(logging.WARNING, logger="rath.flow.agent"):
+        out = agent.forward(sess)
+
+    assert out.text() == "ack"
+    assert any(
+        "memory commit failed" in rec.getMessage() and rec.exc_info
+        for rec in caplog.records
+    )

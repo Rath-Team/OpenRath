@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import replace
 from typing import Union
@@ -16,6 +17,8 @@ from rath.memory.abc import MemoryStore, MemoryStoreSpec
 from rath.session import Session, run_session_loop
 
 MemoryArg = Union[MemoryStore, MemoryStoreSpec, str, None]
+
+logger = logging.getLogger(__name__)
 
 
 def _resolve_memory(memory: MemoryArg) -> MemoryStore | None:
@@ -132,7 +135,12 @@ class Agent(Workflow):
         assert self.memory is not None  # caller-checked
         try:
             extras = self._memory_inject.inject(session, self.memory)
-        except Exception:  # noqa: BLE001 -- recall must not break the loop
+        except Exception as exc:  # noqa: BLE001 -- recall must not break the loop
+            logger.warning(
+                "memory injection failed; continuing without recalled memory: %s",
+                exc,
+                exc_info=True,
+            )
             extras = ()
         if not extras:
             return session
@@ -175,8 +183,12 @@ class Agent(Workflow):
                     wait=wait,
                 )
             )
-        except Exception:  # noqa: BLE001 -- commit must not break forward
-            pass
+        except Exception as exc:  # noqa: BLE001 -- commit must not break forward
+            logger.warning(
+                "memory commit failed; continuing without persisted memory: %s",
+                exc,
+                exc_info=True,
+            )
 
     # ---------------------------------------------------------------- public memory API
 
