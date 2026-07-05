@@ -51,7 +51,7 @@ def select_session(
     user_session: Session,
     agent_session: Session,
     *workflow_descriptions: str,
-    agent_provider: Provider,
+    agent_provider: Provider | None = None,
     executor: SessionLoopExecutor | None = None,
 ) -> tuple[int, str]:
     """LLM picks the best-matching description for the current user session.
@@ -68,6 +68,16 @@ def select_session(
 
     if not workflow_descriptions:
         return (-1, "")
+
+    # Explicit provider wins; otherwise fall back to the user session's bound
+    # provider (session.to(Provider(...))). Mirrors run_session_loop (P4.4).
+    if agent_provider is None:
+        agent_provider = user_session.provider
+    if agent_provider is None:
+        raise ValueError(
+            "no provider for select_session: pass agent_provider=Provider(...) "
+            "or bind one on the session via session.to(Provider(...))"
+        )
 
     # Join lazy input sessions before reading their chunk_table.
     if user_session._pending is not None:
