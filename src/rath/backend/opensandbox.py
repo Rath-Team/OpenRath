@@ -61,6 +61,7 @@ from rath.backend.tool_types import (
     BackendToolFilesRead,
     BackendToolFilesWrite,
 )
+from rath.config.env import env_flag, env_value
 
 try:
     from opensandbox import Sandbox as _OSBSandbox
@@ -86,9 +87,42 @@ _SUPPORTED_LANGUAGES: frozenset[str] = frozenset(
 
 logger = logging.getLogger(__name__)
 
-_STRICT_WORKSPACE_BIND = os.environ.get(
-    "RATH_OPENSANDBOX_STRICT_WORKSPACE_BIND", ""
-).lower() in ("1", "true", "yes")
+
+def strict_workspace_bind() -> bool:
+    """Whether to skip the no-volumes retry when a host bind is rejected.
+
+    Read at call time via the central env registry (P2.5) rather than frozen at
+    import, so a test or late ``os.environ`` change is honored.
+    """
+    return env_flag("RATH_OPENSANDBOX_STRICT_WORKSPACE_BIND")
+
+
+def resolve_opensandbox_domain() -> str | None:
+    """Resolve the opensandbox service domain: env → backend config → None.
+
+    Precedence: ``OPEN_SANDBOX_DOMAIN`` / legacy ``OPENSANDBOX_DOMAIN`` (via the
+    registry), then the ``backend`` config section's default (or an
+    opensandbox-kind) provider ``domain`` (P1.2 wiring). Returns ``None`` when
+    unset. The SDK / ``~/.sandbox.toml`` may still supply credentials
+    independently; this only resolves the domain OpenRath knows about.
+    """
+    domain = env_value("OPEN_SANDBOX_DOMAIN") or env_value("OPENSANDBOX_DOMAIN")
+    if domain:
+        return domain
+    try:
+        from rath.config.store import ConfigStore
+
+        cfg = ConfigStore.load().config.backend
+    except (FileNotFoundError, RuntimeError):
+        return None
+    name = cfg.default_provider
+    entry = cfg.providers.get(name) if name else None
+    if entry is None:
+        for candidate in cfg.providers.values():
+            if candidate.backend_kind == "opensandbox":
+                entry = candidate
+                break
+    return entry.domain if entry is not None and entry.domain else None
 
 
 async def _await_maybe_timeout(awaitable, timeout: float | None):
@@ -185,7 +219,7 @@ async def _create_sandbox_with_optional_bind_fallback(
     except BaseException as exc:
         if (
             not volumes
-            or _STRICT_WORKSPACE_BIND
+            or strict_workspace_bind()
             or not _likely_workspace_bind_rejected(exc)
         ):
             raise
@@ -262,9 +296,8 @@ class OpenSandboxBackend(Backend):
         """
         if not (_SDK_AVAILABLE and _CI_AVAILABLE):
             return False
-        if os.environ.get("OPEN_SANDBOX_DOMAIN") or os.environ.get(
-            "OPENSANDBOX_DOMAIN",
-        ):
+        # Domain from env or the backend config section (P2.5).
+        if resolve_opensandbox_domain():
             return True
         return Path.home().joinpath(".sandbox.toml").exists()
 
