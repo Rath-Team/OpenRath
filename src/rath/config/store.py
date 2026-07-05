@@ -41,6 +41,7 @@ from rath.config.secrets import (
     warn_if_world_readable,
 )
 from rath.persistence.atomic import atomic_write_json
+from rath.persistence.manifest import check_manifest, ensure_manifest
 
 __all__ = ["ConfigStore", "ConfigError"]
 
@@ -185,6 +186,12 @@ class ConfigStore:
                 atomic_write_json(creds_path, creds_payload, mode=0o600)
                 chmod_user_only(creds_path)
 
+            # Record/refresh the root layout manifest at the data root.
+            try:
+                ensure_manifest(config_dir)
+            except OSError:  # pragma: no cover -- best-effort, never block a save
+                logger.debug("could not write layout manifest", exc_info=True)
+
             # Invalidate read cache so next load() picks up the new data
             with type(self)._cache_lock:
                 type(self)._cache.pop(self.path, None)
@@ -305,6 +312,9 @@ class ConfigStore:
     # --- Internals --------------------------------------------------------
 
     def _load_or_default(self) -> RathConfig:
+        # Refuse a data root written by a newer OpenRath layout (no-op when the
+        # manifest is absent — fresh/legacy roots keep working).
+        check_manifest(self.path.parent)
         if not self.path.is_file():
             return RathConfig()
         warn_if_world_readable(self.path)
