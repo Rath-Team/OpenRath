@@ -37,6 +37,7 @@ from rath.backend.persistence.spec_json import (
 )
 from rath.backend.registry import get as backend_get
 from rath.config.secrets import chmod_user_only
+from rath.persistence.atomic import atomic_write_json
 
 __all__ = [
     "PersistentSandboxRegistry",
@@ -181,10 +182,7 @@ class PersistentSandboxRegistry:
             "created_at": now.isoformat(),
             "last_used_at": now.isoformat(),
         }
-        path.write_text(
-            json.dumps(record, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
+        atomic_write_json(path, record)
         chmod_user_only(path)
         return sid
 
@@ -203,10 +201,7 @@ class PersistentSandboxRegistry:
             logger.warning("touch_remote: %s is unreadable", path, exc_info=True)
             return
         data["last_used_at"] = datetime.now(timezone.utc).isoformat()
-        path.write_text(
-            json.dumps(data, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
+        atomic_write_json(path, data)
 
     def load_remote(self, sandbox_id: UUID | str) -> RemoteSandboxRecord | None:
         """Read one remote-sandbox index file. Returns ``None`` when missing."""
