@@ -22,6 +22,7 @@ from uuid import UUID, uuid4
 from rath.backend import BackendSandbox, BackendSandboxSpec, get
 from rath.llm import add_usage
 from rath.llm.chat_response import RathLLMTokenUsage
+from rath.llm.provider import Provider
 from rath.session.chunk import ChunkKind, ChunkRow, ChunkTable
 from rath.session.graph.kind import LineageKind
 from rath.session.graph.legacy import SessionLineage
@@ -172,6 +173,7 @@ class Session:
         "sandbox",
         "sandbox_backend",
         "_sandbox_open_spec",
+        "provider",
         "_cm_depth",
         "lineage",
         "parent_session_ids",
@@ -193,6 +195,7 @@ class Session:
         sandbox: BackendSandbox | None = None,
         sandbox_backend: str | None = None,
         _sandbox_open_spec: BackendSandboxSpec | None = None,
+        provider: Provider | None = None,
         _cm_depth: int = 0,
         lineage: SessionLineage | None = None,
         parent_session_ids: tuple[UUID, ...] = (),
@@ -206,6 +209,10 @@ class Session:
         self.sandbox = sandbox
         self.sandbox_backend = sandbox_backend
         self._sandbox_open_spec = _sandbox_open_spec
+        # Session-level LLM provider (a plain value, no lifecycle/refcount).
+        # Used by run_session_loop only as a FALLBACK when no agent_provider is
+        # passed (Agent/AgentParam provider always wins). See P4.3/P4.4.
+        self.provider = provider
         self._cm_depth = _cm_depth
         self.lineage = lineage
         self.parent_session_ids = parent_session_ids
@@ -381,11 +388,41 @@ class Session:
 
     def to(
         self,
-        backend: str = "local",
+        backend: str | Provider = "local",
         *,
         spec: BackendSandboxSpec | str | None = None,
+        provider: str | None = None,
     ) -> Session:
-        """Close any current handle, set target backend, and return ``self`` (chainable)."""
+        """Place this session on a sandbox backend **or** bind an LLM provider.
+
+        Type-dispatched so one verb covers both resource kinds, without
+        breaking the historical sandbox meaning:
+
+        - ``session.to("local", spec=...)`` — sandbox placement (unchanged). A
+          bare positional **string** is always a sandbox backend name.
+        - ``session.to(Provider(...))`` — bind a session-level provider (a plain
+          value; no lifecycle). Does not touch the sandbox.
+        - ``session.to(provider="name")`` — bind a provider from a config preset,
+          resolved lazily via :meth:`Provider.from_config`.
+
+        The session provider is only a **fallback** for ``run_session_loop``
+        when no ``agent_provider`` is supplied; an Agent's provider always wins.
+
+        Returns ``self`` (chainable).
+        """
+        # Provider binding path (positional Provider or provider= name).
+        if isinstance(backend, Provider) or provider is not None:
+            if isinstance(backend, Provider) and provider is not None:
+                raise ValueError(
+                    "pass either a Provider positionally or provider=, not both"
+                )
+            if isinstance(backend, Provider):
+                self.provider = backend
+            else:
+                assert provider is not None
+                self.provider = Provider.from_config(provider)
+            return self
+        # Sandbox placement path (bare string backend name; the default).
         self.close_sandbox()
         self.sandbox_backend = backend
         self._sandbox_open_spec = _coerce_sandbox_open_spec(spec)
@@ -469,6 +506,7 @@ class Session:
             chunk_table=ChunkTable(rows=rows),
             sandbox_backend=self.sandbox_backend,
             _sandbox_open_spec=self._sandbox_open_spec,
+            provider=self.provider,
         )
         if self.sandbox is not None and not self.sandbox.closed:
             forked.bind_sandbox(self.sandbox)
@@ -487,6 +525,7 @@ class Session:
             chunk_table=ChunkTable(rows=rows),
             sandbox_backend=self.sandbox_backend,
             _sandbox_open_spec=self._sandbox_open_spec,
+            provider=self.provider,
         )
         if self.sandbox is not None and not self.sandbox.closed:
             detached.bind_sandbox(self.sandbox)
@@ -528,6 +567,7 @@ class Session:
             chunk_table=ChunkTable(rows=merged_rows),
             sandbox_backend=self.sandbox_backend,
             _sandbox_open_spec=self._sandbox_open_spec,
+            provider=self.provider,
             cumulative_usage=merged_usage,
         )
         if self.sandbox is not None and not self.sandbox.closed:
