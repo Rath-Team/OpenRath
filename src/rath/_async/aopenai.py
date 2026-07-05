@@ -17,7 +17,6 @@ internally.
 
 from __future__ import annotations
 
-import os
 from typing import Any, AsyncIterator
 
 from openai import (
@@ -30,6 +29,7 @@ from openai import (
 )
 
 from rath._async.aretry import aretry_with_backoff
+from rath.config.env import env_value
 from rath.llm.chat_request import RathLLMChatRequest
 from rath.llm.chat_response import (
     RathLLMChatResponse,
@@ -54,8 +54,8 @@ def _resolve_base_url(provider: Provider) -> str:
     entry = _config_provider_entry() if not provider.base_url else None
     return resolve_credential(
         provider.base_url,
-        os.environ.get("OPENAI_BASE_URL"),
-        os.environ.get("AZURE_OPENAI_ENDPOINT"),
+        env_value("OPENAI_BASE_URL"),
+        env_value("AZURE_OPENAI_ENDPOINT"),
         getattr(entry, "base_url", None),
     )
 
@@ -66,15 +66,15 @@ def _resolve_api_key(provider: Provider, base_url: str) -> str:
     if _is_azure_endpoint(base_url):
         return resolve_credential(
             provider.api_key,
-            os.environ.get("AZURE_OPENAI_API_KEY"),
-            os.environ.get("AZURE_API_KEY"),
-            os.environ.get("OPENAI_API_KEY"),
+            env_value("AZURE_OPENAI_API_KEY"),
+            env_value("AZURE_API_KEY"),
+            env_value("OPENAI_API_KEY"),
             config_key,
         )
     return resolve_credential(
         provider.api_key,
-        os.environ.get("OPENAI_API_KEY"),
-        os.environ.get("AZURE_OPENAI_API_KEY"),
+        env_value("OPENAI_API_KEY"),
+        env_value("AZURE_OPENAI_API_KEY"),
         config_key,
     )
 
@@ -98,8 +98,8 @@ class RathOpenAIAsyncChatClient:
         use_azure_legacy = _is_azure_endpoint(base_url) and "/openai/v1" not in base_url
         if use_azure_legacy:
             api_version = (
-                os.environ.get("OPENAI_API_VERSION")
-                or os.environ.get("AZURE_OPENAI_API_VERSION")
+                env_value("OPENAI_API_VERSION")
+                or env_value("AZURE_OPENAI_API_VERSION")
                 or "2024-10-21"
             )
             self._client = AsyncAzureOpenAI(
@@ -121,7 +121,7 @@ class RathOpenAIAsyncChatClient:
         """Run ``chat.completions.create`` (async) and normalize the response."""
         default_model = (
             self._provider.model
-            or os.environ.get("OPENAI_DEFAULT_MODEL")
+            or env_value("OPENAI_DEFAULT_MODEL")
             or _config_default_model()
         )
         kwargs = to_create_kwargs(req, default_model=default_model)
@@ -143,7 +143,7 @@ class RathOpenAIAsyncChatClient:
         """Yield ``RathLLMStreamDelta`` for each chunk of a streaming completion."""
         default_model = (
             self._provider.model
-            or os.environ.get("OPENAI_DEFAULT_MODEL")
+            or env_value("OPENAI_DEFAULT_MODEL")
             or _config_default_model()
         )
         kwargs = to_create_kwargs_stream(req, default_model=default_model)
