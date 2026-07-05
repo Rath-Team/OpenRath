@@ -28,6 +28,7 @@ from rath.config.paths import (
 )
 from rath.config.schema import (
     SCHEMA_VERSION,
+    BackendProviderConfig,
     LLMProviderConfig,
     MCPServerConfig,
     MemoryProviderConfig,
@@ -255,6 +256,30 @@ class ConfigStore:
             available = sorted(self._data.memory.providers)
             raise KeyError(
                 f"memory provider {target!r} not found in {self.path}; "
+                f"available: {available}",
+            ) from e
+
+    # --- Backend helpers --------------------------------------------------
+
+    def get_backend_provider(self, name: str | None) -> BackendProviderConfig:
+        """Return the named backend provider entry.
+
+        ``name=None`` falls back to :attr:`BackendConfig.default_provider`.
+        Raises :class:`KeyError` with the available names when the lookup
+        fails.
+        """
+        target = name or self._data.backend.default_provider
+        if target is None:
+            raise KeyError(
+                "no backend provider name given and no backend.default_provider "
+                f"set in {self.path}",
+            )
+        try:
+            return self._data.backend.providers[target]
+        except KeyError as e:
+            available = sorted(self._data.backend.providers)
+            raise KeyError(
+                f"backend provider {target!r} not found in {self.path}; "
                 f"available: {available}",
             ) from e
 

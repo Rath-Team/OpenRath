@@ -30,6 +30,7 @@ def test_defaults_round_trip_to_known_shape() -> None:
         },
         "mcp": {"default_enabled": [], "servers": {}},
         "memory": {"default_provider": None, "providers": {}},
+        "backend": {"default_provider": None, "providers": {}},
     }
     c = LLMConfig(
         default_provider="chat",
@@ -125,13 +126,13 @@ def test_extra_allow_round_trips_unknown_keys() -> None:
             "experiment.flag": "on",
         },
         "mcp": {"default_enabled": [], "servers": {}},
-        "backend": {"some": "future-section"},
+        "future_section": {"some": "future-section"},
     }
     cfg = RathConfig.model_validate(src)
     dumped = cfg.model_dump(mode="json")
-    # Unknown top-level "backend", unknown llm-level "experiment.flag", and
-    # unknown provider-level "future_field" all survive the round-trip.
-    assert dumped["backend"] == {"some": "future-section"}
+    # Unknown top-level "future_section", unknown llm-level "experiment.flag",
+    # and unknown provider-level "future_field" all survive the round-trip.
+    assert dumped["future_section"] == {"some": "future-section"}
     assert dumped["llm"]["experiment.flag"] == "on"
     assert dumped["llm"]["providers"]["x"]["future_field"] == {"nested": True}
 
