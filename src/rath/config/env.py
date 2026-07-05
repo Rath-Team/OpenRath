@@ -165,8 +165,7 @@ _register(
     EnvSpec(
         "OPENAI_API_VERSION",
         EnvKind.ROUTING,
-        "legacy Azure api_version",
-        default="2024-10-21",
+        "legacy Azure api_version (client applies a 2024-10-21 fallback)",
     )
 )
 

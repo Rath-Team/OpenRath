@@ -14,7 +14,6 @@ variables (e.g. ``OPENAI_API_KEY``, ``ANTHROPIC_API_KEY``) internally.
 
 from __future__ import annotations
 
-import os
 from collections.abc import Iterator
 from typing import Any
 
@@ -35,6 +34,7 @@ from litellm.exceptions import (
     Timeout as _LiteLLMTimeout,
 )
 
+from rath.config.env import env_value
 from rath.llm.chat_request import RathLLMChatRequest
 from rath.llm.chat_response import RathLLMChatResponse, RathLLMStreamDelta
 from rath.llm.credentials import resolve_credential
@@ -52,6 +52,17 @@ LITELLM_RETRYABLE: tuple[type[BaseException], ...] = (
     _LiteLLMInternalServerError,
 )
 
+
+def _resolve_litellm_key(provider: Provider) -> str:
+    """Resolve LiteLLM ``api_key`` from Provider → env."""
+    return resolve_credential(provider.api_key, env_value("LITELLM_API_KEY"))
+
+
+def _resolve_litellm_base(provider: Provider) -> str:
+    """Resolve LiteLLM ``api_base`` from Provider → env."""
+    return resolve_credential(provider.base_url, env_value("LITELLM_API_BASE"))
+
+
 __all__ = ["RathLiteLLMChatClient", "LITELLM_RETRYABLE"]
 
 
@@ -65,16 +76,10 @@ class RathLiteLLMChatClient:
     """
 
     def __init__(self, provider: Provider) -> None:
-        key = resolve_credential(
-            provider.api_key,
-            os.environ.get("LITELLM_API_KEY"),
-        )
+        key = _resolve_litellm_key(provider)
         self._provider = provider
         self._api_key = key or None
-        bu = resolve_credential(
-            provider.base_url,
-            os.environ.get("LITELLM_API_BASE"),
-        )
+        bu = _resolve_litellm_base(provider)
         self._api_base = bu or None
 
     @property
@@ -95,7 +100,7 @@ class RathLiteLLMChatClient:
         Transient errors are retried per :attr:`Provider.retry_max_attempts` /
         :attr:`Provider.retry_base_seconds`.
         """
-        default_model = self._provider.model or os.environ.get("LITELLM_MODEL")
+        default_model = self._provider.model or env_value("LITELLM_MODEL")
         kwargs = to_create_kwargs(req, default_model=default_model)
         self._inject_litellm_kwargs(kwargs)
 
@@ -117,7 +122,7 @@ class RathLiteLLMChatClient:
         retried; once the iterator starts producing chunks, retries are no
         longer possible.
         """
-        default_model = self._provider.model or os.environ.get("LITELLM_MODEL")
+        default_model = self._provider.model or env_value("LITELLM_MODEL")
         kwargs = to_create_kwargs_stream(req, default_model=default_model)
         self._inject_litellm_kwargs(kwargs)
 

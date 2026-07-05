@@ -12,7 +12,6 @@ Empty :attr:`Provider.api_key` falls back to ``ANTHROPIC_API_KEY``; empty
 
 from __future__ import annotations
 
-import os
 from collections.abc import Iterator
 from typing import Any
 
@@ -32,6 +31,7 @@ from anthropic import (
     RateLimitError as _AnthropicRateLimitError,
 )
 
+from rath.config.env import env_value
 from rath.llm.anthropic.create_kwargs import (
     build_anthropic_kwargs,
     build_anthropic_stream_kwargs,
@@ -76,16 +76,31 @@ def _config_provider_entry() -> Any:
         return None
 
 
+def _resolve_anthropic_key(provider: Provider) -> str:
+    """Resolve Anthropic ``api_key`` from Provider → env → config."""
+    entry = _config_provider_entry() if not provider.api_key else None
+    return resolve_credential(
+        provider.api_key,
+        env_value("ANTHROPIC_API_KEY"),
+        getattr(entry, "api_key", None),
+    )
+
+
+def _resolve_anthropic_base_url(provider: Provider) -> str:
+    """Resolve Anthropic ``base_url`` from Provider → env → config."""
+    entry = _config_provider_entry() if not provider.base_url else None
+    return resolve_credential(
+        provider.base_url,
+        env_value("ANTHROPIC_BASE_URL"),
+        getattr(entry, "base_url", None),
+    )
+
+
 class RathAnthropicChatClient:
     """Thin client around ``anthropic.Anthropic`` messages API (sync + streaming)."""
 
     def __init__(self, provider: Provider) -> None:
-        entry = _config_provider_entry() if not provider.api_key else None
-        key = resolve_credential(
-            provider.api_key,
-            os.environ.get("ANTHROPIC_API_KEY"),
-            getattr(entry, "api_key", None),
-        )
+        key = _resolve_anthropic_key(provider)
         if not key:
             raise ValueError(
                 "No Anthropic api_key found: Provider.api_key is empty, "
@@ -96,11 +111,7 @@ class RathAnthropicChatClient:
             )
         self._provider = provider
         init_kw: dict[str, Any] = {"api_key": key}
-        bu = resolve_credential(
-            provider.base_url,
-            os.environ.get("ANTHROPIC_BASE_URL"),
-            getattr(entry, "base_url", None),
-        )
+        bu = _resolve_anthropic_base_url(provider)
         if bu:
             init_kw["base_url"] = bu
         self._client = Anthropic(**init_kw)
@@ -119,7 +130,7 @@ class RathAnthropicChatClient:
         """
         default_model = (
             self._provider.model
-            or os.environ.get("ANTHROPIC_DEFAULT_MODEL")
+            or env_value("ANTHROPIC_DEFAULT_MODEL")
             or getattr(_config_provider_entry(), "model", None)
         )
         kwargs = build_anthropic_kwargs(req, default_model=default_model)
@@ -144,7 +155,7 @@ class RathAnthropicChatClient:
         """
         default_model = (
             self._provider.model
-            or os.environ.get("ANTHROPIC_DEFAULT_MODEL")
+            or env_value("ANTHROPIC_DEFAULT_MODEL")
             or getattr(_config_provider_entry(), "model", None)
         )
         kwargs = build_anthropic_stream_kwargs(req, default_model=default_model)
