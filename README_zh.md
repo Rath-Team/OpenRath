@@ -311,6 +311,7 @@ python example/01_hello_agent.py
 | 09 | [`09_memory.py`](example/09_memory.py) | 使用本地 memory 后端进行 remember、recall，并可选地 commit 一个真实回合。 | 否 |
 | 10 | [`10_provider_variation.py`](example/10_provider_variation.py) | 通过更改 `Provider` 切换模型厂商，同时保持 Session 和 Workflow 代码稳定。 | 是 |
 | 11 | [`11_dynamic_selector.py`](example/11_dynamic_selector.py) | 使用 `flow.Selector` 在自描述的 workflows 之间路由：`if` 分支和一个在 `flow.EmptyWorkflow` 时结束的 `while` 循环。 | 是 |
+| 12 | [`12_compile.py`](example/12_compile.py) | 静态 `compile()` 一个 workflow：查看其资源清单、离线 `validate()`、并使用生命周期上下文管理器。 | 否 |
 
 阅读 [`example/README.md`](example/README.md) 获取设置细节和共享 helpers。
 

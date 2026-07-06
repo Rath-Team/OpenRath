@@ -53,9 +53,7 @@ def test_openai_api_key_precedence_azure(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setenv("AZURE_OPENAI_API_KEY", "azkey")
     monkeypatch.setenv("OPENAI_API_KEY", "sk-env")
     # Azure endpoint prefers the Azure key.
-    assert (
-        _resolve_api_key(Provider(), "https://x.openai.azure.com/openai") == "azkey"
-    )
+    assert _resolve_api_key(Provider(), "https://x.openai.azure.com/openai") == "azkey"
 
 
 def test_anthropic_key_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
