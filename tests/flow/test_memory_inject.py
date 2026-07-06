@@ -101,9 +101,10 @@ def test_default_recall_emits_one_chunk_per_hit() -> None:
     assert isinstance(chunks, tuple)
     assert len(chunks) == 2
     for chunk in chunks:
-        assert chunk.kind == ChunkKind.SYSTEM
+        assert chunk.kind == ChunkKind.USER
         assert "content" in chunk.payload
     bodies = "\n".join(c.payload["content"] for c in chunks)
+    assert "[untrusted memory:" in bodies
     assert "dark mode preferred" in bodies
     assert "GMT+8 timezone" in bodies
     # The dispatch should carry the configured target_uri + top_k

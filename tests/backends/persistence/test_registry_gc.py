@@ -56,6 +56,17 @@ def test_ensure_local_idempotent(_isolate_openrath_home: Path) -> None:
     assert first.is_dir()
 
 
+@pytest.mark.parametrize("bad_id", ["../escape", "/tmp/escape", "not-a-uuid"])
+def test_sandbox_paths_reject_path_like_ids(
+    _isolate_openrath_home: Path,
+    bad_id: str,
+) -> None:
+    with pytest.raises(ValueError, match="sandbox_id must be a UUID"):
+        local_sandbox_dir(bad_id)
+    with pytest.raises(ValueError, match="sandbox_id must be a UUID"):
+        opensandbox_index_path(bad_id)
+
+
 def test_list_local_enumerates_uuid_dirs(_isolate_openrath_home: Path) -> None:
     reg = PersistentSandboxRegistry()
     ids = {reg.alloc_local_id() for _ in range(3)}

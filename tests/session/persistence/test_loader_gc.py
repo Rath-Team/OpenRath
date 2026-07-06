@@ -33,6 +33,7 @@ from rath.session.persistence import (
     load_session,
     prune_sessions,
     session_file,
+    session_partial_file,
 )
 from rath.session.session import Session
 
@@ -211,6 +212,17 @@ def test_session_file_path_under_resolved_dir(_isolate_openrath_home: Path) -> N
     sid = uuid4()
     expected = session_file(sid)
     assert str(expected).endswith(f"{sid}.jsonl")
+
+
+@pytest.mark.parametrize("bad_id", ["../escape", "/tmp/escape", "not-a-uuid"])
+def test_session_paths_reject_path_like_ids(
+    _isolate_openrath_home: Path,
+    bad_id: str,
+) -> None:
+    with pytest.raises(ValueError, match="session_id must be a UUID"):
+        session_file(bad_id)
+    with pytest.raises(ValueError, match="session_id must be a UUID"):
+        session_partial_file(bad_id)
 
 
 # ---------------------------------------------------------------------------

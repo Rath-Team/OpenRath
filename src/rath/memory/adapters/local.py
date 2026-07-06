@@ -13,10 +13,12 @@ memo extraction when a chat client is configured.
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import logging
 import math
 import re
+import socket
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -77,6 +79,8 @@ _MD_SUFFIX = ".md"
 _VEC_SUFFIX = ".vec"
 _META_SUFFIX = ".meta.json"
 _HIDDEN_SUFFIXES: frozenset[str] = frozenset({_VEC_SUFFIX, _META_SUFFIX})
+_DEFAULT_RESOURCE_MAX_BYTES = 10 * 1024 * 1024
+_SAFE_SEGMENT_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 _CAPABILITIES = MemoryCapabilities(
@@ -117,6 +121,14 @@ class _LocalHandle:
     embedding_init_failed: bool = field(default=False)
     chat_client: Any | None = None
     chat_init_failed: bool = field(default=False)
+
+
+@dataclass(frozen=True, slots=True)
+class _ResourcePolicy:
+    local_roots: tuple[Path, ...]
+    allowed_http_hosts: frozenset[str]
+    allow_private_hosts: bool
+    max_bytes: int
 
 
 @register("local")
@@ -307,12 +319,21 @@ class LocalMemoryBackend(MemoryBackend):
         if isinstance(target_path, MemoryExecutionFailure):
             return target_path
 
+        policy = _resource_policy(bound.options)
         try:
-            raw_bytes, original_name, source_label = _fetch_resource(op.source)
+            raw_bytes, original_name, source_label = _fetch_resource(
+                op.source,
+                policy=policy,
+            )
         except FileNotFoundError as exc:
             return MemoryExecutionFailure(
                 kind="not_found",
                 message=f"resource source not found: {exc}",
+            )
+        except _ResourceAccessDenied as exc:
+            return MemoryExecutionFailure(
+                kind="unauthorized",
+                message=f"resource source not allowed: {exc}",
             )
         except _ResourceFetchError as exc:
             return MemoryExecutionFailure(
@@ -363,15 +384,26 @@ class LocalMemoryBackend(MemoryBackend):
                 kind="invalid_uri",
                 message="MemoryOpCommit requires non-empty session_id",
             )
+        session_id = _safe_storage_segment(op.session_id, field="session_id")
+        if isinstance(session_id, MemoryExecutionFailure):
+            return session_id
         # Archive messages.json under session/<sid>/commits/<timestamp>/.
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%f")
-        commit_root = bound.path / "session" / op.session_id / "commits" / stamp
+        commit_root = _contained_child(
+            bound.path,
+            "session",
+            session_id,
+            "commits",
+            stamp,
+        )
+        if isinstance(commit_root, MemoryExecutionFailure):
+            return commit_root
         commit_root.mkdir(parents=True, exist_ok=True)
         archive_path = commit_root / "messages.json"
         normalized = [_normalize_message(m) for m in op.messages]
         atomic_write_json(archive_path, normalized)
         archived_uri = (
-            f"{MEMORY_URI_PREFIX}session/{op.session_id}/commits/{stamp}/messages.json"
+            f"{MEMORY_URI_PREFIX}session/{session_id}/commits/{stamp}/messages.json"
         )
 
         if not op.wait:
@@ -979,11 +1011,63 @@ class _ResourceFetchError(Exception):
     """Wraps transport errors when fetching a remote resource."""
 
 
-def _fetch_resource(source: str) -> tuple[bytes, str, str]:
+class _ResourceAccessDenied(Exception):
+    """Raised when a resource source violates the configured policy."""
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Reject redirects so each fetched URL is policy-checked directly."""
+
+    def redirect_request(self, *args: Any, **kwargs: Any) -> None:  # noqa: D401
+        return None
+
+
+_NO_REDIRECT_OPENER = urllib.request.build_opener(_NoRedirect)
+
+
+def _resource_policy(options: dict[str, Any]) -> _ResourcePolicy:
+    roots = tuple(
+        Path(p).expanduser().resolve(strict=False)
+        for p in _option_strings(options.get("resource_import_roots"))
+    )
+    hosts = frozenset(
+        h.lower() for h in _option_strings(options.get("resource_allowed_http_hosts"))
+    )
+    raw_max = options.get("resource_max_bytes", _DEFAULT_RESOURCE_MAX_BYTES)
+    try:
+        max_bytes = int(raw_max)
+    except (TypeError, ValueError):
+        max_bytes = _DEFAULT_RESOURCE_MAX_BYTES
+    return _ResourcePolicy(
+        local_roots=roots,
+        allowed_http_hosts=hosts,
+        allow_private_hosts=bool(options.get("resource_allow_private_hosts", False)),
+        max_bytes=max(1, max_bytes),
+    )
+
+
+def _option_strings(raw: Any) -> tuple[str, ...]:
+    if raw is None:
+        return ()
+    if isinstance(raw, str):
+        return (raw,)
+    try:
+        return tuple(str(x) for x in raw)
+    except TypeError:
+        return (str(raw),)
+
+
+def _fetch_resource(
+    source: str,
+    *,
+    policy: _ResourcePolicy,
+) -> tuple[bytes, str, str]:
     """Resolve ``source`` to ``(bytes, original_name, source_label)``.
 
-    ``source`` can be a local filesystem path, a ``file://`` URI, or an
-    ``http(s)://`` URL. Anything else is treated as a local path.
+    Local paths and HTTP(S) URLs are disabled by default. Callers must opt in
+    with ``resource_import_roots`` or ``resource_allowed_http_hosts`` in the
+    store options so untrusted resource ingest cannot read host files or SSRF
+    internal services.
     """
     parsed = urllib.parse.urlparse(source)
     scheme = parsed.scheme.lower()
@@ -991,11 +1075,21 @@ def _fetch_resource(source: str) -> tuple[bytes, str, str]:
     if len(scheme) == 1 and scheme.isalpha():
         scheme = ""
     if scheme in ("http", "https"):
+        _validate_resource_url(parsed, policy=policy)
         try:
-            with urllib.request.urlopen(source, timeout=30) as resp:  # noqa: S310
-                data = resp.read()
+            with _NO_REDIRECT_OPENER.open(source, timeout=30) as resp:
+                raw_len = resp.headers.get("Content-Length")
+                if raw_len is not None and int(raw_len) > policy.max_bytes:
+                    raise _ResourceFetchError(
+                        f"resource exceeds {policy.max_bytes} bytes",
+                    )
+                data = resp.read(policy.max_bytes + 1)
         except urllib.error.URLError as exc:
             raise _ResourceFetchError(str(exc)) from exc
+        except ValueError as exc:
+            raise _ResourceFetchError(str(exc)) from exc
+        if len(data) > policy.max_bytes:
+            raise _ResourceFetchError(f"resource exceeds {policy.max_bytes} bytes")
         name = Path(parsed.path).name or "resource"
         return data, name, source
     if scheme == "file":
@@ -1004,9 +1098,90 @@ def _fetch_resource(source: str) -> tuple[bytes, str, str]:
         local = Path(source)
     else:
         raise _ResourceFetchError(f"unsupported scheme: {scheme!r}")
+    local = local.expanduser().resolve(strict=False)
+    _validate_local_resource_path(local, policy=policy)
     if not local.is_file():
         raise FileNotFoundError(str(local))
+    size = local.stat().st_size
+    if size > policy.max_bytes:
+        raise _ResourceFetchError(f"resource exceeds {policy.max_bytes} bytes")
     return local.read_bytes(), local.name, str(local)
+
+
+def _validate_local_resource_path(local: Path, *, policy: _ResourcePolicy) -> None:
+    if not policy.local_roots:
+        raise _ResourceAccessDenied("local paths require resource_import_roots")
+    for root in policy.local_roots:
+        try:
+            local.relative_to(root)
+        except ValueError:
+            continue
+        return
+    raise _ResourceAccessDenied(f"{local} is outside resource_import_roots")
+
+
+def _validate_resource_url(
+    parsed: urllib.parse.ParseResult,
+    *,
+    policy: _ResourcePolicy,
+) -> None:
+    host = (parsed.hostname or "").lower()
+    if not host:
+        raise _ResourceAccessDenied("HTTP(S) resource URL requires a host")
+    if host not in policy.allowed_http_hosts:
+        raise _ResourceAccessDenied("HTTP(S) host is not allowed")
+    try:
+        infos = socket.getaddrinfo(
+            host,
+            parsed.port or (443 if parsed.scheme == "https" else 80),
+            type=socket.SOCK_STREAM,
+        )
+    except OSError as exc:
+        raise _ResourceFetchError(str(exc)) from exc
+    for info in infos:
+        address = info[4][0]
+        try:
+            ip = ipaddress.ip_address(address)
+        except ValueError as exc:
+            raise _ResourceAccessDenied(f"cannot validate address {address!r}") from exc
+        if _is_restricted_address(ip) and not policy.allow_private_hosts:
+            raise _ResourceAccessDenied("HTTP(S) host resolves to a private address")
+
+
+def _is_restricted_address(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    return (
+        ip.is_loopback
+        or ip.is_private
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_reserved
+        or ip.is_unspecified
+    )
+
+
+def _safe_storage_segment(value: str, *, field: str) -> str | MemoryExecutionFailure:
+    text = str(value)
+    if not text or text in (".", "..") or not _SAFE_SEGMENT_RE.fullmatch(text):
+        return MemoryExecutionFailure(
+            kind="invalid_uri",
+            message=f"{field} must be a single safe path segment",
+        )
+    return text
+
+
+def _contained_child(
+    root: Path,
+    *parts: str,
+) -> Path | MemoryExecutionFailure:
+    try:
+        resolved = root.joinpath(*parts).resolve(strict=False)
+        resolved.relative_to(root.resolve(strict=False))
+    except (OSError, ValueError) as exc:
+        return MemoryExecutionFailure(
+            kind="invalid_uri",
+            message=f"path escapes store root: {exc}",
+        )
+    return resolved
 
 
 def _walk_tree(

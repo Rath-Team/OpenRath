@@ -21,6 +21,7 @@ from rath.memory.adapters.local import LocalMemoryBackend
 from rath.memory.op_types import MemoryOpCommit, MemoryOpList, MemoryOpRead
 from rath.memory.results import (
     MemoryCommitResult,
+    MemoryExecutionFailure,
     MemoryListResult,
     MemoryReadResult,
 )
@@ -128,6 +129,23 @@ def test_commit_with_no_chat_client_skips_extraction(
     assert res.extracted_count == 0
     extracted_dir = Path(store.handle) / "user" / "memories" / "extracted"
     assert not extracted_dir.exists()
+
+
+def test_commit_rejects_path_like_session_id(
+    backend: LocalMemoryBackend, store: MemoryStore, tmp_path: Path
+) -> None:
+    outside = tmp_path / "outside"
+    res = backend.dispatch(
+        store,
+        MemoryOpCommit(
+            session_id=f"../{outside.name}",
+            messages=[{"role": "user", "content": "x"}],
+            wait=False,
+        ),
+    )
+    assert isinstance(res, MemoryExecutionFailure)
+    assert res.kind == "invalid_uri"
+    assert not outside.exists()
 
 
 # ----------------------------------------------------- Extraction (wait=True + live chat)

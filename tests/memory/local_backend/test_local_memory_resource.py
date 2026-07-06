@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from rath.memory import MemoryStore
+from rath.memory import MemoryStore, MemoryStoreSpec
 from rath.memory.adapters.local import LocalMemoryBackend
 from rath.memory.op_types import MemoryOpResource
 from rath.memory.results import (
@@ -97,6 +97,20 @@ def test_resource_ingest_missing_local_file_is_not_found(
     res = backend.dispatch(store, MemoryOpResource(source=str(tmp_path / "nope.txt")))
     assert isinstance(res, MemoryExecutionFailure)
     assert res.kind == "not_found"
+
+
+def test_resource_ingest_rejects_local_file_without_import_root(
+    backend: LocalMemoryBackend, tmp_path: Path
+) -> None:
+    src = tmp_path / "secret.txt"
+    src.write_text("secret", encoding="utf-8")
+    unsafe_store = backend.open()
+    try:
+        res = backend.dispatch(unsafe_store, MemoryOpResource(source=str(src)))
+    finally:
+        backend.close(unsafe_store)
+    assert isinstance(res, MemoryExecutionFailure)
+    assert res.kind == "unauthorized"
 
 
 def test_resource_ingest_rejects_unknown_target_scope(
@@ -182,3 +196,30 @@ def test_resource_ingest_http_url_persists_body(
     assert blob.read_bytes() == _ServeBody.BODY
     meta_body = (root / "meta.md").read_text(encoding="utf-8")
     assert "127.0.0.1" in meta_body  # original URL in meta
+
+
+def test_resource_ingest_rejects_http_url_without_allowed_host(
+    backend: LocalMemoryBackend, http_server: str
+) -> None:
+    unsafe_store = backend.open()
+    try:
+        res = backend.dispatch(unsafe_store, MemoryOpResource(source=http_server))
+    finally:
+        backend.close(unsafe_store)
+    assert isinstance(res, MemoryExecutionFailure)
+    assert res.kind == "unauthorized"
+
+
+def test_resource_ingest_blocks_private_host_without_opt_in(
+    backend: LocalMemoryBackend, http_server: str
+) -> None:
+    spec = MemoryStoreSpec(
+        options={"resource_allowed_http_hosts": ["127.0.0.1"]},
+    )
+    unsafe_store = backend.open(spec)
+    try:
+        res = backend.dispatch(unsafe_store, MemoryOpResource(source=http_server))
+    finally:
+        backend.close(unsafe_store)
+    assert isinstance(res, MemoryExecutionFailure)
+    assert res.kind == "unauthorized"
