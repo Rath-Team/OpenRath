@@ -138,6 +138,43 @@ class CompiledWorkflow:
         """The compiled workflow's registered children (delegates)."""
         return self.workflow.named_children()
 
+    def validate(self, *, raise_on_error: bool = False) -> list[str]:
+        """Pre-flight check every reachable provider (offline; no model call).
+
+        For each agent in the manifest, verify (1) its ``provider_kind`` is a
+        registered chat-client kind, and (2) a credential resolves for it via
+        the same Provider → env → config chain the client uses at construction —
+        without building an SDK client or hitting the network.
+
+        Returns a list of human-readable problems (empty when clean). With
+        ``raise_on_error=True``, raises :class:`ValueError` if any problem is
+        found. This lets callers fail fast before a run instead of deep inside
+        the first completion.
+        """
+        from rath.llm.registry import registered_kinds
+
+        problems: list[str] = []
+        kinds = set(registered_kinds())
+        for agent in self.manifest.agents:
+            kind = agent.provider.provider_kind or "openai"
+            if kind not in kinds:
+                problems.append(
+                    f"agent {agent.path!r}: unknown provider_kind={kind!r} "
+                    f"(registered: {sorted(kinds)})"
+                )
+                continue
+            if not _credential_resolves(kind, agent.provider):
+                problems.append(
+                    f"agent {agent.path!r}: no api credential resolves for "
+                    f"provider_kind={kind!r} (set Provider.api_key, the vendor env "
+                    f"var, or a config provider)"
+                )
+        if raise_on_error and problems:
+            raise ValueError(
+                "workflow pre-flight validation failed:\n  - " + "\n  - ".join(problems)
+            )
+        return problems
+
     def __repr__(self) -> str:
         n_agents = len(self.manifest.agents)
         n_dyn = len(self.manifest.dynamic_nodes)
@@ -145,3 +182,29 @@ class CompiledWorkflow:
             f"CompiledWorkflow({self.workflow!r}, "
             f"agents={n_agents}, dynamic_nodes={n_dyn})"
         )
+
+
+def _credential_resolves(kind: str, provider: Provider) -> bool:
+    """Whether an api key resolves for ``provider`` under ``kind`` (offline).
+
+    Uses each adapter's pure resolver (Provider -> env -> config), which does
+    not construct an SDK client or make a network call. LiteLLM resolves creds
+    from provider-specific env vars internally, so it is treated as always
+    satisfiable at the pre-flight layer.
+    """
+    try:
+        if kind == "anthropic":
+            from rath.llm.anthropic.client import _resolve_anthropic_key
+
+            return bool(_resolve_anthropic_key(provider))
+        if kind == "litellm":
+            # LiteLLM defers credential resolution to its own per-vendor env
+            # lookups; a missing rath-level key is not necessarily an error.
+            return True
+        # openai-compatible (default)
+        from rath.llm.openai.client import _resolve_api_key, _resolve_base_url
+
+        base_url = _resolve_base_url(provider)
+        return bool(_resolve_api_key(provider, base_url))
+    except Exception:  # noqa: BLE001 -- validation must never raise itself
+        return False
