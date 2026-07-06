@@ -3,8 +3,7 @@
 A policy reads a :class:`~rath.session.session.Session` and a
 :class:`~rath.memory.abc.MemoryStore`, then returns a tuple of
 :class:`~rath.session.chunk.ChunkRow` to prepend to the next loop turn
-(typically :attr:`ChunkKind.SYSTEM` notes that summarize relevant
-recalled memories).
+as untrusted user-context notes that summarize relevant recalled memories.
 
 The injection step must NEVER raise into the session loop — on store
 errors or a closed store, return an empty tuple and log a warning so
@@ -101,5 +100,6 @@ def _last_user_message(session: Session) -> str | None:
 
 def _hit_to_chunk(hit: MemoryHit) -> ChunkRow:
     snippet = (hit.snippet or "").strip()
-    body = f"[memory:{hit.uri}] {snippet}" if snippet else f"[memory:{hit.uri}]"
-    return ChunkRow(kind=ChunkKind.SYSTEM, payload={"content": body})
+    prefix = f"[untrusted memory:{hit.uri}]"
+    body = f"{prefix} {snippet}" if snippet else prefix
+    return ChunkRow(kind=ChunkKind.USER, payload={"content": body})

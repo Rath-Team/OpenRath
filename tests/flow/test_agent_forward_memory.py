@@ -119,7 +119,7 @@ def test_forward_without_memory_is_unchanged() -> None:
     assert kinds[-1] == ChunkKind.ASSISTANT
 
 
-def test_forward_prepends_injected_system_chunks() -> None:
+def test_forward_prepends_injected_user_context_chunks() -> None:
     backend = _FakeBackend(
         find_hits=(
             MemoryHit(
@@ -146,13 +146,19 @@ def test_forward_prepends_injected_system_chunks() -> None:
     # Exactly one MemoryOpFind dispatched, no commit.
     assert any(isinstance(op, MemoryOpFind) for op in backend.ops_seen)
     assert not any(isinstance(op, MemoryOpCommit) for op in backend.ops_seen)
-    # The injected snippet should appear as a system chunk in the output.
-    sys_bodies = "\n".join(
+    # The injected snippet should appear as untrusted user-context, not SYSTEM.
+    user_bodies = "\n".join(
         str(r.payload.get("content", ""))
+        for r in out.chunk_table.rows
+        if r.kind == ChunkKind.USER
+    )
+    assert "[untrusted memory:" in user_bodies
+    assert "loves dark mode" in user_bodies
+    assert all(
+        "loves dark mode" not in str(r.payload.get("content", ""))
         for r in out.chunk_table.rows
         if r.kind == ChunkKind.SYSTEM
     )
-    assert "loves dark mode" in sys_bodies
 
 
 def test_forward_with_commit_on_forward_dispatches_one_commit() -> None:
