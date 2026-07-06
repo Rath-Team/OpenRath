@@ -14,11 +14,14 @@ pre-flight validation and deterministic acquire/teardown), not *what will it do*
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from rath.flow.agent_param import AgentParam
     from rath.flow.workflow import Workflow
+    from rath.memory.abc import MemoryStore
 
 from rath.llm.provider import Provider
 
@@ -125,14 +128,45 @@ class CompiledWorkflow:
     static module tree (P5.1) to build the manifest.
     """
 
-    __slots__ = ("workflow", "manifest")
+    __slots__ = ("workflow", "manifest", "_acquired")
 
     def __init__(self, workflow: "Workflow") -> None:
         self.workflow = workflow
         self.manifest = collect_manifest(workflow)
+        self._acquired: list[MemoryStore] = []  # stores acquired by __enter__
 
     def __call__(self, session):  # type: ignore[no-untyped-def]
         return self.workflow(session)
+
+    def __enter__(self) -> "CompiledWorkflow":
+        """Pre-acquire the planned resources (bound memory stores).
+
+        Acquires one reference on every distinct memory store bound to a
+        reachable ``AgentParam`` so they stay open for the compiled run and are
+        released deterministically on exit. Provider is a value (no lifecycle);
+        sandboxes open lazily per session and are not force-opened here.
+        """
+        acquired: list[MemoryStore] = []
+        seen: set[int] = set()
+        try:
+            for _path, ap in _reachable_agent_params(self.workflow):
+                store = ap.memory
+                if store is not None and id(store) not in seen:
+                    seen.add(id(store))
+                    store.acquire()
+                    acquired.append(store)
+        except BaseException:
+            for store in reversed(acquired):
+                _safe_release(store)
+            raise
+        self._acquired = acquired
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:  # type: ignore[no-untyped-def]
+        # Release in reverse acquisition order; never mask an in-flight error.
+        for store in reversed(self._acquired):
+            _safe_release(store)
+        self._acquired = []
 
     def named_children(self):  # type: ignore[no-untyped-def]
         """The compiled workflow's registered children (delegates)."""
@@ -208,3 +242,25 @@ def _credential_resolves(kind: str, provider: Provider) -> bool:
         return bool(_resolve_api_key(provider, base_url))
     except Exception:  # noqa: BLE001 -- validation must never raise itself
         return False
+
+
+def _reachable_agent_params(
+    workflow: "Workflow",
+) -> "Iterator[tuple[str, AgentParam]]":
+    """Yield ``(path, AgentParam)`` for every agent in the module tree."""
+
+    def _walk(node: "Workflow", prefix: str) -> "Iterator[tuple[str, AgentParam]]":
+        for name, ap in node.named_agents():
+            yield _join(prefix, name), ap
+        for name, child in node.named_children():
+            yield from _walk(child, _join(prefix, name))
+
+    yield from _walk(workflow, "")
+
+
+def _safe_release(store) -> None:  # type: ignore[no-untyped-def]
+    """Release a memory store, swallowing errors so teardown never masks."""
+    try:
+        store.release()
+    except Exception:  # noqa: BLE001 -- teardown must not raise
+        pass
