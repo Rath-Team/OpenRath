@@ -91,6 +91,18 @@ class Workflow:
             ap.to(target, provider=provider, model=model)
         return self
 
+    def compile(self) -> "object":
+        """Return a :class:`~rath.flow.compile.CompiledWorkflow` for this workflow.
+
+        A static pass over the module tree (P5.1) that builds a resource
+        manifest for pre-flight validation, deterministic resource lifecycle,
+        and inspection. Opt-in and non-breaking: the returned object is callable
+        exactly like this workflow. Runs no model and materializes no session.
+        """
+        from rath.flow.compile import CompiledWorkflow
+
+        return CompiledWorkflow(self)
+
     def forward(self, session: Session) -> Session:
         """Subclasses orchestrate Sessions (blocking)."""
 

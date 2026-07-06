@@ -27,6 +27,7 @@ __all__ = [
     "DynamicNode",
     "ResourceManifest",
     "collect_manifest",
+    "CompiledWorkflow",
 ]
 
 
@@ -110,3 +111,37 @@ def collect_manifest(workflow: "Workflow") -> ResourceManifest:
 
     _visit(workflow, "")
     return manifest
+
+
+class CompiledWorkflow:
+    """Static, callable wrapper around a :class:`~rath.flow.workflow.Workflow`.
+
+    Produced by :meth:`Workflow.compile`. It is callable exactly like the
+    workflow — ``cw(session)`` delegates to ``workflow.forward`` — so compiling
+    is opt-in and non-breaking. It also exposes the static
+    :class:`ResourceManifest`, the module tree, and a graph ``repr``.
+
+    Compiling runs no model and materializes no session; it only walks the
+    static module tree (P5.1) to build the manifest.
+    """
+
+    __slots__ = ("workflow", "manifest")
+
+    def __init__(self, workflow: "Workflow") -> None:
+        self.workflow = workflow
+        self.manifest = collect_manifest(workflow)
+
+    def __call__(self, session):  # type: ignore[no-untyped-def]
+        return self.workflow(session)
+
+    def named_children(self):  # type: ignore[no-untyped-def]
+        """The compiled workflow's registered children (delegates)."""
+        return self.workflow.named_children()
+
+    def __repr__(self) -> str:
+        n_agents = len(self.manifest.agents)
+        n_dyn = len(self.manifest.dynamic_nodes)
+        return (
+            f"CompiledWorkflow({self.workflow!r}, "
+            f"agents={n_agents}, dynamic_nodes={n_dyn})"
+        )
