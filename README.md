@@ -1,3 +1,5 @@
+[![MseeP.ai Security Assessment Badge](https://mseep.net/pr/rath-team-openrath-badge.png)](https://mseep.ai/app/rath-team-openrath)
+
 # OpenRath
 
 <p align="center">
