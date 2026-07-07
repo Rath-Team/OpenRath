@@ -34,12 +34,12 @@ litellm = [
     "litellm>=1.80,<1.88",
 ]
 opensandbox = [
-    "opensandbox>=0.1.7",
+    "opensandbox>=0.1.13",
     "opensandbox-code-interpreter>=0.1.2",
-    "opensandbox-server>=0.1.12",
+    "opensandbox-server>=0.2.1",
 ]
 openviking = [
-    "openviking>=0.2.6",
+    "openviking>=0.4.7",
 ]
 
 [tool.ruff]
