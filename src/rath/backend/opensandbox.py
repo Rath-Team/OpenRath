@@ -252,10 +252,15 @@ class OpenSandboxBackend(Backend):
 
     name: ClassVar[str] = "opensandbox"
 
-    _DEFAULT_IMAGE: ClassVar[str] = "opensandbox/code-interpreter:v1.0.2"
+    # code-interpreter v1.1.0 relocated the launcher from
+    # /opt/opensandbox/code-interpreter.sh (v1.0.2) to
+    # /opt/code-interpreter/code-interpreter.sh. v1.0.2 is no longer pullable,
+    # so track the current image + path (a stale default fails at container
+    # start with exit 127). Callers can still override both via BackendSandboxSpec.
+    _DEFAULT_IMAGE: ClassVar[str] = "opensandbox/code-interpreter:v1.1.0"
     _DEFAULT_TIMEOUT: ClassVar[timedelta] = timedelta(minutes=10)
     _DEFAULT_ENTRYPOINT: ClassVar[tuple[str, ...]] = (
-        "/opt/opensandbox/code-interpreter.sh",
+        "/opt/code-interpreter/code-interpreter.sh",
     )
     _SANDBOX_ROOT: ClassVar[str] = "/workspace"
 
@@ -637,9 +642,10 @@ def _join_cmd(cmd: Sequence[str]) -> str:
 def _wrap_python_for_traceback(code: str) -> str:
     """Wrap user Python so an uncaught exception always writes a traceback to stderr.
 
-    The OpenSandbox v1.0.2 code-interpreter image does not consistently
-    populate ``Execution.error`` for top-level Python raises. We guarantee
-    stderr-side surfacing by exec'ing the user source inside a try/except.
+    The OpenSandbox code-interpreter image does not consistently populate
+    ``Execution.error`` for top-level Python raises (observed on v1.0.2, still
+    prudent on v1.1.0). We guarantee stderr-side surfacing by exec'ing the user
+    source inside a try/except.
     The original ``raise`` is re-raised so the runtime still observes the
     failure (exit_code, ``Execution.error``) if it cares to. Source is
     passed as a base64 blob to avoid quoting edge cases.
