@@ -41,6 +41,8 @@ python example/01_hello_agent.py
 | 08 | [08_compress.py](08_compress.py) | `flow.Compressor` to shrink context | yes |
 | 09 | [09_memory.py](09_memory.py) | `flow.Agent(memory=...)`: remember / recall / commit | **no**\* |
 | 10 | [10_provider_variation.py](10_provider_variation.py) | swap the LLM vendor via `Provider` | yes |
+| 11 | [11_dynamic_selector.py](11_dynamic_selector.py) | `flow.Selector` — LLM-routed `if` / `while` over workflows | yes |
+| 12 | [12_compile.py](12_compile.py) | `Workflow.compile()` — static resource manifest, offline `validate()`, lifecycle | **no** |
 
 \* 09 runs key-free using the local memory backend; a key only unlocks an
 optional live turn at the end.
@@ -57,6 +59,8 @@ OpenRath borrows PyTorch's shape. The ladder walks the same analogy:
 | kernel / op | tool (`FlowToolCall`) | 04, 05, 06 |
 | `nn.Parameter` | `flow.AgentParam` / `Provider` | 01, 10 |
 | `nn.Module` | `flow.Agent` / `flow.Workflow` | 01, 08 |
+| control flow | `flow.Selector` | 11 |
+| `torch.compile` | `Workflow.compile()` | 12 |
 
 ## Shared helpers (`_shared/`)
 
