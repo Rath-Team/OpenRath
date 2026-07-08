@@ -8,6 +8,7 @@ import pytest
 
 from rath.backend.opensandbox import (
     _command_stdout_rerun_allowed,
+    _is_transient_code_run_result,
     _is_transient_sandbox_create_error,
     _should_retry_command_for_empty_stdout,
 )
@@ -69,6 +70,24 @@ def test_command_stdout_rerun_limited_to_print_probes() -> None:
     assert not _command_stdout_rerun_allowed(
         "python3 -c \"pathlib.Path('x').write_text('y')\""
     )
+
+
+def test_transient_code_run_detects_busy_session() -> None:
+    from types import SimpleNamespace
+
+    execution = SimpleNamespace(
+        error=SimpleNamespace(value="error running codes session is busy")
+    )
+    assert _is_transient_code_run_result(execution)
+
+
+def test_transient_code_run_ignores_real_failures() -> None:
+    from types import SimpleNamespace
+
+    execution = SimpleNamespace(
+        error=SimpleNamespace(value="SyntaxError: invalid syntax"),
+    )
+    assert not _is_transient_code_run_result(execution)
 
 
 def test_transient_create_error_rejects_bind_rejection() -> None:

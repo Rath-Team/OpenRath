@@ -8,14 +8,15 @@ cd "${ROOT_DIR}"
 
 export OPENSANDBOX_INSECURE_SERVER="${OPENSANDBOX_INSECURE_SERVER:-YES}"
 
-echo "Warming up OpenSandbox (create + close one sandbox)..."
+echo "Warming up OpenSandbox (create, code.run probe, close one sandbox)..."
 uv run python -c "
-from rath.backend import get
+from rath.backend import BackendToolCodeRun, get
 
 backend = get('opensandbox')
 sandbox = backend.open()
 try:
-    print(f'warm-up ok: {sandbox.handle}')
+    result = sandbox.dispatch(BackendToolCodeRun(code=\"print('warm')\"))
+    print(f'warm-up ok: {sandbox.handle} code_error={result.error!r}')
 finally:
     backend.close(sandbox)
 "

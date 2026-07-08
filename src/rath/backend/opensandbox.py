@@ -274,6 +274,14 @@ async def _run_command_with_stdout_retry(
     return execution
 
 
+def _is_transient_code_run_result(execution: Any) -> bool:
+    """Detect server-side code-session contention that often clears on retry."""
+    if execution.error is None:
+        return False
+    msg = (execution.error.value or "").lower()
+    return "session is busy" in msg
+
+
 async def _run_code_with_retry(
     ci: Any,
     source: str,
@@ -283,15 +291,23 @@ async def _run_code_with_retry(
     effective = call_timeout if call_timeout is not None else _DEFAULT_TOOL_TIMEOUT_S
     for attempt in range(2):
         try:
-            return await _await_maybe_timeout(
+            execution = await _await_maybe_timeout(
                 ci.codes.run(source, language=language),
                 effective,
             )
         except TimeoutError:
             if attempt == 0:
                 logger.debug("OpenSandbox code.run timed out; retrying once")
+                await asyncio.sleep(0.5)
                 continue
             raise
+        if attempt == 0 and _is_transient_code_run_result(execution):
+            logger.debug(
+                "OpenSandbox code.run returned transient busy state; retrying once"
+            )
+            await asyncio.sleep(0.5)
+            continue
+        return execution
     raise RuntimeError("unreachable code path in _run_code_with_retry")
 
 
