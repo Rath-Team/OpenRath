@@ -405,7 +405,7 @@ def run_session_loop(
     user_session: Session,
     agent_session: Session,
     *,
-    agent_provider: Provider,
+    agent_provider: Provider | None = None,
     tools: list[FlowToolCall] | None = None,
     executor: SessionLoopExecutor | None = None,
     max_tool_rounds: int = 64,
@@ -449,6 +449,21 @@ def run_session_loop(
     executes the loop on a background asyncio loop so multiple
     ``run_session_loop`` calls can overlap.
     """
+    # Resolve the effective provider. An explicit ``agent_provider`` (as passed
+    # by Agent/AgentParam) always wins; otherwise fall back to a provider bound
+    # on the user session via ``session.to(Provider(...))`` (P4.3). This keeps
+    # every existing Agent call unchanged while enabling raw/CLI use that placed
+    # the provider on the session.
+    effective_provider = (
+        agent_provider if agent_provider is not None else user_session.provider
+    )
+    if effective_provider is None:
+        raise ValueError(
+            "no provider for run_session_loop: pass agent_provider=Provider(...) "
+            "or bind one on the session via session.to(Provider(...))"
+        )
+    agent_provider = effective_provider
+
     # Join lazy input sessions before submitting the loop coroutine.
     if user_session._pending is not None:
         user_session.synchronize()

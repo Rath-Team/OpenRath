@@ -61,6 +61,7 @@ from rath.backend.tool_types import (
     BackendToolFilesRead,
     BackendToolFilesWrite,
 )
+from rath.config.env import env_flag, env_value
 
 try:
     from opensandbox import Sandbox as _OSBSandbox
@@ -86,9 +87,42 @@ _SUPPORTED_LANGUAGES: frozenset[str] = frozenset(
 
 logger = logging.getLogger(__name__)
 
-_STRICT_WORKSPACE_BIND = os.environ.get(
-    "RATH_OPENSANDBOX_STRICT_WORKSPACE_BIND", ""
-).lower() in ("1", "true", "yes")
+
+def strict_workspace_bind() -> bool:
+    """Whether to skip the no-volumes retry when a host bind is rejected.
+
+    Read at call time via the central env registry (P2.5) rather than frozen at
+    import, so a test or late ``os.environ`` change is honored.
+    """
+    return env_flag("RATH_OPENSANDBOX_STRICT_WORKSPACE_BIND")
+
+
+def resolve_opensandbox_domain() -> str | None:
+    """Resolve the opensandbox service domain: env → backend config → None.
+
+    Precedence: ``OPEN_SANDBOX_DOMAIN`` / legacy ``OPENSANDBOX_DOMAIN`` (via the
+    registry), then the ``backend`` config section's default (or an
+    opensandbox-kind) provider ``domain`` (P1.2 wiring). Returns ``None`` when
+    unset. The SDK / ``~/.sandbox.toml`` may still supply credentials
+    independently; this only resolves the domain OpenRath knows about.
+    """
+    domain = env_value("OPEN_SANDBOX_DOMAIN") or env_value("OPENSANDBOX_DOMAIN")
+    if domain:
+        return domain
+    try:
+        from rath.config.store import ConfigStore
+
+        cfg = ConfigStore.load().config.backend
+    except (FileNotFoundError, RuntimeError):
+        return None
+    name = cfg.default_provider
+    entry = cfg.providers.get(name) if name else None
+    if entry is None:
+        for candidate in cfg.providers.values():
+            if candidate.backend_kind == "opensandbox":
+                entry = candidate
+                break
+    return entry.domain if entry is not None and entry.domain else None
 
 
 async def _await_maybe_timeout(awaitable, timeout: float | None):
@@ -98,6 +132,167 @@ async def _await_maybe_timeout(awaitable, timeout: float | None):
         return await asyncio.wait_for(awaitable, timeout=timeout)
     except asyncio.TimeoutError as exc:
         raise TimeoutError from exc
+
+
+# Management API default is 30s — too tight for first sandbox create on a cold
+# runner (image pull + container start). ready_timeout covers health polling.
+_SANDBOX_CREATE_ATTEMPTS = 3
+_SANDBOX_CREATE_BACKOFF_S = (1.0, 2.0)
+_CREATE_REQUEST_TIMEOUT = timedelta(seconds=120)
+_CREATE_READY_TIMEOUT = timedelta(seconds=120)
+# code.run with no explicit timeout must not block until pytest's 300s marker fires.
+_DEFAULT_TOOL_TIMEOUT_S = 90.0
+
+
+def _execution_stdout_bytes(execution: Any) -> bytes:
+    return "".join(m.text for m in execution.logs.stdout).encode("utf-8")
+
+
+def _should_retry_command_for_empty_stdout(execution: Any) -> bool:
+    """Detect opensandbox-server stdout/exit_code capture race on small runners."""
+    if execution.error is not None or execution.complete is None:
+        return False
+    if _execution_stdout_bytes(execution) or execution.logs.stderr:
+        return False
+    exit_code = execution.exit_code
+    if exit_code is not None and exit_code != 0:
+        return False
+    return True
+
+
+def _is_transient_sandbox_create_error(exc: BaseException) -> bool:
+    """Classify create-time network/timeout failures that are safe to retry."""
+    seen: set[int] = set()
+    cur: BaseException | None = exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        if _SDK_AVAILABLE:
+            from opensandbox.exceptions import (
+                SandboxInternalException,
+                SandboxReadyTimeoutException,
+            )
+
+            if isinstance(
+                cur, (SandboxInternalException, SandboxReadyTimeoutException)
+            ):
+                msg = str(cur).lower()
+                if any(
+                    token in msg
+                    for token in ("timeout", "connectivity", "network", "readtimeout")
+                ):
+                    return True
+        name = type(cur).__name__.lower()
+        if "timeout" in name or "connect" in name:
+            return True
+        cur = cur.__cause__ or cur.__context__
+    return False
+
+
+async def _sandbox_create_once(
+    image: str,
+    timeout: timedelta,
+    env: dict[str, str] | None,
+    entrypoint: list[str],
+    volumes: list | None,
+) -> Any:
+    from opensandbox.config import ConnectionConfig
+
+    connection_config = ConnectionConfig(request_timeout=_CREATE_REQUEST_TIMEOUT)
+    return await _OSBSandbox.create(
+        image,
+        timeout=timeout,
+        env=env,
+        entrypoint=entrypoint,
+        volumes=volumes,
+        connection_config=connection_config,
+        ready_timeout=_CREATE_READY_TIMEOUT,
+    )
+
+
+async def _sandbox_create_with_transient_retry(
+    image: str,
+    timeout: timedelta,
+    env: dict[str, str] | None,
+    entrypoint: list[str],
+    volumes: list | None,
+) -> Any:
+    last_exc: BaseException | None = None
+    for attempt in range(_SANDBOX_CREATE_ATTEMPTS):
+        try:
+            return await _sandbox_create_once(image, timeout, env, entrypoint, volumes)
+        except BaseException as exc:
+            last_exc = exc
+            if (
+                attempt + 1 >= _SANDBOX_CREATE_ATTEMPTS
+                or not _is_transient_sandbox_create_error(exc)
+            ):
+                raise
+            delay = _SANDBOX_CREATE_BACKOFF_S[
+                min(attempt, len(_SANDBOX_CREATE_BACKOFF_S) - 1)
+            ]
+            logger.warning(
+                "OpenSandbox create transient failure (attempt %s/%s); "
+                "retrying in %.1fs: %s",
+                attempt + 1,
+                _SANDBOX_CREATE_ATTEMPTS,
+                delay,
+                exc,
+            )
+            await asyncio.sleep(delay)
+    assert last_exc is not None
+    raise last_exc
+
+
+def _command_stdout_rerun_allowed(cmd_str: str) -> bool:
+    """Only ``print(...)`` probes are safe to re-run on the stdout/exit_code race."""
+    return "print(" in cmd_str
+
+
+async def _run_command_with_stdout_retry(
+    native: Any,
+    cmd_str: str,
+    opts: Any,
+    call_timeout: float | None,
+) -> Any:
+    execution = await _await_maybe_timeout(
+        native.commands.run(cmd_str, opts=opts),
+        call_timeout,
+    )
+    # Only re-run read-only probes (``print(...)``). Mutating commands such as
+    # ``write_text`` must never execute twice — that race caused 'abb' != 'ab'
+    # in stream FIFO conformance when a retry fired on empty stdout.
+    if _command_stdout_rerun_allowed(
+        cmd_str
+    ) and _should_retry_command_for_empty_stdout(execution):
+        logger.debug(
+            "OpenSandbox command returned success with empty stdout; retrying once"
+        )
+        execution = await _await_maybe_timeout(
+            native.commands.run(cmd_str, opts=opts),
+            call_timeout,
+        )
+    return execution
+
+
+async def _run_code_with_retry(
+    ci: Any,
+    source: str,
+    language: str,
+    call_timeout: float | None,
+) -> Any:
+    effective = call_timeout if call_timeout is not None else _DEFAULT_TOOL_TIMEOUT_S
+    for attempt in range(2):
+        try:
+            return await _await_maybe_timeout(
+                ci.codes.run(source, language=language),
+                effective,
+            )
+        except TimeoutError:
+            if attempt == 0:
+                logger.debug("OpenSandbox code.run timed out; retrying once")
+                continue
+            raise
+    raise RuntimeError("unreachable code path in _run_code_with_retry")
 
 
 def bind_workspace_volumes_from_spec(
@@ -174,18 +369,18 @@ async def _create_sandbox_with_optional_bind_fallback(
     """Create sandbox; on bind rejection, retry once with ``volumes=None``."""
 
     try:
-        native = await _OSBSandbox.create(
+        native = await _sandbox_create_with_transient_retry(
             image,
-            timeout=timeout,
-            env=env,
-            entrypoint=entrypoint,
-            volumes=volumes,
+            timeout,
+            env,
+            entrypoint,
+            volumes,
         )
         return native, volumes
     except BaseException as exc:
         if (
             not volumes
-            or _STRICT_WORKSPACE_BIND
+            or strict_workspace_bind()
             or not _likely_workspace_bind_rejected(exc)
         ):
             raise
@@ -197,12 +392,12 @@ async def _create_sandbox_with_optional_bind_fallback(
             exc,
             exc_info=logger.isEnabledFor(logging.DEBUG),
         )
-        native = await _OSBSandbox.create(
+        native = await _sandbox_create_with_transient_retry(
             image,
-            timeout=timeout,
-            env=env,
-            entrypoint=entrypoint,
-            volumes=None,
+            timeout,
+            env,
+            entrypoint,
+            None,
         )
         return native, None
 
@@ -218,10 +413,15 @@ class OpenSandboxBackend(Backend):
 
     name: ClassVar[str] = "opensandbox"
 
-    _DEFAULT_IMAGE: ClassVar[str] = "opensandbox/code-interpreter:v1.0.2"
+    # code-interpreter v1.1.0 relocated the launcher from
+    # /opt/opensandbox/code-interpreter.sh (v1.0.2) to
+    # /opt/code-interpreter/code-interpreter.sh. v1.0.2 is no longer pullable,
+    # so track the current image + path (a stale default fails at container
+    # start with exit 127). Callers can still override both via BackendSandboxSpec.
+    _DEFAULT_IMAGE: ClassVar[str] = "opensandbox/code-interpreter:v1.1.0"
     _DEFAULT_TIMEOUT: ClassVar[timedelta] = timedelta(minutes=10)
     _DEFAULT_ENTRYPOINT: ClassVar[tuple[str, ...]] = (
-        "/opt/opensandbox/code-interpreter.sh",
+        "/opt/code-interpreter/code-interpreter.sh",
     )
     _SANDBOX_ROOT: ClassVar[str] = "/workspace"
 
@@ -262,9 +462,8 @@ class OpenSandboxBackend(Backend):
         """
         if not (_SDK_AVAILABLE and _CI_AVAILABLE):
             return False
-        if os.environ.get("OPEN_SANDBOX_DOMAIN") or os.environ.get(
-            "OPENSANDBOX_DOMAIN",
-        ):
+        # Domain from env or the backend config section (P2.5).
+        if resolve_opensandbox_domain():
             return True
         return Path.home().joinpath(".sandbox.toml").exists()
 
@@ -500,11 +699,13 @@ class OpenSandboxBackend(Backend):
             ),
             envs=dict(call.env) if call.env is not None else None,
         )
-        execution = await _await_maybe_timeout(
-            native.commands.run(cmd_str, opts=opts),
+        execution = await _run_command_with_stdout_retry(
+            native,
+            cmd_str,
+            opts,
             call.timeout,
         )
-        stdout = "".join(m.text for m in execution.logs.stdout).encode("utf-8")
+        stdout = _execution_stdout_bytes(execution)
         stderr = "".join(m.text for m in execution.logs.stderr).encode("utf-8")
         elapsed_ms = (
             float(execution.complete.execution_time_in_millis)
@@ -585,8 +786,10 @@ class OpenSandboxBackend(Backend):
             else call.code
         )
         ci = await CodeInterpreter.create(native)
-        execution = await _await_maybe_timeout(
-            ci.codes.run(source, language=call.language),
+        execution = await _run_code_with_retry(
+            ci,
+            source,
+            call.language,
             call.timeout,
         )
         stdout = "".join(m.text for m in execution.logs.stdout).encode("utf-8")
@@ -604,9 +807,10 @@ def _join_cmd(cmd: Sequence[str]) -> str:
 def _wrap_python_for_traceback(code: str) -> str:
     """Wrap user Python so an uncaught exception always writes a traceback to stderr.
 
-    The OpenSandbox v1.0.2 code-interpreter image does not consistently
-    populate ``Execution.error`` for top-level Python raises. We guarantee
-    stderr-side surfacing by exec'ing the user source inside a try/except.
+    The OpenSandbox code-interpreter image does not consistently populate
+    ``Execution.error`` for top-level Python raises (observed on v1.0.2, still
+    prudent on v1.1.0). We guarantee stderr-side surfacing by exec'ing the user
+    source inside a try/except.
     The original ``raise`` is re-raised so the runtime still observes the
     failure (exit_code, ``Execution.error``) if it cares to. Source is
     passed as a base64 blob to avoid quoting edge cases.

@@ -23,11 +23,40 @@ __all__ = [
     "register_chat_client",
     "chat_client_for",
     "registered_kinds",
+    "clear_client_cache",
 ]
 
 ChatClientFactory = Callable[[Provider], ChatClient]
 
 _FACTORIES: dict[str, ChatClientFactory] = {}
+
+# Constructed-client cache. Keyed on the provider's HTTP-identity fields so a
+# reused provider does not rebuild the SDK client on every loop run. Only
+# providers with an EXPLICIT api_key are cached: a provider that leaves api_key
+# empty resolves credentials from env/config at construction time, and env can
+# change within a process, so caching such a client could serve a stale one.
+_CLIENT_CACHE: dict[tuple[str, str, str, str], ChatClient] = {}
+_CACHE_LOCK = threading.Lock()
+
+
+def _cache_key(provider: Provider) -> tuple[str, str, str, str] | None:
+    """Identity key for caching, or ``None`` when the provider must not be cached."""
+    if not provider.api_key:
+        return None  # env/config fallback — never cache (could go stale)
+    return (
+        provider.provider_kind or "openai",
+        provider.base_url or "",
+        provider.api_key,
+        provider.model or "",
+    )
+
+
+def clear_client_cache() -> None:
+    """Drop all cached clients (call after rebinding credentials / in tests)."""
+    with _CACHE_LOCK:
+        _CLIENT_CACHE.clear()
+
+
 # Guards reads from / writes to ``_FACTORIES`` only. Deliberately does
 # **not** wrap ``factory(provider)`` in :func:`chat_client_for` — built-in
 # factories (``RathOpenAIChatClient``, ``RathAnthropicChatClient``) are
@@ -57,6 +86,12 @@ def chat_client_for(provider: Provider) -> ChatClient:
     raise ``ValueError`` listing what is currently registered.
     """
     kind = provider.provider_kind or "openai"
+    key = _cache_key(provider)
+    if key is not None:
+        with _CACHE_LOCK:
+            cached = _CLIENT_CACHE.get(key)
+            if cached is not None:
+                return cached
     with _FACTORIES_LOCK:
         try:
             factory = _FACTORIES[kind]
@@ -65,7 +100,12 @@ def chat_client_for(provider: Provider) -> ChatClient:
                 f"unknown provider_kind={kind!r}; "
                 f"registered kinds: {sorted(_FACTORIES)}",
             ) from e
-    return factory(provider)
+    client = factory(provider)
+    if key is not None:
+        with _CACHE_LOCK:
+            # Another thread may have built one concurrently; keep the first.
+            client = _CLIENT_CACHE.setdefault(key, client)
+    return client
 
 
 def registered_kinds() -> tuple[str, ...]:

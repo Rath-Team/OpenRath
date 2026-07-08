@@ -10,6 +10,7 @@ on:
       - 'tests/backends/**'
       - 'tests/conformance/**'
       - 'tests/session/**'
+      - 'scripts/ci_opensandbox_prepare.sh'
       - 'pyproject.toml'
       - 'uv.lock'
   pull_request:
@@ -20,6 +21,7 @@ on:
       - 'tests/backends/**'
       - 'tests/conformance/**'
       - 'tests/session/**'
+      - 'scripts/ci_opensandbox_prepare.sh'
       - 'pyproject.toml'
       - 'uv.lock'
 
@@ -30,9 +32,6 @@ jobs:
   test-opensandbox:
     name: pytest (opensandbox)
     runs-on: ubuntu-latest
-    # OpenSandbox tests require a running server; allow failure in PRs
-    # until the CI environment is verified stable.
-    continue-on-error: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
@@ -50,7 +49,10 @@ jobs:
           export OPENSANDBOX_INSECURE_SERVER=YES
           uv run opensandbox-server init-config --example docker .sandbox.toml
       - name: Pre-pull sandbox image
-        run: docker pull opensandbox/code-interpreter:v1.0.2
+        run: |
+          IMAGE="$(uv run python -c 'from rath.backend.opensandbox import OpenSandboxBackend; print(OpenSandboxBackend._DEFAULT_IMAGE)')"
+          echo "Pre-pulling ${IMAGE}"
+          docker pull "${IMAGE}"
       - name: Start OpenSandbox server
         run: |
           export OPENSANDBOX_INSECURE_SERVER=YES
@@ -65,9 +67,7 @@ jobs:
           done
           echo "OpenSandbox server failed to start" >&2
           exit 1
+      - name: Warm up OpenSandbox
+        run: bash scripts/ci_opensandbox_prepare.sh
       - name: Run OpenSandbox tests
-        # Backend tests hit a real Docker daemon; the server can race
-        # stdout capture against exit_code on small jobs. Allow each
-        # test up to 2 reruns to ride out transient infra flakes
-        # (pytest-rerunfailures is a dev dep).
-        run: uv run pytest -m opensandbox --reruns 2 --reruns-delay 2
+        run: uv run pytest -m opensandbox

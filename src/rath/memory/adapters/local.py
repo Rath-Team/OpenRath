@@ -63,6 +63,7 @@ from rath.memory.uri import (
     memory_uri_prefix,
     to_public_uri,
 )
+from rath.persistence.atomic import atomic_write_json, atomic_write_text
 
 logger = logging.getLogger(__name__)
 
@@ -228,7 +229,7 @@ class LocalMemoryBackend(MemoryBackend):
         target = resolved.with_suffix(_MD_SUFFIX)
         target.parent.mkdir(parents=True, exist_ok=True)
         data = op.content
-        target.write_text(data, encoding="utf-8")
+        atomic_write_text(target, data)
         # Stale embedding/meta sidecars must not persist past a content rewrite.
         for suffix in _HIDDEN_SUFFIXES:
             sidecar = resolved.with_suffix(suffix)
@@ -345,7 +346,7 @@ class LocalMemoryBackend(MemoryBackend):
             meta_lines.extend(["", "## Reason", op.reason])
         if op.instruction:
             meta_lines.extend(["", "## Instruction", op.instruction])
-        meta_path.write_text("\n".join(meta_lines) + "\n", encoding="utf-8")
+        atomic_write_text(meta_path, "\n".join(meta_lines), newline=True)
 
         return MemoryWriteResult(
             uri=f"{target_uri.rstrip('/')}/{sha}",
@@ -368,10 +369,7 @@ class LocalMemoryBackend(MemoryBackend):
         commit_root.mkdir(parents=True, exist_ok=True)
         archive_path = commit_root / "messages.json"
         normalized = [_normalize_message(m) for m in op.messages]
-        archive_path.write_text(
-            json.dumps(normalized, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        atomic_write_json(archive_path, normalized)
         archived_uri = (
             f"{MEMORY_URI_PREFIX}session/{op.session_id}/commits/{stamp}/messages.json"
         )
@@ -398,7 +396,7 @@ class LocalMemoryBackend(MemoryBackend):
                 continue
             target = sub.with_suffix(_MD_SUFFIX)
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(content, encoding="utf-8")
+            atomic_write_text(target, content)
         return MemoryCommitResult(
             task_id=None,
             archived_uri=archived_uri,
@@ -429,10 +427,7 @@ class LocalMemoryBackend(MemoryBackend):
         if not update_only:
             meta["embedding_provider"] = options.get("embedding_provider")
             meta["vlm_provider"] = options.get("vlm_provider")
-        meta_path.write_text(
-            json.dumps(meta, indent=2, ensure_ascii=False) + "\n",
-            encoding="utf-8",
-        )
+        atomic_write_json(meta_path, meta)
 
 
 def _resolve_uri(
@@ -765,10 +760,7 @@ def _load_vec(sidecar: Path, *, expected_model: str) -> list[float] | None:
 def _store_vec(sidecar: Path, model: str, vec: Any) -> None:
     payload = {"model": model, "vector": [float(x) for x in vec]}
     sidecar.parent.mkdir(parents=True, exist_ok=True)
-    sidecar.write_text(
-        json.dumps(payload, ensure_ascii=False),
-        encoding="utf-8",
-    )
+    atomic_write_json(sidecar, payload, indent=None)
 
 
 def _cosine(u: Any, v: list[float]) -> float:

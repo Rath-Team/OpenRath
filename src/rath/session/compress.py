@@ -33,7 +33,7 @@ def run_session_compress(
     user_session: Session,
     agent_session: Session,
     *,
-    agent_provider: Provider,
+    agent_provider: Provider | None = None,
     executor: SessionLoopExecutor | None = None,
     compress_instruction: str | None = None,
     register_sessions: bool = True,
@@ -66,6 +66,16 @@ def run_session_compress(
     row is written to ``.openrath/sessions/<out.id>.jsonl`` (or to
     ``persist_path``) with a trailer.
     """
+
+    # Explicit provider wins; otherwise fall back to the user session's bound
+    # provider (session.to(Provider(...))). Mirrors run_session_loop (P4.4).
+    if agent_provider is None:
+        agent_provider = user_session.provider
+    if agent_provider is None:
+        raise ValueError(
+            "no provider for run_session_compress: pass agent_provider=Provider(...) "
+            "or bind one on the session via session.to(Provider(...))"
+        )
 
     # Join lazy input sessions before reading their chunk_table.
     if user_session._pending is not None:

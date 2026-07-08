@@ -183,12 +183,20 @@ def test_concurrent_saves_dont_lose_data_or_leave_tmp(
         assert not t.is_alive()
     assert not errors, f"concurrent save raised: {errors!r}"
 
-    # Final file is parseable and reflects ONE of the writers (last to
-    # ``replace()`` wins; we don't assert which).
+    # Final config is parseable and reflects ONE of the writers (last to
+    # ``replace()`` wins; we don't assert which). Since P1.1, the api_key is
+    # externalized to credentials.json, so we read the secret from there.
     final = json.loads(path.read_text(encoding="utf-8"))
-    final_key = final["llm"]["providers"]["main"]["api_key"]
+    assert "main" in final["llm"]["providers"]
+    creds = json.loads((path.parent / "credentials.json").read_text(encoding="utf-8"))
+    final_key = creds["llm"]["providers"]["main"]
     assert final_key in {f"sk-{i}" for i in range(5)}
 
-    # No temp files left behind.
-    leftover_tmps = sorted(p.name for p in path.parent.glob(".config_*.tmp"))
+    # No temp files left behind (from either the legacy prefix or the atomic
+    # primitive's ``.atomic_*.tmp``).
+    leftover_tmps = sorted(
+        p.name
+        for p in path.parent.glob("*.tmp")
+        if p.name.startswith((".config_", ".atomic_"))
+    )
     assert leftover_tmps == [], f"atomic save left temp files: {leftover_tmps}"

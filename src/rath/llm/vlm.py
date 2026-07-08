@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import base64
 import mimetypes
-import os
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -29,6 +28,7 @@ from openai import (
     RateLimitError,
 )
 
+from rath.config.env import env_value
 from rath.llm.credentials import resolve_credential
 from rath.llm.retry import retry_with_backoff
 
@@ -113,17 +113,40 @@ class VLMProvider:
         return replace(base, **overrides)
 
 
+def _config_vlm_entry() -> Any:
+    """First config entry for VLM: ``vlm_provider`` else default.
+
+    Returns ``None`` when no config file / no suitable entry. Mirrors the
+    chat clients' config fallback so a ``VLMProvider()`` with no api_key/env
+    still resolves from ``~/.openrath/config.json`` (P2.3).
+    """
+    try:
+        from rath.config.store import ConfigStore
+
+        cfg = ConfigStore.load().config.llm
+    except (FileNotFoundError, RuntimeError):
+        return None
+    name = getattr(cfg, "vlm_provider", None) or cfg.default_provider
+    if name is None:
+        return None
+    return cfg.providers.get(name)
+
+
 def _resolve_api_key(provider: VLMProvider) -> str:
+    entry = _config_vlm_entry() if not provider.api_key else None
     return resolve_credential(
         provider.api_key,
-        os.environ.get("OPENAI_API_KEY"),
+        env_value("OPENAI_API_KEY"),
+        getattr(entry, "api_key", None),
     )
 
 
 def _resolve_base_url(provider: VLMProvider) -> str:
+    entry = _config_vlm_entry() if not provider.base_url else None
     return resolve_credential(
         provider.base_url,
-        os.environ.get("OPENAI_BASE_URL"),
+        env_value("OPENAI_BASE_URL"),
+        getattr(entry, "base_url", None),
     )
 
 

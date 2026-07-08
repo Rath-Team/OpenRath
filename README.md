@@ -311,6 +311,7 @@ python example/01_hello_agent.py
 | 09 | [`09_memory.py`](example/09_memory.py) | Use the local memory backend to remember, recall, and optionally commit a live turn. | no |
 | 10 | [`10_provider_variation.py`](example/10_provider_variation.py) | Swap model vendors by changing `Provider`, while keeping Session and Workflow code stable. | yes |
 | 11 | [`11_dynamic_selector.py`](example/11_dynamic_selector.py) | Route between self-describing workflows with `flow.Selector`: `if` branching and a `while` loop that ends on `flow.EmptyWorkflow`. | yes |
+| 12 | [`12_compile.py`](example/12_compile.py) | Statically `compile()` a workflow: inspect its resource manifest, run offline `validate()`, and use the lifecycle context manager. | no |
 
 Read [`example/README.md`](example/README.md) for setup details and shared helpers.
 

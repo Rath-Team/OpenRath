@@ -9,13 +9,18 @@ crashed write never leaves a half-written file.
 from __future__ import annotations
 
 import json
-import tempfile
+import logging
 import threading
 from pathlib import Path
 from typing import Any
 
 from pydantic import ValidationError
 
+from rath.config.credentials import (
+    CREDENTIALS_FILENAME,
+    secrets_from_config,
+    split_secrets,
+)
 from rath.config.paths import (
     is_project_local,
     resolve_config_dir,
@@ -23,6 +28,7 @@ from rath.config.paths import (
 )
 from rath.config.schema import (
     SCHEMA_VERSION,
+    BackendProviderConfig,
     LLMProviderConfig,
     MCPServerConfig,
     MemoryProviderConfig,
@@ -34,8 +40,12 @@ from rath.config.secrets import (
     ensure_project_gitignore_entry,
     warn_if_world_readable,
 )
+from rath.persistence.atomic import atomic_write_json
+from rath.persistence.manifest import check_manifest, ensure_manifest
 
 __all__ = ["ConfigStore", "ConfigError"]
+
+logger = logging.getLogger(__name__)
 
 
 class ConfigError(RuntimeError):
@@ -74,6 +84,9 @@ class ConfigStore:
         self.path = (path or resolve_config_path()).resolve()
         self._raw_unknown: dict[str, Any] = {}
         self._save_lock = threading.Lock()
+        # Set by _merge_credentials when a legacy inline api_key is seen, so
+        # save() can log a one-time migration note as it externalizes secrets.
+        self._has_inline_secret = False
         self._data: RathConfig = self._load_or_default()
 
     @classmethod
@@ -149,29 +162,35 @@ class ConfigStore:
             ensure_project_gitignore_entry(Path.cwd())
 
         payload = self._merged_payload()
-        text = json.dumps(payload, indent=2, ensure_ascii=False, sort_keys=False)
+        # Externalize secrets: config.json keeps routing/presets, credentials.json
+        # (0600) holds api_keys. Pure dict split so callers stay unaffected.
+        config_payload, creds_payload = split_secrets(payload)
+        if self._has_inline_secret:
+            logger.info(
+                "rath.config: migrating inline api_key(s) out of %s into %s; "
+                "config.json will no longer contain secrets",
+                self.path.name,
+                CREDENTIALS_FILENAME,
+            )
+            self._has_inline_secret = False
 
         with self._save_lock:
-            fd = tempfile.NamedTemporaryFile(
-                mode="w",
-                encoding="utf-8",
-                dir=config_dir,
-                prefix=".config_",
-                suffix=".tmp",
-                delete=False,
-            )
-            try:
-                tmp_path = Path(fd.name)
-                fd.write(text + "\n")
-                fd.flush()
-                fd.close()
-                tmp_path.replace(self.path)
-            except BaseException:
-                fd.close()
-                tmp_path = Path(fd.name)
-                tmp_path.unlink(missing_ok=True)
-                raise
+            # Atomic writes serialize concurrent same-path replaces and retry
+            # the Windows sharing-violation window (see rath.persistence.atomic).
+            atomic_write_json(self.path, config_payload)
             chmod_user_only(self.path)
+
+            creds_path = config_dir / CREDENTIALS_FILENAME
+            if creds_payload:
+                creds_payload["version"] = SCHEMA_VERSION
+                atomic_write_json(creds_path, creds_payload, mode=0o600)
+                chmod_user_only(creds_path)
+
+            # Record/refresh the root layout manifest at the data root.
+            try:
+                ensure_manifest(config_dir)
+            except OSError:  # pragma: no cover -- best-effort, never block a save
+                logger.debug("could not write layout manifest", exc_info=True)
 
             # Invalidate read cache so next load() picks up the new data
             with type(self)._cache_lock:
@@ -247,6 +266,30 @@ class ConfigStore:
                 f"available: {available}",
             ) from e
 
+    # --- Backend helpers --------------------------------------------------
+
+    def get_backend_provider(self, name: str | None) -> BackendProviderConfig:
+        """Return the named backend provider entry.
+
+        ``name=None`` falls back to :attr:`BackendConfig.default_provider`.
+        Raises :class:`KeyError` with the available names when the lookup
+        fails.
+        """
+        target = name or self._data.backend.default_provider
+        if target is None:
+            raise KeyError(
+                "no backend provider name given and no backend.default_provider "
+                f"set in {self.path}",
+            )
+        try:
+            return self._data.backend.providers[target]
+        except KeyError as e:
+            available = sorted(self._data.backend.providers)
+            raise KeyError(
+                f"backend provider {target!r} not found in {self.path}; "
+                f"available: {available}",
+            ) from e
+
     # --- MCP helpers ------------------------------------------------------
 
     def get_mcp_server(self, name: str) -> MCPServerConfig:
@@ -269,6 +312,9 @@ class ConfigStore:
     # --- Internals --------------------------------------------------------
 
     def _load_or_default(self) -> RathConfig:
+        # Refuse a data root written by a newer OpenRath layout (no-op when the
+        # manifest is absent — fresh/legacy roots keep working).
+        check_manifest(self.path.parent)
         if not self.path.is_file():
             return RathConfig()
         warn_if_world_readable(self.path)
@@ -284,10 +330,52 @@ class ConfigStore:
                 f"{self.path} top-level must be a JSON object, got "
                 f"{type(raw).__name__}",
             )
+        self._merge_credentials(raw)
         try:
             return RathConfig.model_validate(raw)
         except ValidationError as e:
             raise ConfigError(f"{self.path} failed schema validation: {e}") from e
+
+    def _merge_credentials(self, raw: dict[str, Any]) -> None:
+        """Fill provider ``api_key`` fields from a sibling ``credentials.json``.
+
+        Precedence is **inline > credentials.json**: an ``api_key`` already
+        present (and non-empty) in ``config.json`` wins, so a legacy single-file
+        config keeps working unchanged. A non-empty inline key also flips
+        :attr:`_has_inline_secret`, so the next :meth:`save` migrates it out and
+        logs a one-time deprecation note.
+        """
+        creds_path = self.path.parent / CREDENTIALS_FILENAME
+        secrets: dict[tuple[str, str], str] = {}
+        if creds_path.is_file():
+            try:
+                creds_raw = json.loads(creds_path.read_text(encoding="utf-8"))
+                if isinstance(creds_raw, dict):
+                    secrets = secrets_from_config(creds_raw)
+            except json.JSONDecodeError:  # pragma: no cover -- corrupt sidecar
+                logger.warning(
+                    "rath.config: %s is not valid JSON; ignoring", creds_path
+                )
+
+        from rath.config.credentials import SECRET_SECTIONS
+
+        for section in SECRET_SECTIONS:
+            sect = raw.get(section)
+            if not isinstance(sect, dict):
+                continue
+            providers = sect.get("providers")
+            if not isinstance(providers, dict):
+                continue
+            for name, entry in providers.items():
+                if not isinstance(entry, dict):
+                    continue
+                inline = entry.get("api_key")
+                if inline:
+                    self._has_inline_secret = True
+                    continue  # inline wins
+                merged = secrets.get((section, name))
+                if merged:
+                    entry["api_key"] = merged
 
     def _merged_payload(self) -> dict[str, Any]:
         """Serialize ``self._data`` ensuring known keys are present.

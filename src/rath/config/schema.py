@@ -19,6 +19,8 @@ __all__ = [
     "MemoryConfig",
     "MCPServerConfig",
     "MCPConfig",
+    "BackendProviderConfig",
+    "BackendConfig",
     "RathConfig",
     "SCHEMA_VERSION",
 ]
@@ -114,17 +116,46 @@ class MemoryConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
 
 
+class BackendProviderConfig(BaseModel):
+    """One named entry under ``backend.providers``.
+
+    Gives sandbox backends a config home parallel to ``llm``/``memory`` instead
+    of relying on environment variables and ``~/.sandbox.toml`` alone. ``domain``
+    and ``api_key`` route the ``opensandbox`` backend; ``api_key`` is a secret
+    and is externalized to ``credentials.json`` on save (see
+    :mod:`rath.config.credentials`). Backend-specific knobs (image, timeout, …)
+    stay on ``options`` and round-trip via ``extra="allow"``.
+    """
+
+    backend_kind: Literal["local", "opensandbox"] = "opensandbox"
+    domain: str | None = None
+    api_key: str | None = None
+    options: dict[str, object] = Field(default_factory=dict)
+
+    model_config = ConfigDict(extra="allow")
+
+
+class BackendConfig(BaseModel):
+    """The ``backend`` section: named sandbox-backend presets + the default."""
+
+    default_provider: str | None = None
+    providers: dict[str, BackendProviderConfig] = Field(default_factory=dict)
+
+    model_config = ConfigDict(extra="allow")
+
+
 class RathConfig(BaseModel):
     """Top-level on-disk schema.
 
-    Sections currently in use: ``llm``, ``mcp``, and ``memory``. Future
-    sections (e.g. ``backend`` for OpenSandbox routing) can be added without
-    touching callers because ``extra="allow"`` preserves them on round-trip.
+    Sections currently in use: ``llm``, ``mcp``, ``memory``, and ``backend``.
+    Unknown/future sections are preserved on round-trip because
+    ``extra="allow"``.
     """
 
     version: int = SCHEMA_VERSION
     llm: LLMConfig = Field(default_factory=LLMConfig)
     mcp: MCPConfig = Field(default_factory=MCPConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
+    backend: BackendConfig = Field(default_factory=BackendConfig)
 
     model_config = ConfigDict(extra="allow")

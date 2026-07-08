@@ -5,13 +5,55 @@ See :class:`~rath.llm.Provider`.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from types import MappingProxyType
 from typing import Any, Mapping
 
 from rath.llm.provider import Provider
 from rath.memory.abc import MemoryStore
 from rath.session.session import Session
+
+
+def resolve_provider_arg(
+    provider: Provider | str | None = None,
+    *,
+    model: str | None = None,
+    base: Provider | None = None,
+) -> Provider:
+    """Normalize a ``.to()``-style provider argument to a concrete ``Provider``.
+
+    Shared by :meth:`AgentParam.to`, :meth:`Workflow.to`, and ``Session.to``:
+
+    - a :class:`Provider` instance is used as-is (with ``model`` overlaid when
+      given and its own model is unset);
+    - a ``str`` is treated as a config provider **name** and resolved lazily via
+      :meth:`Provider.from_config`;
+    - ``None`` with ``model=`` builds ``Provider(model=...)``, or overlays
+      ``model`` onto ``base`` when a base provider is supplied.
+
+    Raises :class:`TypeError` for other types and :class:`ValueError` when there
+    is nothing to build a provider from.
+    """
+    if isinstance(provider, Provider):
+        if model is not None and provider.model is None:
+            return replace(provider, model=model)
+        return provider
+    if isinstance(provider, str):
+        overrides: dict[str, Any] = {}
+        if model is not None:
+            overrides["model"] = model
+        return Provider.from_config(provider, **overrides)
+    if provider is not None:
+        raise TypeError(
+            "provider must be a Provider, a config name (str), or None; "
+            f"got {type(provider).__name__}"
+        )
+    # provider is None
+    if base is not None:
+        return replace(base, model=model) if model is not None else base
+    if model is not None:
+        return Provider(model=model)
+    raise ValueError("nothing to bind: pass a Provider, provider=<name>, or model=")
 
 
 def _indent_child_module_repr(body: str, spaces: int = 2) -> str:
@@ -32,6 +74,43 @@ class AgentParam:
     agent_session: Session
     provider: Provider
     memory: MemoryStore | None = None
+
+    def to(
+        self,
+        target: Provider | None = None,
+        *,
+        provider: str | None = None,
+        model: str | None = None,
+    ) -> "AgentParam":
+        """Rebind this param's :class:`Provider` (chainable, returns ``self``).
+
+        Type-dispatched, mirroring ``Session.to`` for sandboxes:
+
+        - ``ap.to(Provider(...))`` — bind an explicit provider (positional);
+        - ``ap.to(provider="name")`` — resolve a config preset lazily;
+        - ``ap.to(model="m")`` — overlay just the model on the current provider.
+
+        The positional argument accepts only a :class:`Provider`; a bare string
+        is rejected because — unlike ``Session.to("local")`` (a sandbox backend
+        name) — the LLM path has no unambiguous string form. Use
+        ``provider="name"`` for a config preset instead.
+        """
+        if not isinstance(target, (Provider, type(None))):
+            raise TypeError(
+                "AgentParam.to() positional argument must be a Provider; "
+                'use provider="name" for a config preset'
+            )
+        if target is not None and provider is not None:
+            raise ValueError(
+                "pass either a Provider positionally or provider=, not both"
+            )
+        if target is None and provider is None and model is None:
+            raise ValueError(
+                "nothing to bind: pass a Provider, provider=<name>, or model="
+            )
+        arg: Provider | str | None = target if target is not None else provider
+        self.provider = resolve_provider_arg(arg, model=model, base=self.provider)
+        return self
 
     @property
     def data(self) -> Mapping[str, Any]:
