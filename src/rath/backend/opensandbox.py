@@ -75,7 +75,7 @@ except ImportError:  # pragma: no cover -- optional extra
     SandboxException = Exception  # type: ignore[assignment, misc]
 
 try:
-    from code_interpreter import CodeInterpreter
+    import code_interpreter  # noqa: F401
 
     _CI_AVAILABLE = True
 except ImportError:  # pragma: no cover -- optional extra
@@ -142,6 +142,8 @@ _CREATE_REQUEST_TIMEOUT = timedelta(seconds=120)
 _CREATE_READY_TIMEOUT = timedelta(seconds=120)
 # code.run with no explicit timeout must not block until pytest's 300s marker fires.
 _DEFAULT_TOOL_TIMEOUT_S = 90.0
+_CODE_RUN_ATTEMPTS = 3
+_CODE_RUN_BACKOFF_S = (0.5, 1.0)
 
 
 def _execution_stdout_bytes(execution: Any) -> bytes:
@@ -283,32 +285,50 @@ def _is_transient_code_run_result(execution: Any) -> bool:
 
 
 async def _run_code_with_retry(
-    ci: Any,
+    native: Any,
     source: str,
     language: str,
     call_timeout: float | None,
 ) -> Any:
+    """Run ``code.run`` with timeout and transient busy-session retries.
+
+    Each attempt uses a fresh :class:`CodeInterpreter` because the server
+    rejects back-to-back runs on a busy code session.
+    """
+    if not _CI_AVAILABLE:  # pragma: no cover
+        raise RuntimeError("code-interpreter SDK is not installed")
+    from code_interpreter import CodeInterpreter  # noqa: PLC0415
+
     effective = call_timeout if call_timeout is not None else _DEFAULT_TOOL_TIMEOUT_S
-    for attempt in range(2):
+    last_execution: Any = None
+    for attempt in range(_CODE_RUN_ATTEMPTS):
+        ci = await CodeInterpreter.create(native)
         try:
             execution = await _await_maybe_timeout(
                 ci.codes.run(source, language=language),
                 effective,
             )
         except TimeoutError:
-            if attempt == 0:
-                logger.debug("OpenSandbox code.run timed out; retrying once")
-                await asyncio.sleep(0.5)
-                continue
-            raise
-        if attempt == 0 and _is_transient_code_run_result(execution):
+            if attempt + 1 >= _CODE_RUN_ATTEMPTS:
+                raise
+            logger.debug("OpenSandbox code.run timed out; retrying once")
+            delay = _CODE_RUN_BACKOFF_S[min(attempt, len(_CODE_RUN_BACKOFF_S) - 1)]
+            await asyncio.sleep(delay)
+            continue
+        last_execution = execution
+        if _is_transient_code_run_result(execution):
+            if attempt + 1 >= _CODE_RUN_ATTEMPTS:
+                break
             logger.debug(
-                "OpenSandbox code.run returned transient busy state; retrying once"
+                "OpenSandbox code.run returned transient busy state; "
+                "retrying with a fresh interpreter"
             )
-            await asyncio.sleep(0.5)
+            delay = _CODE_RUN_BACKOFF_S[min(attempt, len(_CODE_RUN_BACKOFF_S) - 1)]
+            await asyncio.sleep(delay)
             continue
         return execution
-    raise RuntimeError("unreachable code path in _run_code_with_retry")
+    assert last_execution is not None
+    return last_execution
 
 
 def bind_workspace_volumes_from_spec(
@@ -801,9 +821,8 @@ class OpenSandboxBackend(Backend):
             if call.language == "python"
             else call.code
         )
-        ci = await CodeInterpreter.create(native)
         execution = await _run_code_with_retry(
-            ci,
+            native,
             source,
             call.language,
             call.timeout,
