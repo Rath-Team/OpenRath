@@ -50,7 +50,7 @@ jobs:
           export OPENSANDBOX_INSECURE_SERVER=YES
           uv run opensandbox-server init-config --example docker .sandbox.toml
       - name: Pre-pull sandbox image
-        run: docker pull opensandbox/code-interpreter:v1.0.2
+        run: docker pull opensandbox/code-interpreter:v1.1.0
       - name: Start OpenSandbox server
         run: |
           export OPENSANDBOX_INSECURE_SERVER=YES

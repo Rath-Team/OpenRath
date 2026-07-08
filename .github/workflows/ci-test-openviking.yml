@@ -42,6 +42,11 @@ jobs:
       - uses: astral-sh/setup-uv@v5
         with:
           python-version: '3.12'
+          # When repository secrets are absent we skip uv sync; without this
+          # the post-job cache prune fails because no cache dir was created.
+          prune-cache: false
+      - name: Install dev dependencies
+        run: uv sync --dev --frozen
       - name: Check OpenViking credentials
         id: creds
         env:
@@ -57,7 +62,7 @@ jobs:
           fi
       - name: Install OpenViking SDK
         if: steps.creds.outputs.available == 'true'
-        run: uv sync --extra openviking --frozen
+        run: uv sync --dev --extra openviking --frozen
       - name: Start OpenViking server
         if: steps.creds.outputs.available == 'true'
         env:

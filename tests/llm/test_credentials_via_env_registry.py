@@ -65,6 +65,7 @@ def test_anthropic_key_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_litellm_key_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("litellm")
     from rath.llm.litellm.client import _resolve_litellm_key
 
     monkeypatch.setenv("LITELLM_API_KEY", "lk-env")
