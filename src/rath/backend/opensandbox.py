@@ -170,7 +170,9 @@ def _is_transient_sandbox_create_error(exc: BaseException) -> bool:
                 SandboxReadyTimeoutException,
             )
 
-            if isinstance(cur, (SandboxInternalException, SandboxReadyTimeoutException)):
+            if isinstance(
+                cur, (SandboxInternalException, SandboxReadyTimeoutException)
+            ):
                 msg = str(cur).lower()
                 if any(
                     token in msg
@@ -215,13 +217,12 @@ async def _sandbox_create_with_transient_retry(
     last_exc: BaseException | None = None
     for attempt in range(_SANDBOX_CREATE_ATTEMPTS):
         try:
-            return await _sandbox_create_once(
-                image, timeout, env, entrypoint, volumes
-            )
+            return await _sandbox_create_once(image, timeout, env, entrypoint, volumes)
         except BaseException as exc:
             last_exc = exc
-            if attempt + 1 >= _SANDBOX_CREATE_ATTEMPTS or not _is_transient_sandbox_create_error(
-                exc
+            if (
+                attempt + 1 >= _SANDBOX_CREATE_ATTEMPTS
+                or not _is_transient_sandbox_create_error(exc)
             ):
                 raise
             delay = _SANDBOX_CREATE_BACKOFF_S[
