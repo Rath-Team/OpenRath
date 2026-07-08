@@ -140,6 +140,8 @@ _SANDBOX_CREATE_ATTEMPTS = 3
 _SANDBOX_CREATE_BACKOFF_S = (1.0, 2.0)
 _CREATE_REQUEST_TIMEOUT = timedelta(seconds=120)
 _CREATE_READY_TIMEOUT = timedelta(seconds=120)
+# code.run with no explicit timeout must not block until pytest's 300s marker fires.
+_DEFAULT_TOOL_TIMEOUT_S = 90.0
 
 
 def _execution_stdout_bytes(execution: Any) -> bytes:
@@ -260,6 +262,27 @@ async def _run_command_with_stdout_retry(
             call_timeout,
         )
     return execution
+
+
+async def _run_code_with_retry(
+    ci: Any,
+    source: str,
+    language: str,
+    call_timeout: float | None,
+) -> Any:
+    effective = call_timeout if call_timeout is not None else _DEFAULT_TOOL_TIMEOUT_S
+    for attempt in range(2):
+        try:
+            return await _await_maybe_timeout(
+                ci.codes.run(source, language=language),
+                effective,
+            )
+        except TimeoutError:
+            if attempt == 0:
+                logger.debug("OpenSandbox code.run timed out; retrying once")
+                continue
+            raise
+    raise RuntimeError("unreachable code path in _run_code_with_retry")
 
 
 def bind_workspace_volumes_from_spec(
@@ -753,8 +776,10 @@ class OpenSandboxBackend(Backend):
             else call.code
         )
         ci = await CodeInterpreter.create(native)
-        execution = await _await_maybe_timeout(
-            ci.codes.run(source, language=call.language),
+        execution = await _run_code_with_retry(
+            ci,
+            source,
+            call.language,
             call.timeout,
         )
         stdout = "".join(m.text for m in execution.logs.stdout).encode("utf-8")
