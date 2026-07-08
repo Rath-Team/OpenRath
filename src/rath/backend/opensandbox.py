@@ -243,6 +243,11 @@ async def _sandbox_create_with_transient_retry(
     raise last_exc
 
 
+def _command_stdout_rerun_allowed(cmd_str: str) -> bool:
+    """Only ``print(...)`` probes are safe to re-run on the stdout/exit_code race."""
+    return "print(" in cmd_str
+
+
 async def _run_command_with_stdout_retry(
     native: Any,
     cmd_str: str,
@@ -253,7 +258,12 @@ async def _run_command_with_stdout_retry(
         native.commands.run(cmd_str, opts=opts),
         call_timeout,
     )
-    if _should_retry_command_for_empty_stdout(execution):
+    # Only re-run read-only probes (``print(...)``). Mutating commands such as
+    # ``write_text`` must never execute twice — that race caused 'abb' != 'ab'
+    # in stream FIFO conformance when a retry fired on empty stdout.
+    if _command_stdout_rerun_allowed(
+        cmd_str
+    ) and _should_retry_command_for_empty_stdout(execution):
         logger.debug(
             "OpenSandbox command returned success with empty stdout; retrying once"
         )
