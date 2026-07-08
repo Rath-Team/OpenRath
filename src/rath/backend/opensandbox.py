@@ -134,6 +134,133 @@ async def _await_maybe_timeout(awaitable, timeout: float | None):
         raise TimeoutError from exc
 
 
+# Management API default is 30s — too tight for first sandbox create on a cold
+# runner (image pull + container start). ready_timeout covers health polling.
+_SANDBOX_CREATE_ATTEMPTS = 3
+_SANDBOX_CREATE_BACKOFF_S = (1.0, 2.0)
+_CREATE_REQUEST_TIMEOUT = timedelta(seconds=120)
+_CREATE_READY_TIMEOUT = timedelta(seconds=120)
+
+
+def _execution_stdout_bytes(execution: Any) -> bytes:
+    return "".join(m.text for m in execution.logs.stdout).encode("utf-8")
+
+
+def _should_retry_command_for_empty_stdout(execution: Any) -> bool:
+    """Detect opensandbox-server stdout/exit_code capture race on small runners."""
+    if execution.error is not None or execution.complete is None:
+        return False
+    if _execution_stdout_bytes(execution) or execution.logs.stderr:
+        return False
+    exit_code = execution.exit_code
+    if exit_code is not None and exit_code != 0:
+        return False
+    return True
+
+
+def _is_transient_sandbox_create_error(exc: BaseException) -> bool:
+    """Classify create-time network/timeout failures that are safe to retry."""
+    seen: set[int] = set()
+    cur: BaseException | None = exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        if _SDK_AVAILABLE:
+            from opensandbox.exceptions import (
+                SandboxInternalException,
+                SandboxReadyTimeoutException,
+            )
+
+            if isinstance(cur, (SandboxInternalException, SandboxReadyTimeoutException)):
+                msg = str(cur).lower()
+                if any(
+                    token in msg
+                    for token in ("timeout", "connectivity", "network", "readtimeout")
+                ):
+                    return True
+        name = type(cur).__name__.lower()
+        if "timeout" in name or "connect" in name:
+            return True
+        cur = cur.__cause__ or cur.__context__
+    return False
+
+
+async def _sandbox_create_once(
+    image: str,
+    timeout: timedelta,
+    env: dict[str, str] | None,
+    entrypoint: list[str],
+    volumes: list | None,
+) -> Any:
+    from opensandbox.config import ConnectionConfig
+
+    connection_config = ConnectionConfig(request_timeout=_CREATE_REQUEST_TIMEOUT)
+    return await _OSBSandbox.create(
+        image,
+        timeout=timeout,
+        env=env,
+        entrypoint=entrypoint,
+        volumes=volumes,
+        connection_config=connection_config,
+        ready_timeout=_CREATE_READY_TIMEOUT,
+    )
+
+
+async def _sandbox_create_with_transient_retry(
+    image: str,
+    timeout: timedelta,
+    env: dict[str, str] | None,
+    entrypoint: list[str],
+    volumes: list | None,
+) -> Any:
+    last_exc: BaseException | None = None
+    for attempt in range(_SANDBOX_CREATE_ATTEMPTS):
+        try:
+            return await _sandbox_create_once(
+                image, timeout, env, entrypoint, volumes
+            )
+        except BaseException as exc:
+            last_exc = exc
+            if attempt + 1 >= _SANDBOX_CREATE_ATTEMPTS or not _is_transient_sandbox_create_error(
+                exc
+            ):
+                raise
+            delay = _SANDBOX_CREATE_BACKOFF_S[
+                min(attempt, len(_SANDBOX_CREATE_BACKOFF_S) - 1)
+            ]
+            logger.warning(
+                "OpenSandbox create transient failure (attempt %s/%s); "
+                "retrying in %.1fs: %s",
+                attempt + 1,
+                _SANDBOX_CREATE_ATTEMPTS,
+                delay,
+                exc,
+            )
+            await asyncio.sleep(delay)
+    assert last_exc is not None
+    raise last_exc
+
+
+async def _run_command_with_stdout_retry(
+    native: Any,
+    cmd_str: str,
+    opts: Any,
+    call_timeout: float | None,
+) -> Any:
+    execution = await _await_maybe_timeout(
+        native.commands.run(cmd_str, opts=opts),
+        call_timeout,
+    )
+    if _should_retry_command_for_empty_stdout(execution):
+        logger.debug(
+            "OpenSandbox command returned success with empty stdout; retrying once"
+        )
+        execution = await _await_maybe_timeout(
+            native.commands.run(cmd_str, opts=opts),
+            call_timeout,
+        )
+    return execution
+
+
 def bind_workspace_volumes_from_spec(
     spec: BackendSandboxSpec | None,
     sandbox_root: str,
@@ -208,12 +335,12 @@ async def _create_sandbox_with_optional_bind_fallback(
     """Create sandbox; on bind rejection, retry once with ``volumes=None``."""
 
     try:
-        native = await _OSBSandbox.create(
+        native = await _sandbox_create_with_transient_retry(
             image,
-            timeout=timeout,
-            env=env,
-            entrypoint=entrypoint,
-            volumes=volumes,
+            timeout,
+            env,
+            entrypoint,
+            volumes,
         )
         return native, volumes
     except BaseException as exc:
@@ -231,12 +358,12 @@ async def _create_sandbox_with_optional_bind_fallback(
             exc,
             exc_info=logger.isEnabledFor(logging.DEBUG),
         )
-        native = await _OSBSandbox.create(
+        native = await _sandbox_create_with_transient_retry(
             image,
-            timeout=timeout,
-            env=env,
-            entrypoint=entrypoint,
-            volumes=None,
+            timeout,
+            env,
+            entrypoint,
+            None,
         )
         return native, None
 
@@ -538,11 +665,13 @@ class OpenSandboxBackend(Backend):
             ),
             envs=dict(call.env) if call.env is not None else None,
         )
-        execution = await _await_maybe_timeout(
-            native.commands.run(cmd_str, opts=opts),
+        execution = await _run_command_with_stdout_retry(
+            native,
+            cmd_str,
+            opts,
             call.timeout,
         )
-        stdout = "".join(m.text for m in execution.logs.stdout).encode("utf-8")
+        stdout = _execution_stdout_bytes(execution)
         stderr = "".join(m.text for m in execution.logs.stderr).encode("utf-8")
         elapsed_ms = (
             float(execution.complete.execution_time_in_millis)
