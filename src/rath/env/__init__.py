@@ -7,6 +7,7 @@ from rath.env.errors import (
     EnvStepError,
     TrajectoryPersistenceError,
 )
+from rath.env.interop import ATIF_SCHEMA_VERSION, to_atif
 from rath.env.observations import EnvObservation, observation_from_session
 from rath.env.rewards import RewardFn, RewardResult
 from rath.env.trajectory import (
@@ -24,7 +25,9 @@ from rath.env.trajectory import (
 )
 
 __all__ = [
+    "ATIF_SCHEMA_VERSION",
     "TRAJECTORY_SCHEMA_VERSION",
+    "to_atif",
     "EnvObservation",
     "EnvSetupError",
     "EnvStepError",
