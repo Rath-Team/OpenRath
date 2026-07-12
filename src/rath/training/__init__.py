@@ -1,6 +1,6 @@
 """Trainer-facing validated rollout batches and bounded collectors."""
 
-from rath.training.adapters import to_verl_data_proto
+from rath.training.adapters import to_trl_dataset, to_verl_data_proto
 from rath.training.batch import (
     ROLLOUT_BATCH_SCHEMA_VERSION,
     EpisodeRollout,
@@ -29,5 +29,6 @@ __all__ = [
     "TrainingCollectionError",
     "collect_benchmark_rollouts",
     "collect_env_rollouts",
+    "to_trl_dataset",
     "to_verl_data_proto",
 ]

@@ -47,6 +47,10 @@ verl = [
 benchmarks = [
     "pyyaml>=6",
 ]
+trl = [
+    "trl>=0.19",
+    "datasets>=2.19",
+]
 
 [tool.ruff]
 line-length = 88
