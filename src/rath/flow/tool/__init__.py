@@ -16,6 +16,7 @@ from rath.flow.tool.mcp_adapter import (
     mcp_tools_from_server,
     shared_mcp_loop,
 )
+from rath.flow.tool.policy import ToolPolicy, ToolPolicyEnforcer
 from rath.flow.tool.system_tool import (
     FlowToolCodeRun,
     FlowToolCommandRun,
@@ -52,6 +53,8 @@ __all__ = [
     "MCPToolCall",
     "ToolNameConflictError",
     "ToolDispatchResult",
+    "ToolPolicy",
+    "ToolPolicyEnforcer",
     "dispatch_flow_tool",
     "flow_tool_code_run",
     "flow_tool_command_run",

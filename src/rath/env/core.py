@@ -34,6 +34,7 @@ from rath.env.trajectory import (
 )
 from rath.flow.tool import (
     FlowToolCall,
+    ToolPolicy,
     dispatch_flow_tool,
     merge_tools_for_loop,
 )
@@ -92,6 +93,7 @@ class OpenRathEnvConfig:
     tools_factory: ToolFactory | None = None
     reward_fn: RewardFn | None = None
     max_steps: int | None = None
+    tool_policy: ToolPolicy | None = None
     persist_trajectory: bool = False
     trajectory_path: str | Path | None = None
     episode_metadata: Mapping[str, Any] = field(default_factory=dict)
@@ -200,6 +202,7 @@ class OpenRathEnv:
             tools = self._build_tools()
             phase = "session"
             session = self._build_initial_session(task)
+            session.tool_policy = self.config.tool_policy
             phase = "sandbox"
             session.to(self.config.backend, spec=self.config.sandbox_spec)
             sandbox = session.require_sandbox()

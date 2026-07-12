@@ -134,6 +134,26 @@ def dispatch_flow_tool(
     """
 
     args = dict(arguments or {})
+
+    # The policy gate sits before the tool body, not inside it: a denied call must
+    # not run. The denial is an auditable result, not an exception, so the model
+    # sees a refusal it can react to and the episode survives it.
+    enforcer = session._policy_enforcer
+    if enforcer is not None:
+        denial = enforcer.check(tool.name, args)
+        if denial is not None:
+            denied = ToolExecutionFailure(
+                kind="tool_policy_denied",
+                message=denial,
+                detail=tool.name,
+            )
+            return ToolDispatchResult(
+                raw=denied,
+                content=serialize_tool_result(tool, denied),
+                projection=project_tool_result(tool, denied),
+                failed=True,
+            )
+
     _enter_tool_dispatch()
     try:
         try:
