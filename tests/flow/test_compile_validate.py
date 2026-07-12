@@ -21,7 +21,14 @@ from rath.session.session import Session
 @pytest.fixture(autouse=True)
 def _home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
     monkeypatch.setenv("OPENRATH_HOME", str(tmp_path / "home"))
-    for v in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY"):
+    for v in (
+        "OPENAI_API_KEY",
+        "OPENAI_BASE_URL",
+        "AZURE_OPENAI_API_KEY",
+        "AZURE_OPENAI_ENDPOINT",
+        "AZURE_API_KEY",
+        "ANTHROPIC_API_KEY",
+    ):
         monkeypatch.delenv(v, raising=False)
     yield
 

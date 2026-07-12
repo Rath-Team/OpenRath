@@ -250,3 +250,59 @@ def test_default_resource_key_serializes_non_parallel_safe_tools() -> None:
     assert tool.peak == 1, (
         f"non-parallel-safe tools must serialize on ('global',); peak={tool.peak}"
     )
+
+
+def test_unsafe_call_is_a_full_round_barrier() -> None:
+    state_lock = threading.Lock()
+    state = {"safe": 0, "unsafe": 0, "overlap": False}
+
+    class _Probe(FlowToolCall):
+        def __init__(self, name: str, *, safe: bool) -> None:
+            self._name = name
+            self.parallel_safe = safe
+
+        @property
+        def name(self) -> str:
+            return self._name
+
+        @property
+        def parameters(self) -> Mapping[str, Any]:
+            return {"type": "object"}
+
+        def resource_key(self, arguments: Mapping[str, Any]) -> tuple[str, ...]:
+            return (self._name, str(arguments.get("key", "one")))
+
+        def __call__(self, session: Session, arguments: Mapping[str, Any]) -> Any:
+            lane = "safe" if self.parallel_safe else "unsafe"
+            other = "unsafe" if self.parallel_safe else "safe"
+            with state_lock:
+                if state[other]:
+                    state["overlap"] = True
+                state[lane] += 1
+            time.sleep(0.08)
+            with state_lock:
+                state[lane] -= 1
+            return {"lane": lane}
+
+    safe = _Probe("safe_probe", safe=True)
+    unsafe = _Probe("unsafe_probe", safe=False)
+    parts = (
+        _tc("safe_probe", {"key": "before"}, call_id="safe-before"),
+        _tc("unsafe_probe", {}, call_id="unsafe"),
+        _tc("safe_probe", {"key": "after"}, call_id="safe-after"),
+    )
+    executor = _ScriptedAsyncExecutor([_tool_round(*parts, rid="barrier"), _stop()])
+    backend = get("local")
+    agent = AgentParam(Session.from_agent_prompt("a"), Provider())
+    with backend.open() as sandbox:
+        user = Session.from_user_message("u").bind_sandbox(sandbox)
+        runtime().run(
+            _arun_session_loop(
+                user,
+                agent.agent_session,
+                agent_provider=agent.provider,
+                executor=executor,
+                tools=[safe, unsafe],
+            )
+        )
+    assert state["overlap"] is False

@@ -41,6 +41,9 @@ opensandbox = [
 openviking = [
     "openviking>=0.4.7",
 ]
+verl = [
+    "verl>=0.8,<0.9; python_version < '3.13'",
+]
 
 [tool.ruff]
 line-length = 88

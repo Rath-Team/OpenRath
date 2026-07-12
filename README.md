@@ -320,8 +320,13 @@ python example/01_hello_agent.py
 | 10 | [`10_provider_variation.py`](example/10_provider_variation.py) | Swap model vendors by changing `Provider`, while keeping Session and Workflow code stable. | yes |
 | 11 | [`11_dynamic_selector.py`](example/11_dynamic_selector.py) | Route between self-describing workflows with `flow.Selector`: `if` branching and a `while` loop that ends on `flow.EmptyWorkflow`. | yes |
 | 12 | [`12_compile.py`](example/12_compile.py) | Statically `compile()` a workflow: inspect its resource manifest, run offline `validate()`, and use the lifecycle context manager. | no |
+| 13 | [`13_online_env.py`](example/13_online_env.py) | Use `OpenRathEnv` as an online RL/HITL execution environment with structured tool actions and rewards. | no |
+| 14 | [`14_trajectory_collection.py`](example/14_trajectory_collection.py) | Collect, reload, and materialize compact episode trajectory JSONL. | no |
+| 15 | [`15_benchmark_runner.py`](example/15_benchmark_runner.py) | Run a benchmark task with workspace setup, policy actions, and a pytest verifier. | no |
+| 16 | [`16_training_rollout_collection.py`](example/16_training_rollout_collection.py) | Collect episode-owned rollout batches, wire payloads, and optional verl `DataProto` inputs. | no |
 
 Read [`example/README.md`](example/README.md) for setup details and shared helpers.
+Read [`ONLINE_ENV.md`](ONLINE_ENV.md) for the online RL/HITL environment contract.
 
 ---
 

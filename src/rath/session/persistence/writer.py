@@ -26,8 +26,8 @@ from types import TracebackType
 from typing import IO, Any
 
 from rath.config.secrets import chmod_user_only
+from rath.persistence.lock import FileLock
 from rath.session.chunk import ChunkRow
-from rath.session.persistence._lock import FileLock
 from rath.session.persistence._serialize import (
     build_chunk_record,
     build_header,
@@ -100,9 +100,14 @@ class SessionWriter:
         # before the writer is ever observed, so we never see a "writer
         # exists but no file" state once construction returns.
         self._open()
-        self._write_record(
-            build_header(self._session, sandbox_handle_id=self._sandbox_handle_id)
-        )
+        try:
+            self._write_record(
+                build_header(self._session, sandbox_handle_id=self._sandbox_handle_id)
+            )
+        except BaseException:
+            self._release()
+            self._closed = True
+            raise
 
     @property
     def path(self) -> Path:

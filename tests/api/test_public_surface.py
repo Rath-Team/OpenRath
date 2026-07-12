@@ -72,6 +72,9 @@ def test_rath_does_not_expose_async_subpackage() -> None:
         "rath.flow",
         "rath.llm",
         "rath.backend",
+        "rath.env",
+        "rath.benchmark",
+        "rath.training",
     ],
 )
 def test_public_module_has_no_async_names(modname: str) -> None:

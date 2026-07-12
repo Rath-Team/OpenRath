@@ -23,19 +23,9 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Mapping, Protocol, runtime_checkable
 
-from pydantic import BaseModel
-
-from rath.backend import (
-    CodeResult,
-    CommandResult,
-    FileContent,
-    FileEntries,
-    FileWriteResult,
-    ToolExecutionFailure,
-    ToolResult,
-)
 from rath.flow.tool import (
     FlowToolCall,
+    serialize_tool_result,
 )
 from rath.llm import (
     Provider,
@@ -63,7 +53,6 @@ from rath.session.manager import session_registry
 from rath.session.persistence import SessionWriter
 from rath.session.provider_builtin import DefaultSessionLoopExecutor
 from rath.session.session import Session
-from rath.utils.decoding import decode_subprocess_output
 
 logger = logging.getLogger(__name__)
 
@@ -308,79 +297,10 @@ def _loop_tool_error_payload(
     return json.dumps(payload)
 
 
-def _summarize_inline_result(obj: Any) -> str:
-    """JSON text for arbitrary tool return values."""
-
-    try:
-        if isinstance(obj, BaseModel):
-            payload: Any = obj.model_dump(mode="json")
-        else:
-            payload = obj
-        text = json.dumps(payload, ensure_ascii=False, default=str)
-        if len(text) > 48_000:
-            text = text[:48_000] + "...(truncated)"
-        return text
-    except TypeError:
-        return json.dumps({"repr": repr(obj), "type": type(obj).__name__})
-
-
-def _summarize_tool_result(_call: FlowToolCall, raw: ToolResult | bool) -> str:
-    """JSON text for the next ``role=tool`` message."""
-
-    if isinstance(raw, ToolExecutionFailure):
-        return json.dumps(
-            {
-                "ok": False,
-                "error_kind": raw.kind,
-                "message": raw.message,
-                **({"detail": raw.detail} if raw.detail else {}),
-            }
-        )
-    if isinstance(raw, bool):
-        return json.dumps({"ok": raw})
-    if isinstance(raw, CommandResult):
-        return json.dumps(
-            {
-                "exit_code": raw.exit_code,
-                "stdout": decode_subprocess_output(raw.stdout),
-                "stderr": decode_subprocess_output(raw.stderr),
-                "elapsed_ms": raw.elapsed_ms,
-            }
-        )
-    if isinstance(raw, FileContent):
-        data = raw.data
-        if isinstance(data, bytes):
-            data = decode_subprocess_output(data)
-        text = str(data)
-        if len(text) > 12_000:
-            text = text[:12_000] + "...(truncated)"
-        return json.dumps({"data": text})
-    if isinstance(raw, FileEntries):
-        payload = [
-            {"name": e.name, "path": e.path, "is_dir": e.is_dir}
-            for e in raw.entries[:500]
-        ]
-        return json.dumps({"entries": payload})
-    if isinstance(raw, FileWriteResult):
-        return json.dumps({"bytes_written": raw.bytes_written})
-    if isinstance(raw, CodeResult):
-        stdout = decode_subprocess_output(raw.stdout)
-        stderr = decode_subprocess_output(raw.stderr)
-        return json.dumps(
-            {
-                "text": raw.text,
-                "stdout": stdout,
-                "stderr": stderr,
-                "error": raw.error,
-            }
-        )
-    return json.dumps({"type": type(raw).__name__, "note": "unserialised result"})
-
-
 def _summarize_dispatch_result(tool: FlowToolCall, raw: Any) -> str:
-    if isinstance(raw, ToolResult) or isinstance(raw, bool):
-        return _summarize_tool_result(tool, raw)
-    return _summarize_inline_result(raw)
+    """Backward-compatible private alias for shared result serialization."""
+
+    return serialize_tool_result(tool, raw)
 
 
 def _append_and_persist(

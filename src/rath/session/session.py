@@ -183,6 +183,7 @@ class Session:
         "_cumulative_usage",
         "_pending",
         "_sync_lock",
+        "_chunk_lock",
         "_sandbox_lock",
         "__weakref__",
     )
@@ -224,6 +225,7 @@ class Session:
             None
         )
         self._sync_lock = threading.Lock()
+        self._chunk_lock = threading.Lock()
         # Serializes lazy sandbox open so parallel first-use tool calls cannot
         # each open + acquire a backend sandbox and orphan all but the last.
         self._sandbox_lock = threading.Lock()
@@ -248,6 +250,24 @@ class Session:
         # _async.aloop) call this; setting bypasses the lazy gate because the
         # materialization itself is what produces these writes.
         self._chunk_table = value
+
+    def append_chunk(self, row: ChunkRow) -> int:
+        """Append one materialized chunk and return its zero-based index.
+
+        External appends are rejected while lazy loop materialization is live;
+        the runtime owns that transcript until it publishes the final table.
+        """
+
+        if not isinstance(row, ChunkRow):
+            raise TypeError("row must be a ChunkRow")
+        with self._chunk_lock:
+            if self._pending is not None:
+                raise RuntimeError(
+                    "cannot append a chunk while lazy materialization is in progress"
+                )
+            index = len(self._chunk_table.rows)
+            self._chunk_table = ChunkTable(rows=self._chunk_table.rows + (row,))
+            return index
 
     @property
     def cumulative_usage(self) -> RathLLMTokenUsage | None:

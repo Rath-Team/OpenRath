@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from rath.flow.tool import FlowToolCall
+from rath.flow.tool import FlowToolCall, dispatch_flow_tool
 from rath.llm import (
     ChatClient,
     RathLLMChatRequest,
@@ -47,7 +47,7 @@ class DefaultSessionLoopExecutor:
     ) -> Any:
         """Invoke ``tool(session, arguments)`` (sandbox or user-defined)."""
 
-        return tool(session, dict(arguments or {}))
+        return dispatch_flow_tool(session, tool, arguments).raw
 
 
 __all__ = ["DefaultSessionLoopExecutor"]

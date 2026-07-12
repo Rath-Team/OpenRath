@@ -68,6 +68,26 @@ def test_header_written_immediately_on_construction(
     assert lines[1]["payload"]["content"] == "hi"
 
 
+def test_constructor_header_failure_releases_file_lock(
+    _isolate_openrath_home: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    session = _new_session()
+    original = SessionWriter._write_record
+
+    def _fail(self: SessionWriter, record: dict[str, object]) -> None:
+        raise OSError("header write failed")
+
+    monkeypatch.setattr(SessionWriter, "_write_record", _fail)
+    with pytest.raises(OSError, match="header write failed"):
+        SessionWriter(session)
+    monkeypatch.setattr(SessionWriter, "_write_record", original)
+
+    # Reopening the exact same session path proves the failed constructor did
+    # not retain its advisory lock or file handle.
+    writer = SessionWriter(session)
+    writer.abandon()
+
+
 def test_each_chunk_flushed_immediately(_isolate_openrath_home: Path) -> None:
     s = _new_session()
     writer = SessionWriter(s)

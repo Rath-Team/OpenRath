@@ -22,6 +22,10 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 _OFFLINE_EXAMPLES = [
     ("02_session_lineage.py", "lineage_demo.jsonl"),
     ("06_mcp_tool.py", None),
+    ("13_online_env.py", None),
+    ("14_trajectory_collection.py", None),
+    ("15_benchmark_runner.py", None),
+    ("16_training_rollout_collection.py", None),
 ]
 
 

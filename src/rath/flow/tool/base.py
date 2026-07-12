@@ -28,9 +28,20 @@ class FlowToolCall(ABC):
       Default returns ``("global",)`` for non-parallel-safe tools so they
       pile up on one queue; ``("safe", name)`` for parallel-safe tools so
       they fan out freely.
+    - ``sandbox_scoped``: class attribute. ``False`` (the default) means the
+      instance is assumed to carry state of its own, so the dispatcher
+      serializes it process-wide — a tool object shared by two environments
+      never runs twice at once. ``True`` means the instance is stateless and
+      the only resource it touches is the calling session's sandbox, so the
+      dispatcher narrows every lane to that sandbox and unrelated sessions
+      run concurrently. Built-in tools set this; they are process-wide
+      singletons handed to every loop by :func:`global_system_tools`, so
+      without it a single shared lane would serialize every sandbox in the
+      process.
     """
 
     parallel_safe: bool = False
+    sandbox_scoped: bool = False
 
     @property
     @abstractmethod
