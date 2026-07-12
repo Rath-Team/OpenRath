@@ -19,6 +19,7 @@ from rath.env.trajectory import (
     load_trajectory_jsonl,
     materialize_trajectory,
     trajectory_to_jsonl,
+    utc_now_iso,
     write_trajectory_jsonl,
 )
 
@@ -43,5 +44,6 @@ __all__ = [
     "materialize_trajectory",
     "observation_from_session",
     "trajectory_to_jsonl",
+    "utc_now_iso",
     "write_trajectory_jsonl",
 ]

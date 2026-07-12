@@ -20,6 +20,8 @@ from rath.env import (
     write_trajectory_jsonl,
 )
 
+_STAMP = "2026-07-12T00:00:00+00:00"
+
 
 def _observation(chunks=()) -> EnvObservation:  # type: ignore[no-untyped-def]
     return EnvObservation(
@@ -52,11 +54,12 @@ def _step(index: int = 0, *, reward: float = 1.0) -> TrajectoryStep:
         reward=reward,
         terminated=False,
         truncated=False,
+        created_at=_STAMP,
     )
 
 
 def _episode(steps=(_step(),), *, status: str = "stopped") -> TrajectoryEpisode:  # type: ignore[no-untyped-def]
-    start = TrajectoryEpisodeStart("episode", _observation())
+    start = TrajectoryEpisodeStart("episode", _observation(), created_at=_STAMP)
     chunks = tuple(row for step in steps for row in step.transcript_delta)
     final = replace(
         _observation(),
@@ -80,6 +83,7 @@ def _episode(steps=(_step(),), *, status: str = "stopped") -> TrajectoryEpisode:
         truncated=False,
         status=status,
         final_observation=final,
+        created_at=_STAMP,
     )
     return TrajectoryEpisode(start, tuple(steps), end)
 
@@ -137,12 +141,15 @@ def test_loader_rejects_future_schema_unknown_type_and_step_before_start(
     for name, row, match in [
         (
             "future",
-            {"schema_version": 2, "record_type": "episode_start"},
+            {
+                "schema_version": TRAJECTORY_SCHEMA_VERSION + 1,
+                "record_type": "episode_start",
+            },
             "future schema_version",
         ),
         (
             "unknown",
-            {"schema_version": 1, "record_type": "mystery"},
+            {"schema_version": TRAJECTORY_SCHEMA_VERSION, "record_type": "mystery"},
             "unknown trajectory record_type",
         ),
         ("step", _step().to_jsonable(), "before episode_start"),

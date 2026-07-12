@@ -6,6 +6,7 @@ import math
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
+from datetime import datetime, timezone
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -20,6 +21,7 @@ from rath.persistence import dumps_jsonl, iter_jsonl, write_jsonl
 
 __all__ = [
     "TRAJECTORY_SCHEMA_VERSION",
+    "utc_now_iso",
     "MaterializedTrajectoryStep",
     "TrajectoryEpisode",
     "TrajectoryEpisodeEnd",
@@ -31,7 +33,13 @@ __all__ = [
     "write_trajectory_jsonl",
 ]
 
-TRAJECTORY_SCHEMA_VERSION = 1
+TRAJECTORY_SCHEMA_VERSION = 2
+
+
+def utc_now_iso() -> str:
+    """ISO-8601 UTC stamp. ATIF requires a timestamp on every step."""
+
+    return datetime.now(timezone.utc).isoformat()
 
 
 def _non_empty(value: str, name: str) -> str:
@@ -60,9 +68,11 @@ class TrajectoryEpisodeStart:
     episode_id: str
     initial_observation: EnvObservation
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    created_at: str = field(default_factory=utc_now_iso)
 
     def __post_init__(self) -> None:
         _non_empty(self.episode_id, "episode_id")
+        _non_empty(self.created_at, "created_at")
         if self.initial_observation.session_id != self.episode_id:
             raise ValueError("episode_start observation session_id mismatch")
         object.__setattr__(self, "metadata", _mapping(self.metadata, "metadata"))
@@ -74,6 +84,7 @@ class TrajectoryEpisodeStart:
             "episode_id": self.episode_id,
             "initial_observation": self.initial_observation.to_jsonable(),
             "metadata": jsonable_value(self.metadata, path="metadata"),
+            "created_at": self.created_at,
         }
 
 
@@ -90,9 +101,11 @@ class TrajectoryStep:
     info: Mapping[str, Any] = field(default_factory=dict)
     status: str = "completed"
     error: Mapping[str, Any] | None = None
+    created_at: str = field(default_factory=utc_now_iso)
 
     def __post_init__(self) -> None:
         _non_empty(self.episode_id, "episode_id")
+        _non_empty(self.created_at, "created_at")
         if type(self.step_index) is not int or self.step_index < 0:
             raise ValueError("step_index must be a non-negative integer")
         if not isinstance(self.terminated, bool) or not isinstance(
@@ -139,6 +152,7 @@ class TrajectoryStep:
             "info": jsonable_value(self.info, path="info"),
             "status": self.status,
             "error": jsonable_value(self.error, path="error"),
+            "created_at": self.created_at,
         }
 
 
@@ -155,9 +169,11 @@ class TrajectoryEpisodeEnd:
     final_observation: EnvObservation | None
     metadata: Mapping[str, Any] = field(default_factory=dict)
     error: Mapping[str, Any] | None = None
+    created_at: str = field(default_factory=utc_now_iso)
 
     def __post_init__(self) -> None:
         _non_empty(self.episode_id, "episode_id")
+        _non_empty(self.created_at, "created_at")
         if type(self.step_count) is not int or self.step_count < 0:
             raise ValueError("step_count must be a non-negative integer")
         if not isinstance(self.terminated, bool) or not isinstance(
@@ -208,6 +224,7 @@ class TrajectoryEpisodeEnd:
             ),
             "metadata": jsonable_value(self.metadata, path="metadata"),
             "error": jsonable_value(self.error, path="error"),
+            "created_at": self.created_at,
         }
 
 
@@ -350,6 +367,7 @@ def _decode_record(raw: Mapping[str, Any]) -> Any:
                 _require_mapping(raw["initial_observation"], "initial_observation")
             ),
             metadata=_require_mapping(raw.get("metadata", {}), "metadata"),
+            created_at=_require_string(raw["created_at"], "created_at"),
         )
     if record_type == "step":
         tool_result = raw.get("tool_result")
@@ -375,6 +393,7 @@ def _decode_record(raw: Mapping[str, Any]) -> Any:
             info=_require_mapping(raw.get("info", {}), "info"),
             status=_require_string(raw.get("status", "completed"), "status"),
             error=None if error is None else _require_mapping(error, "error"),
+            created_at=_require_string(raw["created_at"], "created_at"),
         )
     if record_type == "episode_end":
         final = raw.get("final_observation")
@@ -399,6 +418,7 @@ def _decode_record(raw: Mapping[str, Any]) -> Any:
             ),
             metadata=_require_mapping(raw.get("metadata", {}), "metadata"),
             error=None if error is None else _require_mapping(error, "error"),
+            created_at=_require_string(raw["created_at"], "created_at"),
         )
     raise ValueError(f"unknown trajectory record_type {record_type!r}")
 
