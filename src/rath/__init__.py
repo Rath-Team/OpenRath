@@ -24,13 +24,24 @@ from rath import (
     memory,
 )
 
-__all__ = ["backend", "benchmark", "env", "flow", "memory", "session", "training"]
+__all__ = [
+    "backend",
+    "benchmark",
+    "data",
+    "env",
+    "flow",
+    "memory",
+    "session",
+    "training",
+]
 
 
 def __getattr__(name: str) -> Any:
     """Lazy-load heavier subpackages on first attribute access."""
     if name == "benchmark":
         return importlib.import_module(f"{__name__}.benchmark")
+    if name == "data":
+        return importlib.import_module(f"{__name__}.data")
     if name == "env":
         return importlib.import_module(f"{__name__}.env")
     if name == "session":
