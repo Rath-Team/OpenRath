@@ -2457,6 +2457,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+benchmarks = [
+    { name = "pyyaml" },
+]
 litellm = [
     { name = "litellm" },
 ]
@@ -2502,9 +2505,10 @@ requires-dist = [
     { name = "opensandbox-server", marker = "extra == 'opensandbox'", specifier = ">=0.2.1" },
     { name = "openviking", marker = "extra == 'openviking'", specifier = ">=0.4.7" },
     { name = "pydantic", specifier = ">=2.0.0,<3" },
+    { name = "pyyaml", marker = "extra == 'benchmarks'", specifier = ">=6" },
     { name = "verl", marker = "python_full_version < '3.13' and extra == 'verl'", specifier = ">=0.8,<0.9" },
 ]
-provides-extras = ["litellm", "opensandbox", "openviking", "verl"]
+provides-extras = ["litellm", "opensandbox", "openviking", "verl", "benchmarks"]
 
 [package.metadata.requires-dev]
 dev = [
