@@ -76,6 +76,8 @@ class LocalBackend(Backend):
         supports_code_interpreter=True,
         cold_start_ms_p50=10,
         max_sandboxes=None,
+        # LocalBackend runs in-process and ignores spec.image entirely.
+        features=frozenset(),
     )
 
     _SUPPORTED_CALLS: ClassVar[frozenset[type[BackendTool]]] = frozenset(

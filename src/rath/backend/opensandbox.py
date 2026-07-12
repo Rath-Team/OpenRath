@@ -39,7 +39,11 @@ from pathlib import Path
 from typing import Any, ClassVar
 
 from rath.backend.abc import Backend, BackendSandbox, BackendSandboxSpec
-from rath.backend.capabilities import Capabilities, IsolationLevel
+from rath.backend.capabilities import (
+    BackendCapability,
+    Capabilities,
+    IsolationLevel,
+)
 from rath.backend.registry import register
 from rath.backend.results import (
     CodeResult,
@@ -468,6 +472,12 @@ class OpenSandboxBackend(Backend):
         supports_code_interpreter=True,
         cold_start_ms_p50=None,
         max_sandboxes=None,
+        features=frozenset(
+            {
+                BackendCapability.PER_TASK_IMAGE,
+                BackendCapability.NETWORK_ISOLATION,
+            }
+        ),
     )
 
     _SUPPORTED_CALLS: ClassVar[frozenset[type[BackendTool]]] = frozenset(
