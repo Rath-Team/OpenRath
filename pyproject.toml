@@ -82,6 +82,7 @@ include = [
 dev = [
     "mypy>=1.20.2",
     "pytest>=9.0.3",
+    "pyyaml>=6",
     "pytest-benchmark>=4.0.0",
     "pytest-rerunfailures>=15.0",
     "pytest-timeout>=2.3.0",

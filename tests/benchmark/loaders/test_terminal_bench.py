@@ -1,9 +1,18 @@
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
+
+import pytest
 
 from rath.backend import BackendCapability
 from rath.benchmark.datasets import load_terminal_bench
+
+# Reading task.yaml needs PyYAML, which ships in the optional `benchmarks` extra.
+pytestmark = pytest.mark.skipif(
+    importlib.util.find_spec("yaml") is None,
+    reason="openrath[benchmarks] is not installed",
+)
 
 _ROOT = Path(__file__).parent / "fixtures" / "terminal_bench_tasks"
 _ALL = frozenset(BackendCapability)

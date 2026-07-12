@@ -2497,6 +2497,7 @@ dev = [
     { name = "pytest-rerunfailures" },
     { name = "pytest-timeout" },
     { name = "pytest-xdist" },
+    { name = "pyyaml" },
     { name = "ruff" },
 ]
 docs = [
@@ -2534,6 +2535,7 @@ dev = [
     { name = "pytest-rerunfailures", specifier = ">=15.0" },
     { name = "pytest-timeout", specifier = ">=2.3.0" },
     { name = "pytest-xdist", specifier = ">=3.6.0" },
+    { name = "pyyaml", specifier = ">=6" },
     { name = "ruff", specifier = ">=0.15.12" },
 ]
 docs = [
