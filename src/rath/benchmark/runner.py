@@ -65,6 +65,23 @@ class BenchmarkRunner:
         self.task = task
         self.env_config = env_config or OpenRathEnvConfig(max_steps=task.max_steps)
 
+    def effective_env_config(self) -> OpenRathEnvConfig:
+        """Env config for this task: the task's own image wins over the default."""
+
+        return replace(
+            self.env_config,
+            max_steps=(
+                self.task.max_steps
+                if self.task.max_steps is not None
+                else self.env_config.max_steps
+            ),
+            sandbox_spec=(
+                self.task.sandbox_spec
+                if self.task.sandbox_spec is not None
+                else self.env_config.sandbox_spec
+            ),
+        )
+
     def run(self, policy: PolicyFn, *, fail_fast: bool = True) -> BenchmarkRunResult:
         state = _RunVerificationState()
 
@@ -76,15 +93,7 @@ class BenchmarkRunner:
             state.verified_step_index = state.pending_step_index
             return verification.to_reward_result()
 
-        config = replace(
-            self.env_config,
-            max_steps=(
-                self.task.max_steps
-                if self.task.max_steps is not None
-                else self.env_config.max_steps
-            ),
-            reward_fn=_reward,
-        )
+        config = replace(self.effective_env_config(), reward_fn=_reward)
         env = OpenRathEnv(config)
         observation: EnvObservation | None = None
         try:

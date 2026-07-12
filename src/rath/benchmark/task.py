@@ -9,7 +9,12 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any
 
-from rath.backend import FileWriteResult, ToolExecutionFailure
+from rath.backend import (
+    BackendCapability,
+    BackendSandboxSpec,
+    FileWriteResult,
+    ToolExecutionFailure,
+)
 from rath.benchmark.errors import BenchmarkSetupError
 from rath.env.observations import jsonable_value
 from rath.flow.tool import flow_tool_files_write
@@ -70,6 +75,7 @@ class BenchmarkTask:
     initial_files: Mapping[str, str | bytes] = field(default_factory=dict)
     max_steps: int | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
+    sandbox_spec: BackendSandboxSpec | str | None = None
 
     def __post_init__(self) -> None:
         for field_name in (
@@ -102,6 +108,19 @@ class BenchmarkTask:
         assert isinstance(metadata, dict)
         object.__setattr__(self, "metadata", MappingProxyType(metadata))
         object.__setattr__(self, "internet", bool(self.internet))
+
+    @property
+    def required_capabilities(self) -> frozenset[BackendCapability]:
+        """Backend features this task cannot run without."""
+
+        required: set[BackendCapability] = set()
+        if self.sandbox_spec is not None:
+            required.add(BackendCapability.PER_TASK_IMAGE)
+        if not self.internet:
+            # An offline task is only offline if the sandbox enforces it. Matching
+            # command names cannot stop a socket opened inside the interpreter.
+            required.add(BackendCapability.NETWORK_ISOLATION)
+        return frozenset(required)
 
     @classmethod
     def from_mapping(
