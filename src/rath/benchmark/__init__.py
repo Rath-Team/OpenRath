@@ -5,6 +5,7 @@ from rath.benchmark.errors import (
     BenchmarkSetupError,
     VerifierExecutionError,
 )
+from rath.benchmark.loader import LoaderReport, SkippedTask, gate_tasks
 from rath.benchmark.result import BenchmarkRunResult
 from rath.benchmark.runner import BenchmarkRunner, PolicyFn
 from rath.benchmark.task import (
@@ -20,6 +21,9 @@ from rath.benchmark.verifier import (
 )
 
 __all__ = [
+    "LoaderReport",
+    "SkippedTask",
+    "gate_tasks",
     "BENCHMARK_TASK_SCHEMA_VERSION",
     "BenchmarkError",
     "BenchmarkRunResult",
