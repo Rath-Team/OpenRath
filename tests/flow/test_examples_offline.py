@@ -26,6 +26,8 @@ _OFFLINE_EXAMPLES = [
     ("14_trajectory_collection.py", None),
     ("15_benchmark_runner.py", None),
     ("16_training_rollout_collection.py", None),
+    ("17_policy_and_dag.py", None),
+    ("18_benchmark_loaders.py", None),
 ]
 
 

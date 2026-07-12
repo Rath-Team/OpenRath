@@ -87,6 +87,77 @@ would make `run_shell_command` in one rollout wait for `run_shell_command` in
 an unrelated one — and a user cannot substitute a fresh instance for a built-in
 the way `tools_factory=` allows for their own tools.
 
+## Tool Policy
+
+A model under training does whatever the environment permits. A permission that
+lives in a prompt, or in an agent's default configuration, is a permission the
+model can walk around. `ToolPolicy` is therefore enforced at
+`dispatch_flow_tool()` — the single point every tool call passes through, from
+both session loops and `OpenRathEnv.step()`.
+
+```python
+OpenRathEnvConfig(
+    tool_policy=ToolPolicy(
+        allow_tools=frozenset({"read_workspace_file", "write_workspace_file"}),
+        fs_roots=("/workspace",),
+        command_deny=("rm", "curl"),
+        max_calls=200,
+    )
+)
+```
+
+A denied call never reaches the tool body. It comes back as a
+`ToolExecutionFailure` with kind `tool_policy_denied`: the model sees a refusal it
+can react to, the trajectory records the attempt, and the episode continues.
+
+**Network isolation is not a policy field.** Denying `curl` by name cannot stop
+`socket.connect` inside an interpreter, and a bound that can be stepped over is
+worse than no bound, because it reads like protection. Network isolation is a
+backend capability instead (`BackendCapability.NETWORK_ISOLATION`), and a task
+declaring `internet=False` is skipped on backends that do not have it.
+
+## Trajectory Interop
+
+Three layers, each with one job.
+
+The **compact trajectory** (schema v2) is the internal truth: linear, lossless,
+size growing linearly with appended chunks. Records carry a UTC `created_at`.
+
+`to_atif(episode)` exports **ATIF-v1.7**, the interchange format Harbor, TRL, and
+SkyRL read. The version is pinned; ATIF adds fields between minor versions, so a
+bump is a code change, never a silent reinterpretation.
+
+The **lineage DAG** (`rath.data`) is the layer ATIF cannot express. ATIF nests
+subagents but has no fork/merge graph; OpenRath's lineage has both, and
+`LineageKind` already distinguishes `OP_FORK`, `OP_MERGE`, `OP_DETACH`, and
+`OP_SESSION_COMPRESS`. `build_session_graph()` exports it losslessly and
+interprets nothing: what a branch *means* is the consumer's call.
+
+One extractor ships: `extract_preference_pairs()` pairs scored siblings of a
+common parent into `chosen`/`rejected`. Siblings saw the same state before they
+diverged, which is the only comparison here not confounded by a different
+starting point. Branches of different parents are never paired.
+
+## Benchmark Coverage
+
+Loaders in `rath.benchmark.datasets` return a `LoaderReport`, never a bare task
+list. A score computed over a silently truncated subset is a lie, so every task
+the backend cannot run is skipped with the missing capability named, and
+`report.coverage` is the runnable fraction.
+
+| Loader | Needs | Notes |
+| --- | --- | --- |
+| `load_swebench` | per-task image | Binary `FAIL_TO_PASS`/`PASS_TO_PASS`; saturated, so use it as an eval, not a training signal |
+| `load_terminal_bench` | per-task image; compose for 12 of 241 tasks | Images are built locally by the caller, not pulled |
+| `load_swesmith` | per-task image | Repository-level images (~250) make large rollout batches affordable |
+| `load_edgebench` | **host Docker daemon** | Compatibility only |
+
+EdgeBench scores inside a second container that the harness starts, and its own
+documentation says running the harness inside a container hits Docker-in-Docker
+problems. On a container-based sandbox every EdgeBench task is therefore skipped
+with `host_docker` named as the missing capability. We do not pretend to support
+a full EdgeBench run.
+
 ## Session WAL and Trajectory JSONL
 
 The two persistence planes serve different purposes:
