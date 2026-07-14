@@ -20,11 +20,22 @@ import pytest
 
 from rath.memory import MemoryStore, MemoryStoreSpec
 from rath.memory.abc import MemoryBackend
+from rath.memory.adapters.local import LocalMemoryBackend
 from rath.memory.registry import get as get_backend
-from rath.memory.registry import list_names
+from rath.memory.registry import get_class, list_names, set_default
 
 _OV_URL = os.environ.get("OPEN_VIKING_URL", "http://127.0.0.1:1933")
 _OV_CONF = Path.home() / ".openviking" / "ov.conf"
+
+
+def _ensure_local_registered() -> None:
+    try:
+        get_class("local")
+    except Exception:  # noqa: BLE001 - tests may clear the process registry
+        import rath.memory.registry as reg
+
+        reg._REGISTRY["local"] = LocalMemoryBackend
+        set_default("local")
 
 
 def _openviking_ready() -> bool:
@@ -52,6 +63,7 @@ def _openviking_ready() -> bool:
 
 
 def _available_backends() -> list[str]:
+    _ensure_local_registered()
     out = ["local"]
     if _openviking_ready():
         out.append("openviking")
@@ -69,6 +81,7 @@ def _isolate_openrath_home(
 
 @pytest.fixture(params=_available_backends())
 def conformant_backend(request: pytest.FixtureRequest) -> Iterator[MemoryBackend]:
+    _ensure_local_registered()
     name = request.param
     b = get_backend(name)
     yield b

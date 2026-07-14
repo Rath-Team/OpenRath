@@ -259,12 +259,24 @@ The `local` backend is always available and runs file, command, and code tools a
 
 Memory is a persistent plane parallel to sandbox execution. It is not a tool result and not just prompt text; it is state that can be attached to an agent, recalled before a run, and committed after a run.
 
-The base install includes a zero-dependency local memory backend. It stores data under `.openrath/memory/`, supports lexical BM25 recall without an LLM, and can use embeddings when an embedding provider is configured. OpenViking is available as an optional backend for users who want a richer external memory service.
+The base install includes a zero-dependency local memory backend. It stores data under `.openrath/memory/`, supports lexical BM25 recall without an LLM, and can use embeddings when an embedding provider is configured. OpenViking is available as an optional backend for users who want a richer external memory service. Milvus is available as an optional vector memory backend for semantic recall on Milvus Lite, Milvus server, or Zilliz Cloud.
 
 ```python
 with flow.Agent("You remember useful facts.", model="gpt-5.5", memory="local") as agent:
     agent.remember_memory("The user works mostly in Python.")
     hits = agent.recall_memory("preferred programming language")
+```
+
+Milvus defaults to local Milvus Lite (`./milvus.db`) and uses the existing
+OpenAI-compatible embedding settings:
+
+```python
+# pip install "openrath[milvus]"
+# Optional: export MILVUS_URI=http://localhost:19530 or a Zilliz Cloud URI.
+# Optional for cloud: export MILVUS_TOKEN=...
+with flow.Agent("You remember useful facts.", model="gpt-5.5", memory="milvus") as agent:
+    agent.remember_memory("The user evaluates vector databases.")
+    hits = agent.recall_memory("vector database preference")
 ```
 
 Agent memory APIs are intentionally discoverable:
@@ -326,6 +338,7 @@ Optional sandbox and memory integrations:
 ```bash
 pip install "openrath[opensandbox]"
 pip install "openrath[openviking]"
+pip install "openrath[milvus]"
 ```
 
 For source development:

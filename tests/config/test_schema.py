@@ -88,6 +88,32 @@ def test_memory_config_accepts_local_provider() -> None:
     assert entry.chat_provider == "chat"
 
 
+def test_memory_config_accepts_milvus_provider() -> None:
+    c = MemoryConfig(
+        default_provider="milvus-main",
+        providers={
+            "milvus-main": MemoryProviderConfig(
+                backend_kind="milvus",
+                uri="https://example.api.gcp-us-west1.zillizcloud.com",
+                api_key="sk-milvus",
+                db_name="default",
+                collection_name="openrath_memory",
+                embedding_provider="embed",
+                embedding_model="text-embedding-3-small",
+                embedding_dimensions=256,
+                max_scan=4096,
+            ),
+        },
+    )
+    entry = c.providers["milvus-main"]
+    assert entry.backend_kind == "milvus"
+    assert entry.uri == "https://example.api.gcp-us-west1.zillizcloud.com"
+    assert entry.api_key == "sk-milvus"
+    assert entry.collection_name == "openrath_memory"
+    assert entry.embedding_dimensions == 256
+    assert entry.max_scan == 4096
+
+
 def test_legacy_config_without_memory_section_loads_defaults() -> None:
     legacy = {
         "version": 1,

@@ -90,19 +90,26 @@ class MCPConfig(BaseModel):
 
 
 class MemoryProviderConfig(BaseModel):
-    """One named entry under ``memory.providers`` (local backend only).
+    """One named entry under ``memory.providers``.
 
     ``embedding_provider`` and ``chat_provider`` name entries under
-    ``llm.providers`` used by :class:`~rath.memory.adapters.local.LocalMemoryBackend`
-    for vector search and commit-time memo extraction respectively.
-    OpenViking connection settings stay on ``MemoryStoreSpec.options`` or
-    environment variables — they are not modeled here.
+    ``llm.providers`` used by memory backends for vector search and
+    commit-time memo extraction respectively. ``api_key`` is externalized to
+    ``credentials.json`` on save and is mapped to backend-specific secret
+    fields such as the Milvus token at open time.
     """
 
-    backend_kind: Literal["local"] = "local"
+    backend_kind: Literal["local", "milvus"] = "local"
     path: str | None = None
     embedding_provider: str | None = None
     chat_provider: str | None = None
+    uri: str | None = None
+    api_key: str | None = None
+    db_name: str | None = None
+    collection_name: str | None = None
+    embedding_model: str | None = None
+    embedding_dimensions: int | None = None
+    max_scan: int | None = None
 
     model_config = ConfigDict(extra="allow")
 

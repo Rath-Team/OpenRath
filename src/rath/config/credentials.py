@@ -13,6 +13,7 @@ the load/save boundary.
 Secret layout in ``credentials.json``::
 
     {"version": 1, "llm": {"providers": {"<name>": "<api_key>"}},
+                    "memory": {"providers": {"<name>": "<api_key>"}},
                     "backend": {"providers": {"<name>": "<api_key>"}}}
 
 Only sections that hold a ``providers`` mapping with an ``api_key`` field are
@@ -34,7 +35,7 @@ __all__ = [
 CREDENTIALS_FILENAME = "credentials.json"
 
 # Config sections whose ``providers[*].api_key`` is a secret to externalize.
-SECRET_SECTIONS: tuple[str, ...] = ("llm", "backend")
+SECRET_SECTIONS: tuple[str, ...] = ("llm", "memory", "backend")
 
 
 def split_secrets(payload: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
