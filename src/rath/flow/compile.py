@@ -235,6 +235,10 @@ def _credential_resolves(kind: str, provider: Provider) -> bool:
             # LiteLLM defers credential resolution to its own per-vendor env
             # lookups; a missing rath-level key is not necessarily an error.
             return True
+        if kind == "atlascloud":
+            from rath.llm.atlascloud import resolve_atlascloud_api_key
+
+            return bool(resolve_atlascloud_api_key(provider))
         # openai-compatible (default)
         from rath.llm.openai.client import _resolve_api_key, _resolve_base_url
 

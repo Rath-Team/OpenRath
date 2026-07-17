@@ -187,6 +187,17 @@ _register(
     )
 )
 
+# Atlas Cloud OpenAI-compatible
+_register(EnvSpec("ATLASCLOUD_API_KEY", EnvKind.SECRET, "Atlas Cloud api key"))
+_register(EnvSpec("ATLAS_CLOUD_API_KEY", EnvKind.SECRET, "Atlas Cloud api key alias"))
+_register(
+    EnvSpec(
+        "ATLASCLOUD_DEFAULT_MODEL",
+        EnvKind.ROUTING,
+        "default model for the Atlas Cloud client",
+    )
+)
+
 # Azure OpenAI
 _register(EnvSpec("AZURE_OPENAI_ENDPOINT", EnvKind.ROUTING, "Azure OpenAI endpoint"))
 _register(EnvSpec("AZURE_OPENAI_API_KEY", EnvKind.SECRET, "Azure OpenAI api key"))
