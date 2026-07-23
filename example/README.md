@@ -43,6 +43,10 @@ python example/01_hello_agent.py
 | 10 | [10_provider_variation.py](10_provider_variation.py) | swap the LLM vendor via `Provider` | yes |
 | 11 | [11_dynamic_selector.py](11_dynamic_selector.py) | `flow.Selector` — LLM-routed `if` / `while` over workflows | yes |
 | 12 | [12_compile.py](12_compile.py) | `Workflow.compile()` — static resource manifest, offline `validate()`, lifecycle | **no** |
+| 13 | [13_online_env.py](13_online_env.py) | `OpenRathEnv` — trainer-supplied tool actions, observations, rewards | **no** |
+| 14 | [14_trajectory_collection.py](14_trajectory_collection.py) | collect, reload, and materialize compact episode JSONL | **no** |
+| 15 | [15_benchmark_runner.py](15_benchmark_runner.py) | benchmark task metadata, policy actions, pytest verifier | **no** |
+| 16 | [16_training_rollout_collection.py](16_training_rollout_collection.py) | collect episode-owned batches and trainer wire payloads | **no** |
 
 \* 09 runs key-free using the local memory backend; a key only unlocks an
 optional live turn at the end.
@@ -61,6 +65,10 @@ OpenRath borrows PyTorch's shape. The ladder walks the same analogy:
 | `nn.Module` | `flow.Agent` / `flow.Workflow` | 01, 08 |
 | control flow | `flow.Selector` | 11 |
 | `torch.compile` | `Workflow.compile()` | 12 |
+| RL environment | `OpenRathEnv` | 13 |
+| RL data | compact `TrajectoryEpisode` JSONL | 14 |
+| benchmark | `BenchmarkTask` / `Verifier` | 15 |
+| trainer input | `EpisodeRollout` / `RolloutBatch` | 16 |
 
 ## Shared helpers (`_shared/`)
 

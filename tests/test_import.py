@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import inspect
+import subprocess
+import sys
 
 
 def test_namespace_flow_submodules() -> None:
@@ -89,3 +91,55 @@ def test_global_system_tools_contains_builtin_instances() -> None:
     ):
         assert key in g
         assert isinstance(g[key], FlowToolCall)
+
+
+def test_rl_infrastructure_public_imports() -> None:
+    from rath.benchmark import (
+        BenchmarkRunner,
+        BenchmarkRunResult,
+        BenchmarkTask,
+        PytestVerifier,
+        VerifierExecutionError,
+    )
+    from rath.env import (
+        OpenRathEnv,
+        OpenRathEnvConfig,
+        ToolAction,
+        TrajectoryEpisode,
+        load_trajectory_jsonl,
+    )
+    from rath.training import (
+        EpisodeRollout,
+        RolloutBatch,
+        collect_benchmark_rollouts,
+        to_verl_data_proto,
+    )
+
+    for symbol in (
+        BenchmarkRunResult,
+        BenchmarkRunner,
+        BenchmarkTask,
+        PytestVerifier,
+        VerifierExecutionError,
+        OpenRathEnv,
+        OpenRathEnvConfig,
+        ToolAction,
+        TrajectoryEpisode,
+        load_trajectory_jsonl,
+        EpisodeRollout,
+        RolloutBatch,
+        collect_benchmark_rollouts,
+        to_verl_data_proto,
+    ):
+        assert symbol is not None
+
+
+def test_training_import_is_optional_dependency_lazy() -> None:
+    code = (
+        "import sys, rath.training; "
+        "assert not {'verl', 'torch', 'numpy', 'tensordict'}.intersection(sys.modules)"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code], capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stderr

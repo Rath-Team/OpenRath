@@ -116,6 +116,7 @@ class FlowToolCommandRun(FlowToolCall):
     """Built-in LLM tool: run one shell command in the active sandbox."""
 
     parallel_safe = False
+    sandbox_scoped = True
 
     def resource_key(self, arguments: Mapping[str, Any]) -> tuple[str, ...]:
         return ("exec",)
@@ -160,6 +161,7 @@ class FlowToolFilesWrite(FlowToolCall):
     """Built-in LLM tool: write UTF-8 text into the sandbox workspace."""
 
     parallel_safe = True
+    sandbox_scoped = True
 
     def resource_key(self, arguments: Mapping[str, Any]) -> tuple[str, ...]:
         return _path_resource_key(arguments)
@@ -196,6 +198,7 @@ class FlowToolFilesRead(FlowToolCall):
     """Built-in LLM tool: read a file from the sandbox workspace."""
 
     parallel_safe = True
+    sandbox_scoped = True
 
     def resource_key(self, arguments: Mapping[str, Any]) -> tuple[str, ...]:
         return _path_resource_key(arguments)
@@ -239,6 +242,7 @@ class FlowToolFilesList(FlowToolCall):
     """Built-in LLM tool: list directory entries under a sandbox path."""
 
     parallel_safe = True
+    sandbox_scoped = True
 
     def resource_key(self, arguments: Mapping[str, Any]) -> tuple[str, ...]:
         return _path_resource_key(arguments)
@@ -270,6 +274,7 @@ class FlowToolFilesExists(FlowToolCall):
     """Built-in LLM tool: check whether a sandbox path exists."""
 
     parallel_safe = True
+    sandbox_scoped = True
 
     def resource_key(self, arguments: Mapping[str, Any]) -> tuple[str, ...]:
         return _path_resource_key(arguments)
@@ -301,6 +306,7 @@ class FlowToolCodeRun(FlowToolCall):
     """Built-in LLM tool: execute code in the sandbox interpreter."""
 
     parallel_safe = False
+    sandbox_scoped = True
 
     def resource_key(self, arguments: Mapping[str, Any]) -> tuple[str, ...]:
         return ("code",)

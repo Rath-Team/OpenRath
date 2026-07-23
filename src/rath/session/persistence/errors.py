@@ -1,15 +1,5 @@
-"""Errors raised by :mod:`rath.session.persistence`."""
+"""Compatibility re-export for the shared persistence error."""
 
-from __future__ import annotations
+from rath.persistence.errors import PersistenceError
 
 __all__ = ["PersistenceError"]
-
-
-class PersistenceError(RuntimeError):
-    """Raised when a persisted session file is corrupt or unreadable.
-
-    The string carries a human-readable summary including the file path and,
-    where available, the byte offset / line number of the failure. The
-    original :class:`json.JSONDecodeError` or :class:`OSError` is chained via
-    :attr:`__cause__`.
-    """

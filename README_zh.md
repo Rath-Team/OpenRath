@@ -312,8 +312,13 @@ python example/01_hello_agent.py
 | 10 | [`10_provider_variation.py`](example/10_provider_variation.py) | 通过更改 `Provider` 切换模型厂商，同时保持 Session 和 Workflow 代码稳定。 | 是 |
 | 11 | [`11_dynamic_selector.py`](example/11_dynamic_selector.py) | 使用 `flow.Selector` 在自描述的 workflows 之间路由：`if` 分支和一个在 `flow.EmptyWorkflow` 时结束的 `while` 循环。 | 是 |
 | 12 | [`12_compile.py`](example/12_compile.py) | 静态 `compile()` 一个 workflow：查看其资源清单、离线 `validate()`、并使用生命周期上下文管理器。 | 否 |
+| 13 | [`13_online_env.py`](example/13_online_env.py) | 将 `OpenRathEnv` 用作在线 RL/HITL 执行环境，支持结构化工具动作和 reward。 | 否 |
+| 14 | [`14_trajectory_collection.py`](example/14_trajectory_collection.py) | 采集、重载并 materialize 紧凑的 episode trajectory JSONL。 | 否 |
+| 15 | [`15_benchmark_runner.py`](example/15_benchmark_runner.py) | 运行带 workspace 初始化、policy actions 和 pytest verifier 的 benchmark task。 | 否 |
+| 16 | [`16_training_rollout_collection.py`](example/16_training_rollout_collection.py) | 采集 episode-owned rollout batch、wire payload 与可选 verl `DataProto` 输入。 | 否 |
 
 阅读 [`example/README.md`](example/README.md) 获取设置细节和共享 helpers。
+阅读 [`ONLINE_ENV.md`](ONLINE_ENV.md) 获取在线 RL/HITL 环境接口约定。
 
 ---
 

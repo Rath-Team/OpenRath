@@ -3,6 +3,12 @@
 from __future__ import annotations
 
 from rath.flow.tool.base import FlowToolCall
+from rath.flow.tool.dispatch import (
+    ToolDispatchResult,
+    dispatch_flow_tool,
+    project_tool_result,
+    serialize_tool_result,
+)
 from rath.flow.tool.mcp_adapter import (
     MCPClient,
     MCPToolCall,
@@ -10,6 +16,7 @@ from rath.flow.tool.mcp_adapter import (
     mcp_tools_from_server,
     shared_mcp_loop,
 )
+from rath.flow.tool.policy import ToolPolicy, ToolPolicyEnforcer
 from rath.flow.tool.system_tool import (
     FlowToolCodeRun,
     FlowToolCommandRun,
@@ -45,6 +52,10 @@ __all__ = [
     "MCPClient",
     "MCPToolCall",
     "ToolNameConflictError",
+    "ToolDispatchResult",
+    "ToolPolicy",
+    "ToolPolicyEnforcer",
+    "dispatch_flow_tool",
     "flow_tool_code_run",
     "flow_tool_command_run",
     "flow_tool_files_exists",
@@ -56,5 +67,7 @@ __all__ = [
     "mcp_tools_from_config",
     "mcp_tools_from_server",
     "shared_mcp_loop",
+    "project_tool_result",
+    "serialize_tool_result",
     "tools_dict_to_schemas",
 ]

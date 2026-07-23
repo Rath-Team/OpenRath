@@ -1,0 +1,39 @@
+name: Test verl Adapter
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/rath/training/adapters/**'
+      - 'src/rath/training/__init__.py'
+      - 'src/rath/training/batch.py'
+      - 'src/rath/training/errors.py'
+      - 'tests/training/test_verl_adapter.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/rath/training/adapters/**'
+      - 'src/rath/training/__init__.py'
+      - 'src/rath/training/batch.py'
+      - 'src/rath/training/errors.py'
+      - 'tests/training/test_verl_adapter.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
+
+permissions:
+  contents: read
+
+jobs:
+  test-verl-adapter:
+    name: pytest (verl, py3.12)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: '3.12'
+      - run: uv sync --dev --extra verl --frozen
+      - run: uv run pytest tests/training/test_verl_adapter.py -q

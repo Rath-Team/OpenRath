@@ -35,6 +35,7 @@ from rath._async.sync_to_async import (
 )
 from rath.flow.tool import (
     FlowToolCall,
+    dispatch_flow_tool,
     merge_tools_for_loop,
     tools_dict_to_schemas,
 )
@@ -68,21 +69,6 @@ from rath.session.session import (
     _enter_tool_dispatch,
     _exit_tool_dispatch,
 )
-
-
-def _tool_body(tool: FlowToolCall, session: Session, args: Mapping[str, Any]) -> Any:
-    """Run ``tool(session, args)`` with the runtime tool-dispatch flag set.
-
-    The flag flips ``Session.chunk_table`` / ``cumulative_usage`` reads into
-    "raw" mode, so a tool body inspecting its own session does not deadlock
-    on the still-in-flight ``_pending`` future.
-    """
-    _enter_tool_dispatch()
-    try:
-        return tool(session, dict(args or {}))
-    finally:
-        _exit_tool_dispatch()
-
 
 __all__ = [
     "AsyncSessionLoopExecutor",
@@ -155,10 +141,11 @@ class _DefaultAsyncExecutor:
     ) -> Any:
         # Tools are synchronous (`FlowToolCall.__call__`); off-load to a
         # worker thread so a slow tool can't park the runtime loop.
-        # ``_tool_body`` sets the re-entrancy flag so reads of
+        # ``dispatch_flow_tool`` sets the re-entrancy flag so reads of
         # ``session.chunk_table`` from inside the tool see the in-flight
         # transcript without trying to synchronize() the producing future.
-        return await asyncio.to_thread(_tool_body, tool, session, arguments)
+        result = await asyncio.to_thread(dispatch_flow_tool, session, tool, arguments)
+        return result.raw
 
 
 class _SyncExecutorAsyncAdapter:
@@ -237,7 +224,7 @@ async def _adispatch_round(
     """
     n = len(tool_calls)
     bodies: list[str | None] = [None] * n
-    queues: dict[tuple[str, ...], list[int]] = {}
+    runnable: dict[int, tuple[FlowToolCall, Mapping[str, Any], tuple[str, ...]]] = {}
     pre_errors: dict[int, str] = {}
 
     for idx, tc in enumerate(tool_calls):
@@ -273,7 +260,7 @@ async def _adispatch_round(
                 detail=type(exc).__name__,
             )
             continue
-        queues.setdefault(tuple(key), []).append(idx)
+        runnable[idx] = (flow_tool, args, tuple(key))
 
     for idx, body in pre_errors.items():
         bodies[idx] = body
@@ -298,8 +285,34 @@ async def _adispatch_round(
                     detail=type(exc).__name__,
                 )
 
-    if queues:
-        await asyncio.gather(*(_run_queue(q) for q in queues.values()))
+    # Parallel-safe calls run in resource-keyed queues. Every unsafe call is a
+    # full round barrier: finish the preceding safe stage, run it alone, then
+    # start the following safe stage.
+    stages: list[list[int]] = []
+    safe_stage: list[int] = []
+    for idx in range(n):
+        item = runnable.get(idx)
+        if item is None:
+            continue
+        flow_tool = item[0]
+        if flow_tool.parallel_safe:
+            safe_stage.append(idx)
+            continue
+        if safe_stage:
+            stages.append(safe_stage)
+            safe_stage = []
+        stages.append([idx])
+    if safe_stage:
+        stages.append(safe_stage)
+
+    for stage in stages:
+        if len(stage) == 1 and not runnable[stage[0]][0].parallel_safe:
+            await _run_queue(stage)
+            continue
+        queues: dict[tuple[str, ...], list[int]] = {}
+        for idx in stage:
+            queues.setdefault(runnable[idx][2], []).append(idx)
+        await asyncio.gather(*(_run_queue(queue) for queue in queues.values()))
 
     for idx, tc in enumerate(tool_calls):
         maybe_body = bodies[idx]

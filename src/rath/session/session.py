@@ -30,6 +30,7 @@ from rath.session.graph.recording import LineageRecorder
 
 if TYPE_CHECKING:
     from rath._async.lazy import LazyValue
+    from rath.flow.tool.policy import ToolPolicy, ToolPolicyEnforcer
 
 logger = logging.getLogger(__name__)
 
@@ -183,7 +184,9 @@ class Session:
         "_cumulative_usage",
         "_pending",
         "_sync_lock",
+        "_chunk_lock",
         "_sandbox_lock",
+        "_policy_enforcer",
         "__weakref__",
     )
 
@@ -223,7 +226,11 @@ class Session:
         self._pending: LazyValue[tuple[ChunkTable, RathLLMTokenUsage | None]] | None = (
             None
         )
+        # A tool policy, when set, is enforced at dispatch — the single point every
+        # tool call passes through. See rath.flow.tool.policy.
+        self._policy_enforcer: ToolPolicyEnforcer | None = None
         self._sync_lock = threading.Lock()
+        self._chunk_lock = threading.Lock()
         # Serializes lazy sandbox open so parallel first-use tool calls cannot
         # each open + acquire a backend sandbox and orphan all but the last.
         self._sandbox_lock = threading.Lock()
@@ -248,6 +255,24 @@ class Session:
         # _async.aloop) call this; setting bypasses the lazy gate because the
         # materialization itself is what produces these writes.
         self._chunk_table = value
+
+    def append_chunk(self, row: ChunkRow) -> int:
+        """Append one materialized chunk and return its zero-based index.
+
+        External appends are rejected while lazy loop materialization is live;
+        the runtime owns that transcript until it publishes the final table.
+        """
+
+        if not isinstance(row, ChunkRow):
+            raise TypeError("row must be a ChunkRow")
+        with self._chunk_lock:
+            if self._pending is not None:
+                raise RuntimeError(
+                    "cannot append a chunk while lazy materialization is in progress"
+                )
+            index = len(self._chunk_table.rows)
+            self._chunk_table = ChunkTable(rows=self._chunk_table.rows + (row,))
+            return index
 
     @property
     def cumulative_usage(self) -> RathLLMTokenUsage | None:
@@ -427,6 +452,21 @@ class Session:
         self.sandbox_backend = backend
         self._sandbox_open_spec = _coerce_sandbox_open_spec(spec)
         return self
+
+    @property
+    def tool_policy(self) -> "ToolPolicy | None":
+        """Capability bounds enforced for every tool call made by this session."""
+
+        enforcer = self._policy_enforcer
+        return None if enforcer is None else enforcer.policy
+
+    @tool_policy.setter
+    def tool_policy(self, policy: "ToolPolicy | None") -> None:
+        # Imported here, not at module scope: rath.flow.tool.base imports this
+        # module, so a top-level import would close the cycle.
+        from rath.flow.tool.policy import ToolPolicyEnforcer as _Enforcer
+
+        self._policy_enforcer = None if policy is None else _Enforcer(policy)
 
     def close_sandbox(self) -> Session:
         """Drop this session's sandbox reference; close when refcount hits zero."""

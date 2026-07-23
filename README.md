@@ -243,6 +243,14 @@ def forward(self, session: Session) -> Session:
 
 A workflow can chain agents, fork sessions, compress context, call tools, dispatch to child workflows, and return a new session. Because the input and output are both `Session`, workflows can be nested without inventing a new state format at each layer.
 
+### Workflow Compile — Static Before Runtime
+
+`workflow.compile()` gives large agent systems an inspection and preflight layer before execution. It turns a nested workflow into a concrete `ResourceManifest`, so teams can see every reachable `AgentParam`, provider, memory binding, and dynamic `Selector` point in one place. That manifest makes README diagrams, CI checks, credential validation, and deterministic memory lifecycle management straightforward while preserving the normal `workflow(session)` execution path.
+
+<p align="center">
+  <img src="assets/readme/workflow-compile-static-pass.png" alt="Workflow compile static resource manifest" width="860" />
+</p>
+
 For routing that depends on the conversation at runtime, `flow.Selector` is an LLM-backed router over self-describing workflows (each carries a `description`). It returns the next workflow to run, or a no-op `flow.EmptyWorkflow` when the task is done — so `if` / `while` stay plain Python:
 
 ```python
@@ -312,8 +320,13 @@ python example/01_hello_agent.py
 | 10 | [`10_provider_variation.py`](example/10_provider_variation.py) | Swap model vendors by changing `Provider`, while keeping Session and Workflow code stable. | yes |
 | 11 | [`11_dynamic_selector.py`](example/11_dynamic_selector.py) | Route between self-describing workflows with `flow.Selector`: `if` branching and a `while` loop that ends on `flow.EmptyWorkflow`. | yes |
 | 12 | [`12_compile.py`](example/12_compile.py) | Statically `compile()` a workflow: inspect its resource manifest, run offline `validate()`, and use the lifecycle context manager. | no |
+| 13 | [`13_online_env.py`](example/13_online_env.py) | Use `OpenRathEnv` as an online RL/HITL execution environment with structured tool actions and rewards. | no |
+| 14 | [`14_trajectory_collection.py`](example/14_trajectory_collection.py) | Collect, reload, and materialize compact episode trajectory JSONL. | no |
+| 15 | [`15_benchmark_runner.py`](example/15_benchmark_runner.py) | Run a benchmark task with workspace setup, policy actions, and a pytest verifier. | no |
+| 16 | [`16_training_rollout_collection.py`](example/16_training_rollout_collection.py) | Collect episode-owned rollout batches, wire payloads, and optional verl `DataProto` inputs. | no |
 
 Read [`example/README.md`](example/README.md) for setup details and shared helpers.
+Read [`ONLINE_ENV.md`](ONLINE_ENV.md) for the online RL/HITL environment contract.
 
 ---
 

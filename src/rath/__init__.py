@@ -15,6 +15,7 @@ behavior should source it themselves before launching their script.
 
 from __future__ import annotations
 
+import importlib
 from typing import Any
 
 from rath import (
@@ -23,13 +24,28 @@ from rath import (
     memory,
 )
 
-__all__ = ["backend", "flow", "memory", "session"]
+__all__ = [
+    "backend",
+    "benchmark",
+    "data",
+    "env",
+    "flow",
+    "memory",
+    "session",
+    "training",
+]
 
 
 def __getattr__(name: str) -> Any:
-    """Lazy-load ``session`` on first attribute access."""
+    """Lazy-load heavier subpackages on first attribute access."""
+    if name == "benchmark":
+        return importlib.import_module(f"{__name__}.benchmark")
+    if name == "data":
+        return importlib.import_module(f"{__name__}.data")
+    if name == "env":
+        return importlib.import_module(f"{__name__}.env")
     if name == "session":
-        from rath import session as _session
-
-        return _session
+        return importlib.import_module(f"{__name__}.session")
+    if name == "training":
+        return importlib.import_module(f"{__name__}.training")
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
