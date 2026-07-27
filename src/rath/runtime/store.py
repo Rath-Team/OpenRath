@@ -45,6 +45,17 @@ class RunStore(Protocol):
 
     def latest_checkpoint(self, run_id: UUID) -> Checkpoint | None: ...
 
+    def list_checkpoints(self, run_id: UUID) -> tuple[Checkpoint, ...]: ...
+
+    def commit_checkpoint(
+        self,
+        checkpoint: Checkpoint,
+        *,
+        worker_id: str,
+        fencing_token: int,
+        expected_run_version: int,
+    ) -> Run: ...
+
     def create_interrupt(
         self,
         interrupt: Interrupt,
@@ -93,5 +104,17 @@ class RunStore(Protocol):
         *,
         now: datetime | None = None,
     ) -> tuple[UUID, ...]: ...
+
+    def finish_claim(
+        self,
+        run_id: UUID,
+        *,
+        worker_id: str,
+        fencing_token: int,
+        expected_run_version: int,
+        target: RunStatus,
+        event_type: str = "run.execution.completed",
+        event_data: Mapping[str, object] | None = None,
+    ) -> Run: ...
 
     def close(self) -> None: ...

@@ -16,6 +16,7 @@ from rath.runtime.models import (
     RunStatus,
     assert_transition,
 )
+from rath.runtime.postgres import PostgresRunStore
 from rath.runtime.sqlite import SQLiteRunStore
 from rath.runtime.store import RunStore
 
@@ -30,6 +31,7 @@ __all__ = [
     "InterruptKind",
     "InvalidRunTransition",
     "LocalRuntime",
+    "PostgresRunStore",
     "Run",
     "RunEvent",
     "RunStatus",

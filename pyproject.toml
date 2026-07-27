@@ -42,7 +42,7 @@ openviking = [
     "openviking>=0.4.7",
 ]
 server = [
-    "starlette>=0.47,<1",
+    "starlette>=1.3.1,<2",
     "uvicorn>=0.35,<1",
     "httpx>=0.28,<1",
 ]

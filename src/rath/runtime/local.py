@@ -14,7 +14,7 @@ from rath.context import RunContext
 from rath.definition import ExecutionPlan, NodeKind, WorkflowCompiler
 from rath.observability import GuardedTelemetry, NoOpTelemetry, Telemetry
 from rath.runtime.models import Checkpoint, ClaimedRun, Run, RunStatus
-from rath.runtime.sqlite import SQLiteRunStore
+from rath.runtime.store import RunStore
 
 __all__ = ["LocalRuntime", "StepContext"]
 
@@ -38,7 +38,7 @@ class LocalRuntime:
 
     def __init__(
         self,
-        store: SQLiteRunStore,
+        store: RunStore,
         *,
         telemetry: Telemetry | None = None,
     ) -> None:
