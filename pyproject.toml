@@ -56,6 +56,9 @@ otel = [
     "opentelemetry-api>=1.36,<2",
     "opentelemetry-sdk>=1.36,<2",
 ]
+s3 = [
+    "boto3>=1.40,<2",
+]
 
 [tool.ruff]
 line-length = 88

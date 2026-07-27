@@ -6,11 +6,17 @@ import inspect
 import json
 from collections.abc import Awaitable, Mapping
 from typing import Protocol, cast
+from uuid import UUID
 
 from rath.adapters.context import AdapterRequestContext
 from rath.adapters.schema import validate_json
 from rath.adapters.specs import ToolSpec
 from rath.context import RunContext
+from rath.runtime.effects import (
+    EffectLedger,
+    InvocationStatus,
+    arguments_digest,
+)
 from rath.security import (
     Action,
     ApprovalRequiredError,
@@ -37,8 +43,14 @@ class ToolHandler(Protocol):
 
 
 class ToolExecutor:
-    def __init__(self, policy: PolicyEngine) -> None:
+    def __init__(
+        self,
+        policy: PolicyEngine,
+        *,
+        effect_ledger: EffectLedger | None = None,
+    ) -> None:
         self.policy = policy
+        self.effect_ledger = effect_ledger
 
     async def execute(
         self,
@@ -49,6 +61,8 @@ class ToolExecutor:
         adapter_context: AdapterRequestContext,
         run_context: RunContext,
         approved: bool = False,
+        run_id: UUID | None = None,
+        idempotency_key: str | None = None,
     ) -> object:
         validate_json(arguments, spec.input_schema)
         try:
@@ -74,9 +88,36 @@ class ToolExecutor:
                     policy_id="tool-spec",
                 )
             )
-        result = handler(arguments, adapter_context)
-        if inspect.isawaitable(result):
-            result = await cast(Awaitable[object], result)
+        invocation = None
+        ledger = self.effect_ledger
+        if ledger is not None:
+            if run_id is None:
+                raise ValueError("run_id is required when effect ledger is enabled")
+            invocation = ledger.prepare(
+                run_id=run_id,
+                tool_name=f"{spec.name}@{spec.version}",
+                effect_class=spec.effects,
+                arguments_digest=arguments_digest(arguments),
+                idempotency_key=idempotency_key,
+            )
+            if invocation.status is InvocationStatus.SUCCEEDED:
+                return invocation.result
+            if invocation.status in {
+                InvocationStatus.AMBIGUOUS,
+                InvocationStatus.DISPATCHED,
+            }:
+                raise RuntimeError(
+                    "tool invocation outcome is ambiguous and requires reconciliation"
+                )
+            invocation = ledger.mark_dispatched(invocation.id)
+        try:
+            result = handler(arguments, adapter_context)
+            if inspect.isawaitable(result):
+                result = await cast(Awaitable[object], result)
+        except BaseException as exc:
+            if invocation is not None and ledger is not None:
+                ledger.fail(invocation.id, f"{type(exc).__name__}: {exc}")
+            raise
         if spec.output_schema is not None:
             validate_json(result, spec.output_schema)
         encoded = json.dumps(result, ensure_ascii=False, default=str).encode("utf-8")
@@ -86,7 +127,14 @@ class ToolExecutor:
             or spec.max_output_bytes,
         )
         if len(encoded) > limit:
+            if invocation is not None and ledger is not None:
+                ledger.fail(
+                    invocation.id,
+                    f"tool output exceeded {limit} bytes",
+                )
             raise ToolOutputTooLarge(
                 f"tool output is {len(encoded)} bytes; maximum is {limit}"
             )
+        if invocation is not None and ledger is not None:
+            ledger.complete(invocation.id, result)
         return result

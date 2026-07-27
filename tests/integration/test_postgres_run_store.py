@@ -7,6 +7,7 @@ from uuid import uuid4
 
 import pytest
 
+from rath.definition import EffectClass
 from rath.runtime import (
     ApprovalDecision,
     ApprovalDecisionKind,
@@ -14,9 +15,11 @@ from rath.runtime import (
     ConflictError,
     Interrupt,
     InterruptKind,
+    PostgresEffectLedger,
     PostgresRunStore,
     Run,
     RunStatus,
+    arguments_digest,
 )
 
 pytestmark = pytest.mark.skipif(
@@ -153,3 +156,27 @@ def test_postgres_checkpoint_fencing_and_orphan_recovery(
             expected_run_version=updated.version,
             target=RunStatus.SUCCEEDED,
         )
+
+
+def test_postgres_effect_ledger_persists_ambiguous_dispatch(
+    store: PostgresRunStore,
+) -> None:
+    run = store.create_run(_run())
+    running = store.transition_run(
+        run.id, expected_version=0, target=RunStatus.RUNNING
+    )
+    ledger = PostgresEffectLedger(store.dsn, schema=store.schema)
+    invocation = ledger.prepare(
+        run_id=running.id,
+        tool_name="payment.charge@1",
+        effect_class=EffectClass.NON_IDEMPOTENT,
+        arguments_digest=arguments_digest({"amount": 42}),
+        idempotency_key="charge-42",
+    )
+    dispatched = ledger.mark_dispatched(invocation.id)
+
+    assert dispatched.status.value == "dispatched"
+    stale = ledger.reconcile_stale(
+        older_than=datetime.now(timezone.utc) + timedelta(seconds=1)
+    )
+    assert stale[0].status.value == "ambiguous"

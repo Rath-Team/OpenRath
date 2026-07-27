@@ -108,6 +108,24 @@ CREATE TABLE IF NOT EXISTS run_leases (
 
 CREATE INDEX IF NOT EXISTS run_leases_expiry_idx
     ON run_leases (active, expires_at);
+
+CREATE TABLE IF NOT EXISTS tool_invocations (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    tool_name TEXT NOT NULL,
+    effect_class TEXT NOT NULL,
+    idempotency_key TEXT,
+    arguments_digest TEXT NOT NULL,
+    status TEXT NOT NULL,
+    result_json TEXT,
+    error TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (run_id, idempotency_key)
+);
+
+CREATE INDEX IF NOT EXISTS tool_invocations_reconcile_idx
+    ON tool_invocations (status, effect_class, updated_at);
 """
 
 
