@@ -21,7 +21,7 @@ import pytest
 
 from rath._async.aloop import _arun_session_loop
 from rath._async.runtime import runtime
-from rath.backend import get
+from rath.backend import BackendSandboxSpec, get
 from rath.flow.agent_param import AgentParam, Provider
 from rath.flow.tool import FlowToolCall
 from rath.llm import (
@@ -147,7 +147,7 @@ def test_arun_session_loop_stop_without_tools() -> None:
 
 def test_arun_session_loop_write_file_via_tool_then_stop(tmp_path: Any) -> None:
     body = {
-        "path": str(tmp_path / "_arun_probe.txt"),
+        "path": "_arun_probe.txt",
         "content": "ASYNC_LOOP_MARKER",
     }
     first = _tool_round(
@@ -160,7 +160,7 @@ def test_arun_session_loop_write_file_via_tool_then_stop(tmp_path: Any) -> None:
     agent = AgentParam(Session.from_agent_prompt("scripted assistant"), Provider())
 
     backend = get("local")
-    with backend.open() as sandbox:
+    with backend.open(BackendSandboxSpec(working_dir=str(tmp_path))) as sandbox:
         user = Session.from_user_message("Please write the file.").bind_sandbox(sandbox)
         out = runtime().run(
             _arun_session_loop(

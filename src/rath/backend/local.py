@@ -1,7 +1,10 @@
-"""Host-process backend: subprocesses and filesystem under a temp working directory.
+"""Trusted-host backend: subprocesses and filesystem under a working directory.
 
-Always available. Relative paths in tool calls are resolved against the sandbox
-working directory; absolute paths pass through unchanged.
+Always available, but **not an isolation boundary**. Filesystem tool paths and
+command working directories are contained under the configured workspace;
+executed code still inherits the host process privileges and may access the
+host through normal language or shell APIs. Service deployments must reject
+this backend unless an explicit trusted-host policy allows it.
 
 The implementation is async-internal: ``_aopen`` / ``_aclose`` / ``_adispatch``
 are the canonical entry points. Each blocking primitive (``subprocess.run``,
@@ -63,11 +66,15 @@ from rath.backend.tool_types import (
 from rath.utils.decoding import decode_subprocess_output
 
 
-@register("local")
-class LocalBackend(Backend):
-    """Run tool calls as host-side subprocesses with a per-sandbox working dir."""
+class _PathViolation(ValueError):
+    """A filesystem operation escaped the configured workspace."""
 
-    name: ClassVar[str] = "local"
+
+@register("trusted-host")
+class TrustedHostBackend(Backend):
+    """Run tool calls on the host under an explicitly trusted policy."""
+
+    name: ClassVar[str] = "trusted-host"
 
     _CAPABILITIES: ClassVar[Capabilities] = Capabilities(
         isolation=IsolationLevel.PROCESS,
@@ -117,9 +124,9 @@ class LocalBackend(Backend):
         else:
             owns_working_dir = False
             working_dir = spec.working_dir
-        await asyncio.to_thread(
-            lambda: Path(working_dir).mkdir(parents=True, exist_ok=True)
-        )
+        working_path = Path(working_dir).expanduser()
+        await asyncio.to_thread(working_path.mkdir, parents=True, exist_ok=True)
+        working_dir = str(await asyncio.to_thread(working_path.resolve))
         sandbox = BackendSandbox(backend=self, handle=working_dir, spec=spec)
         # Mutate handle sets only on the runtime loop thread.
         self._open_handles.add(working_dir)
@@ -168,15 +175,30 @@ class LocalBackend(Backend):
                 )
 
     def _resolve(self, sandbox: BackendSandbox, path: str) -> Path:
-        p = Path(path)
-        if p.is_absolute():
-            return p
-        return Path(sandbox.handle) / path
+        root = Path(sandbox.handle).resolve(strict=False)
+        candidate = Path(path).expanduser()
+        if not candidate.is_absolute():
+            candidate = root / candidate
+        resolved = candidate.resolve(strict=False)
+        try:
+            resolved.relative_to(root)
+        except ValueError as exc:
+            raise _PathViolation(
+                f"path {path!r} is outside sandbox workspace {str(root)!r}"
+            ) from exc
+        return resolved
 
     def _command_run(
         self, sandbox: BackendSandbox, call: BackendToolCommandRun
     ) -> CommandResult | ToolExecutionFailure:
-        cwd = self._resolve(sandbox, call.cwd) if call.cwd else Path(sandbox.handle)
+        try:
+            cwd = (
+                self._resolve(sandbox, call.cwd)
+                if call.cwd
+                else Path(sandbox.handle).resolve(strict=False)
+            )
+        except _PathViolation as exc:
+            return tool_failure_from("path_violation", exc)
         env_arg: dict[str, str] | None = None
         if call.env is not None:
             env_arg = {**os.environ, **call.env}
@@ -221,11 +243,13 @@ class LocalBackend(Backend):
     def _files_read(
         self, sandbox: BackendSandbox, call: BackendToolFilesRead
     ) -> FileContent | ToolExecutionFailure:
-        p = self._resolve(sandbox, call.path)
         try:
+            p = self._resolve(sandbox, call.path)
             if call.encoding is None:
                 return FileContent(data=p.read_bytes())
             return FileContent(data=p.read_text(encoding=call.encoding))
+        except _PathViolation as exc:
+            return tool_failure_from("path_violation", exc)
         except FileNotFoundError as exc:
             return tool_failure_from("file_not_found", exc, detail=str(p))
         except OSError as exc:
@@ -234,13 +258,15 @@ class LocalBackend(Backend):
     def _files_write(
         self, sandbox: BackendSandbox, call: BackendToolFilesWrite
     ) -> FileWriteResult | ToolExecutionFailure:
-        p = self._resolve(sandbox, call.path)
         payload_bytes = (
             call.data.encode("utf-8") if isinstance(call.data, str) else call.data
         )
         try:
+            p = self._resolve(sandbox, call.path)
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_bytes(payload_bytes)
+        except _PathViolation as exc:
+            return tool_failure_from("path_violation", exc)
         except OSError as exc:
             return tool_failure_from("os_error", exc)
         with contextlib.suppress(OSError):
@@ -250,8 +276,8 @@ class LocalBackend(Backend):
     def _files_list(
         self, sandbox: BackendSandbox, call: BackendToolFilesList
     ) -> FileEntries | ToolExecutionFailure:
-        p = self._resolve(sandbox, call.path)
         try:
+            p = self._resolve(sandbox, call.path)
             entries = [
                 FileEntry(
                     name=child.name,
@@ -260,6 +286,8 @@ class LocalBackend(Backend):
                 )
                 for child in p.iterdir()
             ]
+        except _PathViolation as exc:
+            return tool_failure_from("path_violation", exc)
         except OSError as exc:
             return tool_failure_from("os_error", exc)
         entries.sort(key=lambda e: e.name)
@@ -270,7 +298,7 @@ class LocalBackend(Backend):
     ) -> bool:
         try:
             return self._resolve(sandbox, call.path).exists()
-        except OSError:
+        except (OSError, _PathViolation):
             # Treat permission errors / unreadable parent dirs as "not present"
             # rather than raising into the loop; matches POSIX stat() semantics
             # from the caller's perspective.
@@ -310,3 +338,14 @@ class LocalBackend(Backend):
             stderr=proc.stderr if proc.stderr is not None else b"",
             error=error,
         )
+
+
+@register("local")
+class LocalBackend(TrustedHostBackend):
+    """Compatibility alias for :class:`TrustedHostBackend`.
+
+    The ``local`` name remains available for v1 compatibility. New code should
+    request ``trusted-host`` so the lack of process isolation is explicit.
+    """
+
+    name: ClassVar[str] = "local"
