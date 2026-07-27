@@ -7,12 +7,14 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from uuid import UUID, uuid4
 
 from rath._json import JSONValue, freeze_mapping
-from rath.context import RunContext
 from rath.security.policy import Action, PolicyDecision, ResourceRef
+
+if TYPE_CHECKING:
+    from rath.context import RunContext
 
 __all__ = [
     "AuditEvent",

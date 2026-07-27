@@ -400,6 +400,127 @@ class SQLiteRunStore:
             connection.close()
         return None if row is None else self._checkpoint_from_row(row)
 
+    def list_checkpoints(self, run_id: UUID) -> tuple[Checkpoint, ...]:
+        connection = self._connect()
+        try:
+            rows = connection.execute(
+                """
+                SELECT * FROM checkpoints
+                WHERE run_id = ? ORDER BY sequence
+                """,
+                (str(run_id),),
+            ).fetchall()
+        finally:
+            connection.close()
+        return tuple(self._checkpoint_from_row(row) for row in rows)
+
+    def commit_checkpoint(
+        self,
+        checkpoint: Checkpoint,
+        *,
+        worker_id: str,
+        fencing_token: int,
+        expected_run_version: int,
+    ) -> Run:
+        with self._transaction() as connection:
+            self._required_lease(
+                connection,
+                checkpoint.run_id,
+                worker_id=worker_id,
+                fencing_token=fencing_token,
+            )
+            current = self._run_from_row(
+                self._required_run_row(connection, checkpoint.run_id)
+            )
+            if current.version != expected_run_version:
+                raise ConflictError("run version conflict")
+            if current.status is not RunStatus.RUNNING:
+                raise ConflictError("checkpoint requires a running run")
+            row = connection.execute(
+                """
+                SELECT COALESCE(MAX(sequence), 0) AS sequence
+                FROM checkpoints WHERE run_id = ?
+                """,
+                (str(checkpoint.run_id),),
+            ).fetchone()
+            expected_sequence = int(row["sequence"]) + 1
+            if checkpoint.sequence != expected_sequence:
+                raise ConflictError(
+                    f"checkpoint sequence must be {expected_sequence}, "
+                    f"got {checkpoint.sequence}"
+                )
+            self._insert_checkpoint(connection, checkpoint)
+            connection.execute(
+                """
+                UPDATE runs
+                SET state_json = ?, next_nodes_json = ?, updated_at = ?,
+                    version = version + 1
+                WHERE id = ? AND version = ?
+                """,
+                (
+                    _dump(checkpoint.state),
+                    _dump(checkpoint.next_nodes),
+                    checkpoint.created_at.isoformat(),
+                    str(checkpoint.run_id),
+                    expected_run_version,
+                ),
+            )
+            self._append_event(
+                connection,
+                checkpoint.run_id,
+                "run.checkpoint.created",
+                {
+                    "checkpoint_id": str(checkpoint.id),
+                    "sequence": checkpoint.sequence,
+                },
+            )
+            return self._run_from_row(
+                self._required_run_row(connection, checkpoint.run_id)
+            )
+
+    def finish_claim(
+        self,
+        run_id: UUID,
+        *,
+        worker_id: str,
+        fencing_token: int,
+        expected_run_version: int,
+        target: RunStatus,
+        event_type: str = "run.execution.completed",
+        event_data: Mapping[str, object] | None = None,
+    ) -> Run:
+        with self._transaction() as connection:
+            self._required_lease(
+                connection,
+                run_id,
+                worker_id=worker_id,
+                fencing_token=fencing_token,
+            )
+            current = self._run_from_row(self._required_run_row(connection, run_id))
+            if current.version != expected_run_version:
+                raise ConflictError("run version conflict")
+            assert_transition(current.status, target)
+            self._update_status(
+                connection,
+                current,
+                target=target,
+                expected_version=expected_run_version,
+            )
+            connection.execute(
+                """
+                UPDATE run_leases SET active = 0, updated_at = ?
+                WHERE run_id = ?
+                """,
+                (_now().isoformat(), str(run_id)),
+            )
+            self._append_event(
+                connection,
+                run_id,
+                event_type,
+                event_data or {"status": target.value},
+            )
+            return self._run_from_row(self._required_run_row(connection, run_id))
+
     def create_interrupt(
         self,
         interrupt: Interrupt,
@@ -754,6 +875,32 @@ class SQLiteRunStore:
         )
         if cursor.rowcount != 1:
             raise ConflictError("run version conflict")
+
+    def _insert_checkpoint(
+        self,
+        connection: sqlite3.Connection,
+        checkpoint: Checkpoint,
+    ) -> None:
+        connection.execute(
+            """
+            INSERT INTO checkpoints(
+                id, run_id, sequence, plan_hash, state_json,
+                next_nodes_json, pending_interrupts_json,
+                effect_watermark, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                str(checkpoint.id),
+                str(checkpoint.run_id),
+                checkpoint.sequence,
+                checkpoint.plan_hash,
+                _dump(checkpoint.state),
+                _dump(checkpoint.next_nodes),
+                _dump(tuple(str(item) for item in checkpoint.pending_interrupts)),
+                checkpoint.effect_watermark,
+                checkpoint.created_at.isoformat(),
+            ),
+        )
 
     def _append_event(
         self,

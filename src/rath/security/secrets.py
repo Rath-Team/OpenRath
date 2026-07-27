@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from rath.context import RunContext
+if TYPE_CHECKING:
+    from rath.context import RunContext
 
 __all__ = [
     "ResolvedSecret",
@@ -61,4 +62,3 @@ class SecretResolver(Protocol):
         *,
         context: RunContext,
     ) -> ResolvedSecret: ...
-

@@ -5,11 +5,13 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 from rath._json import JSONValue, freeze_mapping
-from rath.context import RunContext
 from rath.errors import ErrorCode, RathError
+
+if TYPE_CHECKING:
+    from rath.context import RunContext
 
 __all__ = [
     "Action",
@@ -223,4 +225,3 @@ async def authorize(
     if decision.effect is PolicyEffect.REQUIRE_APPROVAL:
         raise ApprovalRequiredError(decision)
     return decision
-

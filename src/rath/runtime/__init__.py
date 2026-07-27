@@ -1,5 +1,6 @@
 """Public durable runtime state and persistence contracts."""
 
+from rath.runtime.local import LocalRuntime, StepContext
 from rath.runtime.models import (
     ApprovalDecision,
     ApprovalDecisionKind,
@@ -28,10 +29,12 @@ __all__ = [
     "Interrupt",
     "InterruptKind",
     "InvalidRunTransition",
+    "LocalRuntime",
     "Run",
     "RunEvent",
     "RunStatus",
     "ResourceLease",
     "RunStore",
     "SQLiteRunStore",
+    "StepContext",
 ]
