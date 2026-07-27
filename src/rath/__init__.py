@@ -22,10 +22,19 @@ from rath import (
     definition,
     flow,
     memory,
+    runtime,
     security,
 )
 
-__all__ = ["backend", "definition", "flow", "memory", "security", "session"]
+__all__ = [
+    "backend",
+    "definition",
+    "flow",
+    "memory",
+    "runtime",
+    "security",
+    "session",
+]
 
 
 def __getattr__(name: str) -> Any:
