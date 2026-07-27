@@ -254,7 +254,7 @@ class S3ArtifactStore:
             raise ValueError("max_bytes must be positive")
         if client is None:
             try:
-                import boto3  # type: ignore[import-not-found]
+                import boto3  # type: ignore
             except ImportError as exc:
                 raise RuntimeError(
                     "S3 support requires `pip install openrath[s3]`"
@@ -309,9 +309,7 @@ class S3ArtifactStore:
     def get(self, tenant_id: str, digest: str) -> bytes:
         payload_key, _ = self._keys(tenant_id, digest)
         try:
-            response = self.client.get_object(
-                Bucket=self.bucket, Key=payload_key
-            )
+            response = self.client.get_object(Bucket=self.bucket, Key=payload_key)
         except Exception as exc:
             if _not_found(exc):
                 raise ArtifactNotFound(digest) from exc
@@ -324,9 +322,7 @@ class S3ArtifactStore:
     def stat(self, tenant_id: str, digest: str) -> Artifact:
         _, manifest_key = self._keys(tenant_id, digest)
         try:
-            response = self.client.get_object(
-                Bucket=self.bucket, Key=manifest_key
-            )
+            response = self.client.get_object(Bucket=self.bucket, Key=manifest_key)
         except Exception as exc:
             if _not_found(exc):
                 raise ArtifactNotFound(digest) from exc

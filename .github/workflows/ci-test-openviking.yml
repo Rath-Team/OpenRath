@@ -45,8 +45,8 @@ jobs:
           # When repository secrets are absent we skip uv sync; without this
           # the post-job cache prune fails because no cache dir was created.
           prune-cache: false
-      - name: Install dev dependencies
-        run: uv sync --dev --frozen
+      - name: Install dev and OpenViking dependencies
+        run: uv sync --dev --extra openviking --frozen
       - name: Check OpenViking credentials
         id: creds
         env:
@@ -60,9 +60,8 @@ jobs:
           else
             echo "available=false" >> "$GITHUB_OUTPUT"
           fi
-      - name: Install OpenViking SDK
-        if: steps.creds.outputs.available == 'true'
-        run: uv sync --dev --extra openviking --frozen
+      - name: Run OpenViking SDK and offline contracts
+        run: uv run pytest -q tests/memory/unit
       - name: Start OpenViking server
         if: steps.creds.outputs.available == 'true'
         env:
