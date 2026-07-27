@@ -8,7 +8,7 @@ import sqlite3
 import threading
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import cast
 from uuid import UUID
@@ -18,9 +18,11 @@ from rath.runtime.models import (
     ApprovalDecision,
     ApprovalDecisionKind,
     Checkpoint,
+    ClaimedRun,
     ConflictError,
     Interrupt,
     InterruptKind,
+    ResourceLease,
     Run,
     RunEvent,
     RunStatus,
@@ -92,6 +94,20 @@ CREATE TABLE IF NOT EXISTS interrupts (
 
 CREATE INDEX IF NOT EXISTS interrupts_run_pending_idx
     ON interrupts (run_id, decided_at);
+
+CREATE TABLE IF NOT EXISTS run_leases (
+    id TEXT PRIMARY KEY,
+    run_id TEXT NOT NULL UNIQUE REFERENCES runs(id) ON DELETE CASCADE,
+    holder_worker_id TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    fencing_token INTEGER NOT NULL,
+    active INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS run_leases_expiry_idx
+    ON run_leases (active, expires_at);
 """
 
 
@@ -496,6 +512,225 @@ class SQLiteRunStore:
             )
             return self._run_from_row(self._required_run_row(connection, run_id))
 
+    def claim_next(
+        self,
+        *,
+        worker_id: str,
+        lease_seconds: float,
+        now: datetime | None = None,
+    ) -> ClaimedRun | None:
+        if not worker_id.strip():
+            raise ValueError("worker_id must not be empty")
+        if lease_seconds <= 0:
+            raise ValueError("lease_seconds must be greater than zero")
+        claimed_at = now or _now()
+        if claimed_at.tzinfo is None:
+            raise ValueError("now must be timezone-aware")
+        with self._transaction() as connection:
+            row = connection.execute(
+                """
+                SELECT * FROM runs
+                WHERE status = ?
+                ORDER BY created_at, id
+                LIMIT 1
+                """,
+                (RunStatus.QUEUED.value,),
+            ).fetchone()
+            if row is None:
+                return None
+            current = self._run_from_row(row)
+            assert_transition(current.status, RunStatus.RUNNING)
+            cursor = connection.execute(
+                """
+                UPDATE runs
+                SET status = ?, updated_at = ?, version = version + 1
+                WHERE id = ? AND version = ? AND status = ?
+                """,
+                (
+                    RunStatus.RUNNING.value,
+                    claimed_at.isoformat(),
+                    str(current.id),
+                    current.version,
+                    RunStatus.QUEUED.value,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise ConflictError("run claim conflict")
+            previous = connection.execute(
+                "SELECT * FROM run_leases WHERE run_id = ?",
+                (str(current.id),),
+            ).fetchone()
+            lease_id = UUID(previous["id"]) if previous is not None else UUID(
+                bytes=hashlib.sha256(str(current.id).encode("utf-8")).digest()[:16]
+            )
+            token = (
+                int(previous["fencing_token"]) + 1 if previous is not None else 1
+            )
+            created_at = (
+                _parse_time(previous["created_at"])
+                if previous is not None
+                else claimed_at
+            )
+            expires_at = claimed_at + timedelta(seconds=lease_seconds)
+            connection.execute(
+                """
+                INSERT INTO run_leases(
+                    id, run_id, holder_worker_id, expires_at, fencing_token,
+                    active, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+                ON CONFLICT(run_id) DO UPDATE SET
+                    holder_worker_id = excluded.holder_worker_id,
+                    expires_at = excluded.expires_at,
+                    fencing_token = excluded.fencing_token,
+                    active = 1,
+                    updated_at = excluded.updated_at
+                """,
+                (
+                    str(lease_id),
+                    str(current.id),
+                    worker_id,
+                    expires_at.isoformat(),
+                    token,
+                    created_at.isoformat(),
+                    claimed_at.isoformat(),
+                ),
+            )
+            self._append_event(
+                connection,
+                current.id,
+                "run.claimed",
+                {"worker_id": worker_id, "fencing_token": token},
+            )
+            run = self._run_from_row(self._required_run_row(connection, current.id))
+            return ClaimedRun(
+                run=run,
+                lease=ResourceLease(
+                    id=lease_id,
+                    resource_type="run",
+                    resource_id=str(current.id),
+                    owner_run_id=current.id,
+                    holder_worker_id=worker_id,
+                    expires_at=expires_at,
+                    fencing_token=token,
+                    created_at=created_at,
+                    updated_at=claimed_at,
+                ),
+            )
+
+    def renew_lease(
+        self,
+        run_id: UUID,
+        *,
+        worker_id: str,
+        fencing_token: int,
+        lease_seconds: float,
+        now: datetime | None = None,
+    ) -> ResourceLease:
+        if lease_seconds <= 0:
+            raise ValueError("lease_seconds must be greater than zero")
+        renewed_at = now or _now()
+        expires_at = renewed_at + timedelta(seconds=lease_seconds)
+        with self._transaction() as connection:
+            row = self._required_lease(
+                connection,
+                run_id,
+                worker_id=worker_id,
+                fencing_token=fencing_token,
+            )
+            connection.execute(
+                """
+                UPDATE run_leases
+                SET expires_at = ?, updated_at = ?
+                WHERE run_id = ?
+                """,
+                (expires_at.isoformat(), renewed_at.isoformat(), str(run_id)),
+            )
+            return ResourceLease(
+                id=UUID(row["id"]),
+                resource_type="run",
+                resource_id=str(run_id),
+                owner_run_id=run_id,
+                holder_worker_id=worker_id,
+                expires_at=expires_at,
+                fencing_token=fencing_token,
+                created_at=_parse_time(row["created_at"]),
+                updated_at=renewed_at,
+            )
+
+    def assert_fencing_token(
+        self,
+        run_id: UUID,
+        *,
+        worker_id: str,
+        fencing_token: int,
+    ) -> None:
+        connection = self._connect()
+        try:
+            self._required_lease(
+                connection,
+                run_id,
+                worker_id=worker_id,
+                fencing_token=fencing_token,
+            )
+        finally:
+            connection.close()
+
+    def requeue_expired_leases(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> tuple[UUID, ...]:
+        recovered_at = now or _now()
+        with self._transaction() as connection:
+            rows = connection.execute(
+                """
+                SELECT l.*, r.status, r.version
+                FROM run_leases l
+                JOIN runs r ON r.id = l.run_id
+                WHERE l.active = 1 AND l.expires_at <= ?
+                ORDER BY l.expires_at, l.run_id
+                """,
+                (recovered_at.isoformat(),),
+            ).fetchall()
+            recovered: list[UUID] = []
+            for row in rows:
+                run_id = UUID(row["run_id"])
+                if RunStatus(row["status"]) is not RunStatus.RUNNING:
+                    connection.execute(
+                        "UPDATE run_leases SET active = 0 WHERE run_id = ?",
+                        (str(run_id),),
+                    )
+                    continue
+                connection.execute(
+                    """
+                    UPDATE runs
+                    SET status = ?, updated_at = ?, version = version + 1
+                    WHERE id = ? AND version = ?
+                    """,
+                    (
+                        RunStatus.QUEUED.value,
+                        recovered_at.isoformat(),
+                        str(run_id),
+                        int(row["version"]),
+                    ),
+                )
+                connection.execute(
+                    """
+                    UPDATE run_leases
+                    SET active = 0, updated_at = ?
+                    WHERE run_id = ?
+                    """,
+                    (recovered_at.isoformat(), str(run_id)),
+                )
+                self._append_event(
+                    connection,
+                    run_id,
+                    "run.lease.expired",
+                    {"fencing_token": int(row["fencing_token"])},
+                )
+                recovered.append(run_id)
+            return tuple(recovered)
+
     def _update_status(
         self,
         connection: sqlite3.Connection,
@@ -554,6 +789,27 @@ class SQLiteRunStore:
         ).fetchone()
         if row is None:
             raise KeyError(str(run_id))
+        return cast(sqlite3.Row, row)
+
+    def _required_lease(
+        self,
+        connection: sqlite3.Connection,
+        run_id: UUID,
+        *,
+        worker_id: str,
+        fencing_token: int,
+    ) -> sqlite3.Row:
+        row = connection.execute(
+            "SELECT * FROM run_leases WHERE run_id = ?",
+            (str(run_id),),
+        ).fetchone()
+        if (
+            row is None
+            or not bool(row["active"])
+            or row["holder_worker_id"] != worker_id
+            or int(row["fencing_token"]) != fencing_token
+        ):
+            raise ConflictError("lease fencing token is stale or not owned")
         return cast(sqlite3.Row, row)
 
     def _fingerprint(self, run: Run) -> str:

@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import datetime
 from typing import Protocol, runtime_checkable
 from uuid import UUID
 
 from rath.runtime.models import (
     ApprovalDecision,
     Checkpoint,
+    ClaimedRun,
     Interrupt,
+    ResourceLease,
     Run,
     RunEvent,
     RunStatus,
@@ -59,5 +62,36 @@ class RunStore(Protocol):
         expected_run_version: int,
     ) -> Run: ...
 
-    def close(self) -> None: ...
+    def claim_next(
+        self,
+        *,
+        worker_id: str,
+        lease_seconds: float,
+        now: datetime | None = None,
+    ) -> ClaimedRun | None: ...
 
+    def renew_lease(
+        self,
+        run_id: UUID,
+        *,
+        worker_id: str,
+        fencing_token: int,
+        lease_seconds: float,
+        now: datetime | None = None,
+    ) -> ResourceLease: ...
+
+    def assert_fencing_token(
+        self,
+        run_id: UUID,
+        *,
+        worker_id: str,
+        fencing_token: int,
+    ) -> None: ...
+
+    def requeue_expired_leases(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> tuple[UUID, ...]: ...
+
+    def close(self) -> None: ...

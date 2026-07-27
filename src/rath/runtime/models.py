@@ -22,6 +22,8 @@ __all__ = [
     "Run",
     "RunEvent",
     "RunStatus",
+    "ClaimedRun",
+    "ResourceLease",
     "assert_transition",
 ]
 
@@ -322,3 +324,34 @@ class Interrupt:
             created_at=datetime.now(timezone.utc),
         )
 
+
+@dataclass(frozen=True, slots=True)
+class ResourceLease:
+    id: UUID
+    resource_type: str
+    resource_id: str
+    owner_run_id: UUID
+    holder_worker_id: str
+    expires_at: datetime
+    fencing_token: int
+    created_at: datetime
+    updated_at: datetime
+
+    def __post_init__(self) -> None:
+        if not self.resource_type.strip():
+            raise ValueError("lease resource_type must not be empty")
+        if not self.resource_id.strip():
+            raise ValueError("lease resource_id must not be empty")
+        if not self.holder_worker_id.strip():
+            raise ValueError("lease holder_worker_id must not be empty")
+        if self.fencing_token < 1:
+            raise ValueError("lease fencing_token must be positive")
+        _aware(self.expires_at, field_name="lease.expires_at")
+        _aware(self.created_at, field_name="lease.created_at")
+        _aware(self.updated_at, field_name="lease.updated_at")
+
+
+@dataclass(frozen=True, slots=True)
+class ClaimedRun:
+    run: Run
+    lease: ResourceLease
