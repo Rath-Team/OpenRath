@@ -17,6 +17,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
+from uuid import NAMESPACE_URL, uuid5
 
 if TYPE_CHECKING:
     from rath.flow.agent_param import AgentParam
@@ -128,11 +129,21 @@ class CompiledWorkflow:
     static module tree (P5.1) to build the manifest.
     """
 
-    __slots__ = ("workflow", "manifest", "_acquired")
+    __slots__ = ("workflow", "manifest", "execution_plan", "_acquired")
 
     def __init__(self, workflow: "Workflow") -> None:
+        from rath.definition import WorkflowCompiler
+
         self.workflow = workflow
         self.manifest = collect_manifest(workflow)
+        revision_id = uuid5(
+            NAMESPACE_URL,
+            f"openrath:embedded-revision:{type(workflow).__module__}.{type(workflow).__qualname__}",
+        )
+        self.execution_plan = WorkflowCompiler().compile(
+            workflow,
+            revision_id=revision_id,
+        )
         self._acquired: list[MemoryStore] = []  # stores acquired by __enter__
 
     def __call__(self, session):  # type: ignore[no-untyped-def]

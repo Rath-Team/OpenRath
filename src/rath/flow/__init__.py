@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from rath.definition import EffectClass, RetryPolicy, router, step
 from rath.flow.agent import Agent
 from rath.flow.agent_param import AgentParam, Provider
 from rath.flow.compile import CompiledWorkflow, ResourceManifest
@@ -20,4 +21,8 @@ __all__: list[str] = [
     "Selector",
     "CompiledWorkflow",
     "ResourceManifest",
+    "EffectClass",
+    "RetryPolicy",
+    "router",
+    "step",
 ]

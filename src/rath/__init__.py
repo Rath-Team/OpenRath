@@ -19,12 +19,13 @@ from typing import Any
 
 from rath import (
     backend,
+    definition,
     flow,
     memory,
     security,
 )
 
-__all__ = ["backend", "flow", "memory", "security", "session"]
+__all__ = ["backend", "definition", "flow", "memory", "security", "session"]
 
 
 def __getattr__(name: str) -> Any:
