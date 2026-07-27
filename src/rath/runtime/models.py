@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from uuid import UUID, uuid4
 
@@ -133,15 +133,22 @@ class Run:
     updated_at: datetime
     version: int = 0
     idempotency_key: str | None = None
+    context: Mapping[str, JSONValue] = field(default_factory=dict)
+    priority: int = 0
 
     def __post_init__(self) -> None:
         if not self.tenant_id.strip():
             raise ValueError("run tenant_id must not be empty")
         if self.version < 0:
             raise ValueError("run version must not be negative")
+        if not -100 <= self.priority <= 100:
+            raise ValueError("run priority must be between -100 and 100")
         _aware(self.created_at, field_name="run.created_at")
         _aware(self.updated_at, field_name="run.updated_at")
         object.__setattr__(self, "state", freeze_mapping(self.state, field="run.state"))
+        object.__setattr__(
+            self, "context", freeze_mapping(self.context, field="run.context")
+        )
         object.__setattr__(self, "next_nodes", tuple(self.next_nodes))
 
     @classmethod
@@ -156,6 +163,8 @@ class Run:
         state: Mapping[str, object] | None = None,
         next_nodes: tuple[str, ...] = (),
         idempotency_key: str | None = None,
+        context: Mapping[str, object] | None = None,
+        priority: int = 0,
         id: UUID | None = None,
     ) -> "Run":
         now = datetime.now(timezone.utc)
@@ -169,6 +178,8 @@ class Run:
             state=freeze_mapping(state, field="run.state"),
             next_nodes=next_nodes,
             idempotency_key=idempotency_key,
+            context=freeze_mapping(context, field="run.context"),
+            priority=priority,
             created_at=now,
             updated_at=now,
         )
@@ -293,11 +304,16 @@ class Interrupt:
     kind: InterruptKind
     request: Mapping[str, JSONValue]
     created_at: datetime
+    expires_at: datetime | None = None
     decision: ApprovalDecision | None = None
     decided_at: datetime | None = None
 
     def __post_init__(self) -> None:
         _aware(self.created_at, field_name="interrupt.created_at")
+        if self.expires_at is not None:
+            _aware(self.expires_at, field_name="interrupt.expires_at")
+            if self.expires_at <= self.created_at:
+                raise ValueError("interrupt expires_at must be after created_at")
         if self.decided_at is not None:
             _aware(self.decided_at, field_name="interrupt.decided_at")
         if (self.decision is None) != (self.decided_at is None):
@@ -315,13 +331,22 @@ class Interrupt:
         run_id: UUID,
         kind: InterruptKind,
         request: Mapping[str, object],
+        timeout_seconds: float | None = None,
     ) -> "Interrupt":
+        if timeout_seconds is not None and timeout_seconds <= 0:
+            raise ValueError("interrupt timeout_seconds must be positive")
+        created_at = datetime.now(timezone.utc)
         return cls(
             id=uuid4(),
             run_id=run_id,
             kind=kind,
             request=freeze_mapping(request, field="interrupt.request"),
-            created_at=datetime.now(timezone.utc),
+            created_at=created_at,
+            expires_at=(
+                created_at + timedelta(seconds=timeout_seconds)
+                if timeout_seconds is not None
+                else None
+            ),
         )
 
 

@@ -20,6 +20,34 @@ def _run() -> Run:
     )
 
 
+def test_claim_prefers_higher_priority_then_fifo(tmp_path: Path) -> None:
+    store = SQLiteRunStore(tmp_path / "runtime.db")
+    low = store.create_run(
+        Run.create(
+            plan_id=uuid4(),
+            revision_id=uuid4(),
+            session_id=uuid4(),
+            tenant_id="tenant-1",
+            priority=0,
+        )
+    )
+    high = store.create_run(
+        Run.create(
+            plan_id=uuid4(),
+            revision_id=uuid4(),
+            session_id=uuid4(),
+            tenant_id="tenant-2",
+            priority=10,
+        )
+    )
+
+    claim = store.claim_next(worker_id="worker", lease_seconds=30)
+
+    assert claim is not None
+    assert claim.run.id == high.id
+    assert claim.run.id != low.id
+
+
 def test_claim_is_exclusive_and_moves_run_to_running(tmp_path: Path) -> None:
     store = SQLiteRunStore(tmp_path / "runtime.db")
     queued = store.create_run(_run())
@@ -95,4 +123,3 @@ def test_expired_lease_is_requeued_with_new_fencing_token(tmp_path: Path) -> Non
             worker_id="worker-1",
             fencing_token=first.lease.fencing_token,
         )
-

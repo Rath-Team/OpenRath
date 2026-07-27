@@ -19,8 +19,10 @@ from typing import Any
 
 from rath import (
     adapters,
+    artifacts,
     backend,
     definition,
+    deployment,
     eval,
     flow,
     memory,
@@ -32,7 +34,9 @@ from rath import (
 __all__ = [
     "backend",
     "adapters",
+    "artifacts",
     "definition",
+    "deployment",
     "eval",
     "flow",
     "memory",

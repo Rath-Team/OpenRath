@@ -54,23 +54,32 @@ class PostgresRunStore:
         self.schema = schema
         self._closed = False
         self._migrate()
-
-    def _connect(self) -> Any:
-        if self._closed:
-            raise RuntimeError("PostgresRunStore is closed")
         try:
-            import psycopg
             from psycopg import sql
             from psycopg.rows import dict_row
+            from psycopg_pool import ConnectionPool
         except ImportError as exc:
             raise RuntimeError(
                 "Postgres support requires `pip install openrath[postgres]`"
             ) from exc
-        connection = psycopg.connect(self.dsn, row_factory=dict_row)
-        connection.execute(
-            sql.SQL("SET search_path TO {}").format(sql.Identifier(self.schema))
+        self._sql = sql
+        self._pool = ConnectionPool(
+            self.dsn,
+            min_size=1,
+            max_size=20,
+            timeout=10,
+            kwargs={"row_factory": dict_row},
+            configure=self._configure_connection,
+            open=True,
         )
-        return connection
+
+    def _configure_connection(self, connection: Any) -> None:
+        connection.execute(
+            self._sql.SQL("SET search_path TO {}").format(
+                self._sql.Identifier(self.schema)
+            )
+        )
+        connection.commit()
 
     def _migrate(self) -> None:
         try:
@@ -105,17 +114,20 @@ class PostgresRunStore:
 
     @contextmanager
     def _transaction(self) -> Iterator[Any]:
-        connection = self._connect()
-        try:
+        if self._closed:
+            raise RuntimeError("PostgresRunStore is closed")
+        with self._pool.connection() as connection:
             yield connection
-            connection.commit()
-        except BaseException:
-            connection.rollback()
-            raise
-        finally:
-            connection.close()
+
+    @contextmanager
+    def connection(self) -> Iterator[Any]:
+        """Borrow a schema-configured pooled connection for related stores."""
+        with self._transaction() as connection:
+            yield connection
 
     def close(self) -> None:
+        if not self._closed:
+            self._pool.close()
         self._closed = True
 
     def create_run(self, run: Run) -> Run:
@@ -140,10 +152,11 @@ class PostgresRunStore:
                     """
                     INSERT INTO runs(
                         id, plan_id, revision_id, session_id, tenant_id, status,
-                        state_json, next_nodes_json, idempotency_key,
+                        state_json, next_nodes_json, idempotency_key, context_json,
+                        priority,
                         request_fingerprint, created_at, updated_at, version
                     ) VALUES (
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
                     )
                     ON CONFLICT DO NOTHING
                     RETURNING id
@@ -158,6 +171,8 @@ class PostgresRunStore:
                         _json(run.state),
                         _json(run.next_nodes),
                         run.idempotency_key,
+                        _json(run.context),
+                        run.priority,
                         fingerprint,
                         run.created_at,
                         run.updated_at,
@@ -262,6 +277,16 @@ class PostgresRunStore:
             )
             for row in rows
         )
+
+    def append_run_event(
+        self,
+        run_id: UUID,
+        type: str,
+        data: Mapping[str, object],
+    ) -> RunEvent:
+        with self._transaction() as connection:
+            self._required_run_row(connection, run_id)
+            return self._append_event(connection, run_id, type, data)
 
     def append_checkpoint(self, checkpoint: Checkpoint) -> None:
         with self._transaction() as connection:
@@ -405,8 +430,10 @@ class PostgresRunStore:
             assert_transition(current.status, RunStatus.WAITING)
             connection.execute(
                 """
-                INSERT INTO interrupts(id, run_id, kind, request_json, created_at)
-                VALUES (%s, %s, %s, %s, %s)
+                INSERT INTO interrupts(
+                    id, run_id, kind, request_json, created_at, expires_at
+                )
+                VALUES (%s, %s, %s, %s, %s, %s)
                 """,
                 (
                     interrupt.id,
@@ -414,6 +441,7 @@ class PostgresRunStore:
                     interrupt.kind.value,
                     _json(interrupt.request),
                     interrupt.created_at,
+                    interrupt.expires_at,
                 ),
             )
             row = self._update_status(
@@ -421,6 +449,13 @@ class PostgresRunStore:
                 current,
                 target=RunStatus.WAITING,
                 expected_version=expected_run_version,
+            )
+            connection.execute(
+                """
+                UPDATE run_leases SET active = FALSE, updated_at = %s
+                WHERE run_id = %s
+                """,
+                (interrupt.created_at, interrupt.run_id),
             )
             self._append_event(
                 connection,
@@ -438,6 +473,86 @@ class PostgresRunStore:
         if row is None:
             raise KeyError(str(interrupt_id))
         return self._interrupt_from_row(row)
+
+    def list_interrupts(
+        self,
+        *,
+        tenant_id: str,
+        pending_only: bool = True,
+    ) -> tuple[Interrupt, ...]:
+        pending_clause = "AND i.decided_at IS NULL" if pending_only else ""
+        with self.connection() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT i.* FROM interrupts AS i
+                JOIN runs AS r ON r.id = i.run_id
+                WHERE r.tenant_id = %s {pending_clause}
+                ORDER BY i.created_at, i.id
+                """,
+                (tenant_id,),
+            ).fetchall()
+        return tuple(self._interrupt_from_row(row) for row in rows)
+
+    def expire_interrupts(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> tuple[UUID, ...]:
+        expired_at = now or _now()
+        if expired_at.tzinfo is None:
+            raise ValueError("now must be timezone-aware")
+        expired: list[UUID] = []
+        with self._transaction() as connection:
+            rows = connection.execute(
+                """
+                SELECT i.*, r.version AS run_version, r.status AS run_status
+                FROM interrupts AS i
+                JOIN runs AS r ON r.id = i.run_id
+                WHERE i.decided_at IS NULL
+                  AND i.expires_at IS NOT NULL
+                  AND i.expires_at <= %s
+                ORDER BY i.expires_at, i.id
+                FOR UPDATE OF i, r SKIP LOCKED
+                """,
+                (expired_at,),
+            ).fetchall()
+            for row in rows:
+                connection.execute(
+                    """
+                    UPDATE interrupts SET decision_kind = %s,
+                        decision_actor_id = %s, decision_reason = %s,
+                        decision_payload_json = %s, decided_at = %s
+                    WHERE id = %s AND decided_at IS NULL
+                    """,
+                    (
+                        ApprovalDecisionKind.REJECT.value,
+                        "openrath-system",
+                        "interrupt deadline expired",
+                        _json({}),
+                        expired_at,
+                        row["id"],
+                    ),
+                )
+                if RunStatus(row["run_status"]) is RunStatus.WAITING:
+                    current = self._run_from_row(
+                        self._required_run_row(
+                            connection, row["run_id"], lock=True
+                        )
+                    )
+                    self._update_status(
+                        connection,
+                        current,
+                        target=RunStatus.TIMED_OUT,
+                        expected_version=int(row["run_version"]),
+                    )
+                    self._append_event(
+                        connection,
+                        row["run_id"],
+                        "run.interrupt.expired",
+                        {"interrupt_id": str(row["id"])},
+                    )
+                expired.append(row["id"])
+        return tuple(expired)
 
     def decide_interrupt(
         self,
@@ -513,7 +628,8 @@ class PostgresRunStore:
             row = connection.execute(
                 """
                 SELECT * FROM runs WHERE status = %s
-                ORDER BY created_at, id FOR UPDATE SKIP LOCKED LIMIT 1
+                ORDER BY priority DESC, created_at, id
+                FOR UPDATE SKIP LOCKED LIMIT 1
                 """,
                 (RunStatus.QUEUED.value,),
             ).fetchone()
@@ -775,7 +891,7 @@ class PostgresRunStore:
         run_id: UUID,
         type: str,
         data: Mapping[str, object],
-    ) -> None:
+    ) -> RunEvent:
         row = connection.execute(
             """
             SELECT COALESCE(MAX(sequence), 0) AS sequence
@@ -783,12 +899,20 @@ class PostgresRunStore:
             """,
             (run_id,),
         ).fetchone()
+        created_at = _now()
         connection.execute(
             """
             INSERT INTO run_events(run_id, sequence, type, data_json, created_at)
             VALUES (%s, %s, %s, %s, %s)
             """,
-            (run_id, int(row["sequence"]) + 1, type, _json(data), _now()),
+            (run_id, int(row["sequence"]) + 1, type, _json(data), created_at),
+        )
+        return RunEvent(
+            run_id=run_id,
+            sequence=int(row["sequence"]) + 1,
+            type=type,
+            data=freeze_json(data, field="run event data"),  # type: ignore[arg-type]
+            created_at=created_at,
         )
 
     def _fingerprint(self, run: Run) -> str:
@@ -800,6 +924,7 @@ class PostgresRunStore:
                 "tenant_id": run.tenant_id,
                 "state": run.state,
                 "next_nodes": run.next_nodes,
+                "priority": run.priority,
             },
             field="run fingerprint",
         )
@@ -825,6 +950,8 @@ class PostgresRunStore:
             state=row["state_json"],
             next_nodes=tuple(row["next_nodes_json"]),
             idempotency_key=row["idempotency_key"],
+            context=row["context_json"],
+            priority=int(row["priority"]),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
             version=int(row["version"]),
@@ -862,6 +989,7 @@ class PostgresRunStore:
             kind=InterruptKind(row["kind"]),
             request=row["request_json"],
             created_at=row["created_at"],
+            expires_at=row["expires_at"],
             decision=decision,
             decided_at=row["decided_at"],
         )

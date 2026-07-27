@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS runs (
     state_json TEXT NOT NULL,
     next_nodes_json TEXT NOT NULL,
     idempotency_key TEXT,
+    context_json TEXT NOT NULL DEFAULT '{}',
+    priority INTEGER NOT NULL DEFAULT 0,
     request_fingerprint TEXT NOT NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -56,6 +58,10 @@ CREATE TABLE IF NOT EXISTS runs (
 
 CREATE INDEX IF NOT EXISTS runs_tenant_status_idx
     ON runs (tenant_id, status, created_at);
+
+CREATE UNIQUE INDEX IF NOT EXISTS runs_one_active_per_session_idx
+    ON runs (session_id)
+    WHERE status IN ('queued', 'running', 'waiting', 'needs_review');
 
 CREATE TABLE IF NOT EXISTS run_events (
     run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
@@ -85,6 +91,7 @@ CREATE TABLE IF NOT EXISTS interrupts (
     kind TEXT NOT NULL,
     request_json TEXT NOT NULL,
     created_at TEXT NOT NULL,
+    expires_at TEXT,
     decision_kind TEXT,
     decision_actor_id TEXT,
     decision_reason TEXT,
@@ -126,6 +133,63 @@ CREATE TABLE IF NOT EXISTS tool_invocations (
 
 CREATE INDEX IF NOT EXISTS tool_invocations_reconcile_idx
     ON tool_invocations (status, effect_class, updated_at);
+
+CREATE TABLE IF NOT EXISTS server_sessions (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS server_sessions_tenant_idx
+    ON server_sessions (tenant_id, created_at);
+
+CREATE TABLE IF NOT EXISTS server_assistants (
+    tenant_id TEXT NOT NULL,
+    id TEXT NOT NULL,
+    template_id TEXT NOT NULL,
+    revision_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (tenant_id, id)
+);
+
+CREATE TABLE IF NOT EXISTS feedback (
+    id TEXT PRIMARY KEY,
+    tenant_id TEXT NOT NULL,
+    run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    key TEXT NOT NULL,
+    score REAL,
+    value TEXT,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS feedback_run_idx ON feedback (run_id, created_at);
+
+CREATE TABLE IF NOT EXISTS evaluation_datasets (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    version TEXT NOT NULL,
+    examples_json TEXT NOT NULL,
+    UNIQUE (name, version)
+);
+
+CREATE TABLE IF NOT EXISTS evaluation_experiments (
+    id TEXT PRIMARY KEY,
+    dataset_id TEXT NOT NULL REFERENCES evaluation_datasets(id),
+    revision_id TEXT NOT NULL,
+    results_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS evaluation_experiments_revision_idx
+    ON evaluation_experiments (revision_id, created_at);
+
+CREATE TABLE IF NOT EXISTS revisions (
+    id TEXT PRIMARY KEY,
+    code_digest TEXT NOT NULL,
+    plan_hash TEXT NOT NULL,
+    manifest_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
 """
 
 
@@ -183,6 +247,34 @@ class SQLiteRunStore:
             connection = self._connect()
             try:
                 connection.executescript(_SCHEMA)
+                columns = {
+                    row[1]
+                    for row in connection.execute("PRAGMA table_info(runs)").fetchall()
+                }
+                if "context_json" not in columns:
+                    connection.execute(
+                        "ALTER TABLE runs ADD COLUMN context_json TEXT NOT NULL DEFAULT '{}'"
+                    )
+                if "priority" not in columns:
+                    connection.execute(
+                        "ALTER TABLE runs ADD COLUMN priority INTEGER NOT NULL DEFAULT 0"
+                    )
+                interrupt_columns = {
+                    row[1]
+                    for row in connection.execute(
+                        "PRAGMA table_info(interrupts)"
+                    ).fetchall()
+                }
+                if "expires_at" not in interrupt_columns:
+                    connection.execute(
+                        "ALTER TABLE interrupts ADD COLUMN expires_at TEXT"
+                    )
+                connection.execute(
+                    """
+                    CREATE INDEX IF NOT EXISTS interrupts_expiry_idx
+                    ON interrupts (expires_at) WHERE decided_at IS NULL
+                    """
+                )
                 connection.execute(
                     """
                     INSERT OR IGNORE INTO schema_migrations(version, applied_at)
@@ -231,9 +323,10 @@ class SQLiteRunStore:
                     """
                     INSERT INTO runs(
                         id, plan_id, revision_id, session_id, tenant_id, status,
-                        state_json, next_nodes_json, idempotency_key,
+                        state_json, next_nodes_json, idempotency_key, context_json,
+                        priority,
                         request_fingerprint, created_at, updated_at, version
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         str(run.id),
@@ -245,6 +338,8 @@ class SQLiteRunStore:
                         _dump(run.state),
                         _dump(run.next_nodes),
                         run.idempotency_key,
+                        _dump(run.context),
+                        run.priority,
                         fingerprint,
                         run.created_at.isoformat(),
                         run.updated_at.isoformat(),
@@ -358,6 +453,16 @@ class SQLiteRunStore:
             )
             for row in rows
         )
+
+    def append_run_event(
+        self,
+        run_id: UUID,
+        type: str,
+        data: Mapping[str, object],
+    ) -> RunEvent:
+        with self._transaction() as connection:
+            self._required_run_row(connection, run_id)
+            return self._append_event(connection, run_id, type, data)
 
     def append_checkpoint(self, checkpoint: Checkpoint) -> None:
         with self._transaction() as connection:
@@ -554,8 +659,8 @@ class SQLiteRunStore:
             connection.execute(
                 """
                 INSERT INTO interrupts(
-                    id, run_id, kind, request_json, created_at
-                ) VALUES (?, ?, ?, ?, ?)
+                    id, run_id, kind, request_json, created_at, expires_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
                     str(interrupt.id),
@@ -563,6 +668,11 @@ class SQLiteRunStore:
                     interrupt.kind.value,
                     _dump(interrupt.request),
                     interrupt.created_at.isoformat(),
+                    (
+                        interrupt.expires_at.isoformat()
+                        if interrupt.expires_at is not None
+                        else None
+                    ),
                 ),
             )
             self._update_status(
@@ -570,6 +680,13 @@ class SQLiteRunStore:
                 current,
                 target=RunStatus.WAITING,
                 expected_version=expected_run_version,
+            )
+            connection.execute(
+                """
+                UPDATE run_leases SET active = 0, updated_at = ?
+                WHERE run_id = ?
+                """,
+                (interrupt.created_at.isoformat(), str(interrupt.run_id)),
             )
             self._append_event(
                 connection,
@@ -593,6 +710,84 @@ class SQLiteRunStore:
         if row is None:
             raise KeyError(str(interrupt_id))
         return self._interrupt_from_row(row)
+
+    def list_interrupts(
+        self,
+        *,
+        tenant_id: str,
+        pending_only: bool = True,
+    ) -> tuple[Interrupt, ...]:
+        pending_clause = "AND i.decided_at IS NULL" if pending_only else ""
+        with self._connect() as connection:
+            rows = connection.execute(
+                f"""
+                SELECT i.* FROM interrupts AS i
+                JOIN runs AS r ON r.id = i.run_id
+                WHERE r.tenant_id = ? {pending_clause}
+                ORDER BY i.created_at, i.id
+                """,
+                (tenant_id,),
+            ).fetchall()
+        return tuple(self._interrupt_from_row(row) for row in rows)
+
+    def expire_interrupts(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> tuple[UUID, ...]:
+        expired_at = now or _now()
+        if expired_at.tzinfo is None:
+            raise ValueError("now must be timezone-aware")
+        expired: list[UUID] = []
+        with self._transaction() as connection:
+            rows = connection.execute(
+                """
+                SELECT i.*, r.version AS run_version, r.status AS run_status
+                FROM interrupts AS i
+                JOIN runs AS r ON r.id = i.run_id
+                WHERE i.decided_at IS NULL
+                  AND i.expires_at IS NOT NULL
+                  AND i.expires_at <= ?
+                ORDER BY i.expires_at, i.id
+                """,
+                (expired_at.isoformat(),),
+            ).fetchall()
+            for row in rows:
+                run_id = UUID(row["run_id"])
+                connection.execute(
+                    """
+                    UPDATE interrupts SET decision_kind = ?,
+                        decision_actor_id = ?, decision_reason = ?,
+                        decision_payload_json = ?, decided_at = ?
+                    WHERE id = ? AND decided_at IS NULL
+                    """,
+                    (
+                        ApprovalDecisionKind.REJECT.value,
+                        "openrath-system",
+                        "interrupt deadline expired",
+                        _dump({}),
+                        expired_at.isoformat(),
+                        row["id"],
+                    ),
+                )
+                if RunStatus(row["run_status"]) is RunStatus.WAITING:
+                    current = self._run_from_row(
+                        self._required_run_row(connection, run_id)
+                    )
+                    self._update_status(
+                        connection,
+                        current,
+                        target=RunStatus.TIMED_OUT,
+                        expected_version=int(row["run_version"]),
+                    )
+                    self._append_event(
+                        connection,
+                        run_id,
+                        "run.interrupt.expired",
+                        {"interrupt_id": row["id"]},
+                    )
+                expired.append(UUID(row["id"]))
+        return tuple(expired)
 
     def decide_interrupt(
         self,
@@ -670,7 +865,7 @@ class SQLiteRunStore:
                 """
                 SELECT * FROM runs
                 WHERE status = ?
-                ORDER BY created_at, id
+                ORDER BY priority DESC, created_at, id
                 LIMIT 1
                 """,
                 (RunStatus.QUEUED.value,),
@@ -926,7 +1121,7 @@ class SQLiteRunStore:
         run_id: UUID,
         type: str,
         data: Mapping[str, object],
-    ) -> None:
+    ) -> RunEvent:
         row = connection.execute(
             """
             SELECT COALESCE(MAX(sequence), 0) AS sequence
@@ -935,12 +1130,20 @@ class SQLiteRunStore:
             (str(run_id),),
         ).fetchone()
         sequence = int(row["sequence"]) + 1
+        created_at = _now()
         connection.execute(
             """
             INSERT INTO run_events(run_id, sequence, type, data_json, created_at)
             VALUES (?, ?, ?, ?, ?)
             """,
-            (str(run_id), sequence, type, _dump(data), _now().isoformat()),
+            (str(run_id), sequence, type, _dump(data), created_at.isoformat()),
+        )
+        return RunEvent(
+            run_id=run_id,
+            sequence=sequence,
+            type=type,
+            data=freeze_json(data, field="run event data"),  # type: ignore[arg-type]
+            created_at=created_at,
         )
 
     def _required_run_row(
@@ -986,6 +1189,7 @@ class SQLiteRunStore:
                 "tenant_id": run.tenant_id,
                 "state": run.state,
                 "next_nodes": run.next_nodes,
+                "priority": run.priority,
             }
         )
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -993,8 +1197,10 @@ class SQLiteRunStore:
     def _run_from_row(self, row: sqlite3.Row) -> Run:
         state = _load(row["state_json"])
         next_nodes = _load(row["next_nodes_json"])
+        context = _load(row["context_json"])
         assert isinstance(state, dict)
         assert isinstance(next_nodes, list)
+        assert isinstance(context, dict)
         return Run(
             id=UUID(row["id"]),
             plan_id=UUID(row["plan_id"]),
@@ -1005,6 +1211,8 @@ class SQLiteRunStore:
             state=state,
             next_nodes=tuple(str(item) for item in next_nodes),
             idempotency_key=row["idempotency_key"],
+            context=context,
+            priority=int(row["priority"]),
             created_at=_parse_time(row["created_at"]),
             updated_at=_parse_time(row["updated_at"]),
             version=int(row["version"]),
@@ -1048,6 +1256,11 @@ class SQLiteRunStore:
             kind=InterruptKind(row["kind"]),
             request=request,
             created_at=_parse_time(row["created_at"]),
+            expires_at=(
+                _parse_time(row["expires_at"])
+                if row["expires_at"] is not None
+                else None
+            ),
             decision=decision,
             decided_at=(
                 _parse_time(row["decided_at"])

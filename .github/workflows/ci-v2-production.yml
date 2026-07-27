@@ -1,0 +1,86 @@
+name: v2 production gates
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 56379:6379
+    env:
+      OPENRATH_TEST_POSTGRES_DSN: postgresql://postgres@127.0.0.1:55432/postgres
+      OPENRATH_TEST_REDIS_URL: redis://127.0.0.1:56379/0
+      OPENRATH_TEST_S3_ENDPOINT: http://127.0.0.1:59000
+      OPENRATH_TEST_S3_ACCESS_KEY: openrathtest
+      OPENRATH_TEST_S3_SECRET_KEY: openrath-test-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Start S3-compatible object store
+        run: >-
+          docker run -d --name minio -p 59000:9000
+          -e MINIO_ROOT_USER=openrathtest
+          -e MINIO_ROOT_PASSWORD=openrath-test-secret
+          minio/minio:RELEASE.2025-09-07T16-13-09Z server /data
+      - run: uv sync --extra postgres --extra server --extra s3 --extra redis --extra otel
+      - run: uv lock --check
+      - run: uv run ruff check src tests scripts examples
+      - run: uv run mypy src/rath
+      - run: uv run pytest -q -n auto -m "not live_llm and not opensandbox and not openviking"
+      - run: uv run python scripts/soak_v2.py --duration-seconds 10 --max-runs 500
+      - run: uv build
+      - name: Validate reference deployments
+        env:
+          POSTGRES_PASSWORD: review-only-password
+          OPENRATH_TOKEN: review-only-token
+          MINIO_ROOT_PASSWORD: review-only-minio-password
+        run: |
+          docker compose -f deploy/compose/compose.yaml config --quiet
+          docker run --rm \
+            -v "$PWD/deploy/kubernetes:/manifests:ro" \
+            ghcr.io/yannh/kubeconform:v0.7.0 \
+            -strict -summary /manifests
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: false
+          load: true
+          tags: openrath:review
+      - uses: aquasecurity/trivy-action@0.32.0
+        with:
+          image-ref: openrath:review
+          severity: CRITICAL,HIGH
+          exit-code: "1"
+          ignore-unfixed: true
+      - uses: aquasecurity/trivy-action@0.32.0
+        with:
+          image-ref: openrath:review
+          format: cyclonedx
+          output: openrath-v2-sbom.cdx.json

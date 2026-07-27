@@ -8,6 +8,13 @@ from uuid import uuid4
 import pytest
 
 from rath.definition import EffectClass
+from rath.eval import (
+    Dataset,
+    EvaluationResult,
+    Example,
+    Experiment,
+    PostgresEvaluationStore,
+)
 from rath.runtime import (
     ApprovalDecision,
     ApprovalDecisionKind,
@@ -21,6 +28,7 @@ from rath.runtime import (
     RunStatus,
     arguments_digest,
 )
+from rath.server import PostgresResourceStore
 
 pytestmark = pytest.mark.skipif(
     not os.getenv("OPENRATH_TEST_POSTGRES_DSN"),
@@ -82,6 +90,7 @@ def test_postgres_lifecycle_and_interrupt(store: PostgresRunStore) -> None:
     waiting = store.create_interrupt(
         interrupt, expected_run_version=running.version
     )
+    assert store.list_interrupts(tenant_id="postgres-test") == (interrupt,)
     resumed = store.decide_interrupt(
         interrupt.id,
         decision=ApprovalDecision(
@@ -94,9 +103,32 @@ def test_postgres_lifecycle_and_interrupt(store: PostgresRunStore) -> None:
 
     assert resumed.status is RunStatus.QUEUED
     assert store.get_interrupt(interrupt.id).decision is not None
+    assert store.list_interrupts(tenant_id="postgres-test") == ()
     assert [event.sequence for event in store.list_run_events(queued.id)] == list(
         range(1, len(store.list_run_events(queued.id)) + 1)
     )
+
+
+def test_postgres_interrupt_deadline_is_atomic(store: PostgresRunStore) -> None:
+    queued = store.create_run(_run())
+    running = store.transition_run(
+        queued.id,
+        expected_version=queued.version,
+        target=RunStatus.RUNNING,
+    )
+    interrupt = Interrupt.create(
+        run_id=running.id,
+        kind=InterruptKind.INPUT,
+        request={"question": "continue?"},
+        timeout_seconds=1,
+    )
+    store.create_interrupt(interrupt, expected_run_version=running.version)
+    assert interrupt.expires_at is not None
+
+    assert store.expire_interrupts(
+        now=interrupt.expires_at + timedelta(seconds=1)
+    ) == (interrupt.id,)
+    assert store.get_run(running.id).status is RunStatus.TIMED_OUT
 
 
 def test_postgres_idempotency_and_claim_are_concurrency_safe(
@@ -180,3 +212,67 @@ def test_postgres_effect_ledger_persists_ambiguous_dispatch(
         older_than=datetime.now(timezone.utc) + timedelta(seconds=1)
     )
     assert stale[0].status.value == "ambiguous"
+
+
+def test_postgres_server_resources_share_run_transaction_domain(
+    store: PostgresRunStore,
+) -> None:
+    resources = PostgresResourceStore(store)
+    revision_id = uuid4()
+    assistant = resources.create_assistant(
+        tenant_id="postgres-test",
+        id="tenant-agent",
+        template_id="deployed-template",
+        revision_id=revision_id,
+    )
+    session = resources.create_session("postgres-test")
+    run = store.create_run(
+        Run.create(
+            plan_id=uuid4(),
+            revision_id=uuid4(),
+            session_id=session.id,
+            tenant_id="postgres-test",
+        )
+    )
+    feedback = resources.create_feedback(
+        tenant_id="postgres-test",
+        run_id=run.id,
+        key="quality",
+        score=1,
+        value=None,
+    )
+
+    assert resources.get_assistant("postgres-test", "tenant-agent") == assistant
+    assert resources.list_assistants("postgres-test") == (assistant,)
+    assert resources.list_assistants("other") == ()
+    assert resources.get_session(session.id) == session
+    assert resources.count_tenants() == ("postgres-test",)
+    assert feedback.run_id == run.id
+
+
+def test_postgres_evaluation_results_are_durable(store: PostgresRunStore) -> None:
+    evaluations = PostgresEvaluationStore(store)
+    dataset = Dataset(
+        id=uuid4(),
+        name="integration",
+        version="1",
+        examples=(Example.create({"input": "x"}, {"output": "y"}),),
+    )
+    experiment = Experiment(
+        id=uuid4(),
+        dataset_id=dataset.id,
+        revision_id=uuid4(),
+        results=(
+            EvaluationResult(
+                evaluator="test",
+                score=1,
+                passed=True,
+                reason="ok",
+            ),
+        ),
+    )
+    evaluations.save_dataset(dataset)
+    evaluations.save_experiment(experiment)
+
+    assert evaluations.get_dataset(dataset.id) == dataset
+    assert evaluations.get_experiment(experiment.id) == experiment

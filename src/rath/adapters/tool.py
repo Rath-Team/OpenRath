@@ -11,6 +11,7 @@ from uuid import UUID
 from rath.adapters.context import AdapterRequestContext
 from rath.adapters.schema import validate_json
 from rath.adapters.specs import ToolSpec
+from rath.artifacts import ArtifactStore
 from rath.context import RunContext
 from rath.runtime.effects import (
     EffectLedger,
@@ -48,9 +49,11 @@ class ToolExecutor:
         policy: PolicyEngine,
         *,
         effect_ledger: EffectLedger | None = None,
+        artifact_store: ArtifactStore | None = None,
     ) -> None:
         self.policy = policy
         self.effect_ledger = effect_ledger
+        self.artifact_store = artifact_store
 
     async def execute(
         self,
@@ -127,6 +130,25 @@ class ToolExecutor:
             or spec.max_output_bytes,
         )
         if len(encoded) > limit:
+            if self.artifact_store is not None:
+                artifact = self.artifact_store.put(
+                    adapter_context.tenant_id,
+                    encoded,
+                    media_type="application/json",
+                    metadata={
+                        "tool": f"{spec.name}@{spec.version}",
+                        "run_id": str(run_id) if run_id is not None else None,
+                    },
+                )
+                reference = {
+                    "artifact_uri": artifact.uri,
+                    "digest": artifact.digest,
+                    "size": artifact.size,
+                    "media_type": artifact.media_type,
+                }
+                if invocation is not None and ledger is not None:
+                    ledger.complete(invocation.id, reference)
+                return reference
             if invocation is not None and ledger is not None:
                 ledger.fail(
                     invocation.id,

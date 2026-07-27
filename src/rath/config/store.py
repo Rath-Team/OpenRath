@@ -185,6 +185,10 @@ class ConfigStore:
                 creds_payload["version"] = SCHEMA_VERSION
                 atomic_write_json(creds_path, creds_payload, mode=0o600)
                 chmod_user_only(creds_path)
+            else:
+                # Prevent a removed last key from being restored on the next
+                # load from an obsolete credentials sidecar.
+                creds_path.unlink(missing_ok=True)
 
             # Record/refresh the root layout manifest at the data root.
             try:

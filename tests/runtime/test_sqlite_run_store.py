@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
 from pathlib import Path
 from uuid import uuid4
 
@@ -139,6 +140,8 @@ def test_interrupt_decision_and_waiting_resume_are_atomic(tmp_path: Path) -> Non
         expected_run_version=running.version,
     )
     assert waiting.status is RunStatus.WAITING
+    assert store.list_interrupts(tenant_id="tenant-1") == (interrupt,)
+    assert store.list_interrupts(tenant_id="other") == ()
 
     resumed = store.decide_interrupt(
         interrupt.id,
@@ -149,11 +152,14 @@ def test_interrupt_decision_and_waiting_resume_are_atomic(tmp_path: Path) -> Non
         ),
         expected_run_version=waiting.version,
     )
-
     assert resumed.status is RunStatus.QUEUED
     decided = store.get_interrupt(interrupt.id)
     assert decided.decision is not None
     assert decided.decision.actor_id == "user-1"
+    assert store.list_interrupts(tenant_id="tenant-1") == ()
+    assert store.list_interrupts(
+        tenant_id="tenant-1", pending_only=False
+    ) == (decided,)
     with pytest.raises(ConflictError, match="already decided"):
         store.decide_interrupt(
             interrupt.id,
@@ -165,3 +171,31 @@ def test_interrupt_decision_and_waiting_resume_are_atomic(tmp_path: Path) -> Non
             expected_run_version=resumed.version,
         )
 
+
+def test_interrupt_deadline_expires_run_atomically(tmp_path: Path) -> None:
+    store = SQLiteRunStore(tmp_path / "runtime.db")
+    queued = store.create_run(_run())
+    running = store.transition_run(
+        queued.id,
+        expected_version=queued.version,
+        target=RunStatus.RUNNING,
+    )
+    interrupt = Interrupt.create(
+        run_id=running.id,
+        kind=InterruptKind.INPUT,
+        request={"question": "continue?"},
+        timeout_seconds=1,
+    )
+    store.create_interrupt(interrupt, expected_run_version=running.version)
+    assert interrupt.expires_at is not None
+
+    assert store.expire_interrupts(
+        now=interrupt.expires_at + timedelta(seconds=1)
+    ) == (interrupt.id,)
+    expired = store.get_interrupt(interrupt.id)
+    assert expired.decision is not None
+    assert expired.decision.kind is ApprovalDecisionKind.REJECT
+    assert store.get_run(running.id).status is RunStatus.TIMED_OUT
+    assert store.expire_interrupts(
+        now=interrupt.expires_at + timedelta(seconds=2)
+    ) == ()

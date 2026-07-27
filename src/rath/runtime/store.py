@@ -41,6 +41,13 @@ class RunStore(Protocol):
 
     def list_run_events(self, run_id: UUID) -> tuple[RunEvent, ...]: ...
 
+    def append_run_event(
+        self,
+        run_id: UUID,
+        type: str,
+        data: Mapping[str, object],
+    ) -> RunEvent: ...
+
     def append_checkpoint(self, checkpoint: Checkpoint) -> None: ...
 
     def latest_checkpoint(self, run_id: UUID) -> Checkpoint | None: ...
@@ -64,6 +71,19 @@ class RunStore(Protocol):
     ) -> Run: ...
 
     def get_interrupt(self, interrupt_id: UUID) -> Interrupt: ...
+
+    def list_interrupts(
+        self,
+        *,
+        tenant_id: str,
+        pending_only: bool = True,
+    ) -> tuple[Interrupt, ...]: ...
+
+    def expire_interrupts(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> tuple[UUID, ...]: ...
 
     def decide_interrupt(
         self,
