@@ -18,19 +18,25 @@ from __future__ import annotations
 from typing import Any
 
 from rath import (
+    adapters,
     backend,
     definition,
+    eval,
     flow,
     memory,
+    observability,
     runtime,
     security,
 )
 
 __all__ = [
     "backend",
+    "adapters",
     "definition",
+    "eval",
     "flow",
     "memory",
+    "observability",
     "runtime",
     "security",
     "session",

@@ -41,6 +41,21 @@ opensandbox = [
 openviking = [
     "openviking>=0.4.7",
 ]
+server = [
+    "starlette>=0.47,<1",
+    "uvicorn>=0.35,<1",
+    "httpx>=0.28,<1",
+]
+postgres = [
+    "psycopg[binary,pool]>=3.2,<4",
+]
+redis = [
+    "redis>=6,<7",
+]
+otel = [
+    "opentelemetry-api>=1.36,<2",
+    "opentelemetry-sdk>=1.36,<2",
+]
 
 [tool.ruff]
 line-length = 88

@@ -12,6 +12,7 @@ from uuid import UUID
 from rath._json import thaw_json
 from rath.context import RunContext
 from rath.definition import ExecutionPlan, NodeKind, WorkflowCompiler
+from rath.observability import GuardedTelemetry, NoOpTelemetry, Telemetry
 from rath.runtime.models import Checkpoint, ClaimedRun, Run, RunStatus
 from rath.runtime.sqlite import SQLiteRunStore
 
@@ -35,8 +36,14 @@ class _Registration:
 class LocalRuntime:
     """Sync façade over the durable local worker engine."""
 
-    def __init__(self, store: SQLiteRunStore) -> None:
+    def __init__(
+        self,
+        store: SQLiteRunStore,
+        *,
+        telemetry: Telemetry | None = None,
+    ) -> None:
         self.store = store
+        self.telemetry = GuardedTelemetry(telemetry or NoOpTelemetry())
         self._registrations: dict[UUID, _Registration] = {}
         self._contexts: dict[UUID, RunContext] = {}
 
@@ -132,16 +139,21 @@ class LocalRuntime:
                 worker_id=claim.lease.holder_worker_id,
                 fencing_token=claim.lease.fencing_token,
             )
-            if node.kind is NodeKind.ROUTER:
-                result = handler(state_value)
-            else:
-                result = handler(state_value, step_context)
-            if inspect.isawaitable(result):
-                from rath._async.runtime import runtime as async_runtime
+            with self.telemetry.span(
+                "openrath.node",
+                context=context.trace_context,
+                attributes={"run_id": str(run.id), "node_id": node.id},
+            ):
+                if node.kind is NodeKind.ROUTER:
+                    result = handler(state_value)
+                else:
+                    result = handler(state_value, step_context)
+                if inspect.isawaitable(result):
+                    from rath._async.runtime import runtime as async_runtime
 
-                result = async_runtime().run(
-                    cast(Coroutine[Any, Any, object], result)
-                )
+                    result = async_runtime().run(
+                        cast(Coroutine[Any, Any, object], result)
+                    )
 
             next_nodes: tuple[str, ...]
             if node.kind is NodeKind.ROUTER:
@@ -182,6 +194,10 @@ class LocalRuntime:
                 expected_run_version=run.version,
             )
             steps += 1
+            self.telemetry.increment(
+                "openrath.node.completed",
+                attributes={"kind": node.kind.value},
+            )
 
         if not run.next_nodes:
             return self.store.finish_claim(
