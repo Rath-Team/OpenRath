@@ -52,6 +52,7 @@ def _run(*, key: str | None = None) -> Run:
 def store() -> PostgresRunStore:
     dsn = os.environ["OPENRATH_TEST_POSTGRES_DSN"]
     schema = f"test_{uuid4().hex}"
+    PostgresRunStore.migrate(dsn, schema=schema)
     value = PostgresRunStore(dsn, schema=schema)
     yield value
     value.close()
@@ -87,9 +88,7 @@ def test_postgres_lifecycle_and_interrupt(store: PostgresRunStore) -> None:
         kind=InterruptKind.APPROVAL,
         request={"operation": "email.send"},
     )
-    waiting = store.create_interrupt(
-        interrupt, expected_run_version=running.version
-    )
+    waiting = store.create_interrupt(interrupt, expected_run_version=running.version)
     assert store.list_interrupts(tenant_id="postgres-test") == (interrupt,)
     resumed = store.decide_interrupt(
         interrupt.id,
@@ -125,9 +124,9 @@ def test_postgres_interrupt_deadline_is_atomic(store: PostgresRunStore) -> None:
     store.create_interrupt(interrupt, expected_run_version=running.version)
     assert interrupt.expires_at is not None
 
-    assert store.expire_interrupts(
-        now=interrupt.expires_at + timedelta(seconds=1)
-    ) == (interrupt.id,)
+    assert store.expire_interrupts(now=interrupt.expires_at + timedelta(seconds=1)) == (
+        interrupt.id,
+    )
     assert store.get_run(running.id).status is RunStatus.TIMED_OUT
 
 
@@ -175,9 +174,7 @@ def test_postgres_checkpoint_fencing_and_orphan_recovery(
     )
     future = datetime.now(timezone.utc) + timedelta(seconds=2)
     assert store.requeue_expired_leases(now=future) == (queued.id,)
-    second = store.claim_next(
-        worker_id="worker-2", lease_seconds=30, now=future
-    )
+    second = store.claim_next(worker_id="worker-2", lease_seconds=30, now=future)
     assert second is not None
     assert second.lease.fencing_token == 2
     with pytest.raises(ConflictError, match="fencing"):
@@ -194,9 +191,7 @@ def test_postgres_effect_ledger_persists_ambiguous_dispatch(
     store: PostgresRunStore,
 ) -> None:
     run = store.create_run(_run())
-    running = store.transition_run(
-        run.id, expected_version=0, target=RunStatus.RUNNING
-    )
+    running = store.transition_run(run.id, expected_version=0, target=RunStatus.RUNNING)
     ledger = PostgresEffectLedger(store.dsn, schema=store.schema)
     invocation = ledger.prepare(
         run_id=running.id,

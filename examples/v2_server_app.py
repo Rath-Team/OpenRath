@@ -8,7 +8,7 @@ from uuid import UUID
 
 from rath.definition import EffectClass, step
 from rath.flow import Workflow
-from rath.runtime import LocalRuntime, PostgresRunStore
+from rath.runtime import LocalRuntime, PostgresEffectLedger, PostgresRunStore
 from rath.security import Principal, PrincipalKind, SecurityContext
 from rath.server import AgentServer, StaticTokenAuth
 from rath.session import Session
@@ -37,8 +37,17 @@ class SlowWorkflow(Workflow):
 dsn = os.environ["OPENRATH_POSTGRES_DSN"]
 token = os.environ["OPENRATH_TOKEN"]
 tenant_id = os.getenv("OPENRATH_TENANT_ID", "default")
-store = PostgresRunStore(dsn, schema=os.getenv("OPENRATH_DB_SCHEMA", "openrath"))
-runtime = LocalRuntime(store)
+store = PostgresRunStore(
+    dsn,
+    schema=os.getenv("OPENRATH_DB_SCHEMA", "openrath"),
+    auto_migrate=False,
+    pool_max_size=int(os.getenv("OPENRATH_DB_POOL_MAX_SIZE", "20")),
+)
+effect_ledger = PostgresEffectLedger(
+    dsn,
+    schema=os.getenv("OPENRATH_DB_SCHEMA", "openrath"),
+)
+runtime = LocalRuntime(store, effect_ledger=effect_ledger, production_mode=True)
 server = AgentServer(
     store,
     runtime,
@@ -47,6 +56,7 @@ server = AgentServer(
             token: SecurityContext(
                 principal=Principal(id="reference-user", kind=PrincipalKind.SERVICE),
                 tenant_id=tenant_id,
+                grants=frozenset({"*"}),
             )
         }
     ),
@@ -57,7 +67,9 @@ server = AgentServer(
 server.register_assistant(
     "echo",
     EchoWorkflow(),
-    revision_id=UUID(os.getenv("OPENRATH_REVISION_ID", "00000000-0000-4000-8000-000000000001")),
+    revision_id=UUID(
+        os.getenv("OPENRATH_REVISION_ID", "00000000-0000-4000-8000-000000000001")
+    ),
 )
 server.register_assistant(
     "slow",

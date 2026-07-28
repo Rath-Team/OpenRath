@@ -27,7 +27,22 @@ class RunStore(Protocol):
 
     def get_run(self, run_id: UUID) -> Run: ...
 
-    def list_runs(self, *, tenant_id: str) -> tuple[Run, ...]: ...
+    def list_runs(
+        self,
+        *,
+        tenant_id: str,
+        after: UUID | None = None,
+        limit: int | None = None,
+        session_id: UUID | None = None,
+        statuses: tuple[RunStatus, ...] | None = None,
+    ) -> tuple[Run, ...]: ...
+
+    def count_runs(
+        self,
+        *,
+        status: RunStatus,
+        tenant_id: str | None = None,
+    ) -> int: ...
 
     def transition_run(
         self,
@@ -39,7 +54,13 @@ class RunStore(Protocol):
         next_nodes: tuple[str, ...] | None = None,
     ) -> Run: ...
 
-    def list_run_events(self, run_id: UUID) -> tuple[RunEvent, ...]: ...
+    def list_run_events(
+        self,
+        run_id: UUID,
+        *,
+        after_sequence: int = 0,
+        limit: int | None = None,
+    ) -> tuple[RunEvent, ...]: ...
 
     def append_run_event(
         self,

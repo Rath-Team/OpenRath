@@ -76,21 +76,13 @@ def migrate_main() -> None:
     if not arguments.dsn:
         parser.error("--dsn or OPENRATH_POSTGRES_DSN is required")
     if arguments.check:
-        import psycopg
-        from psycopg import sql
+        from rath.runtime import PostgresRunStore
 
-        with psycopg.connect(arguments.dsn) as connection:
-            value = connection.execute(
-                sql.SQL(
-                    "SELECT version FROM {}.schema_migrations ORDER BY version DESC LIMIT 1"
-                ).format(sql.Identifier(arguments.schema))
-            ).fetchone()
-        if value is None or int(value[0]) < 1:
-            raise SystemExit("OpenRath schema is not current")
+        PostgresRunStore.verify_schema(arguments.dsn, schema=arguments.schema)
         return
     from rath.runtime import PostgresRunStore
 
-    PostgresRunStore(arguments.dsn, schema=arguments.schema).close()
+    PostgresRunStore.migrate(arguments.dsn, schema=arguments.schema)
 
 
 def worker_main() -> None:
@@ -125,9 +117,15 @@ def worker_main() -> None:
             signal.signal(getattr(signal, name), stop)
     while not stopped.is_set():
         server.store.expire_interrupts()
+        server.runtime.reconcile_effects()
         server.store.requeue_expired_leases()
         result = server.runtime.work_once(
             worker_id=arguments.worker_id,
             lease_seconds=arguments.lease_seconds,
         )
-        stopped.wait(0 if result is not None else 0.1)
+        if result is not None:
+            continue
+        if getattr(server, "signals", None) is not None:
+            server.signals.receive(timeout_seconds=0.1)
+        else:
+            stopped.wait(0.1)

@@ -58,4 +58,3 @@ def test_run_state_is_deeply_immutable() -> None:
 
     assert run.state["nested"]["value"] == 1  # type: ignore[index]
     assert run.version == 0
-

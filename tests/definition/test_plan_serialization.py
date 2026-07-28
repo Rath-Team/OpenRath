@@ -41,4 +41,3 @@ def test_existing_compiled_workflow_exposes_v2_execution_plan() -> None:
 
     assert compiled.execution_plan.definition_hash
     assert compiled.execution_plan.durable is True
-

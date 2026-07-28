@@ -17,18 +17,19 @@ def main() -> None:
     parser.add_argument("--worker-concurrency", type=int, default=16)
     parser.add_argument("--headroom", type=float, default=1.5)
     args = parser.parse_args()
-    if min(
-        args.peak_runs_per_second,
-        args.mean_run_seconds,
-        args.events_per_run,
-        args.event_kib,
-        args.worker_concurrency,
-        args.headroom,
-    ) <= 0:
+    if (
+        min(
+            args.peak_runs_per_second,
+            args.mean_run_seconds,
+            args.events_per_run,
+            args.event_kib,
+            args.worker_concurrency,
+            args.headroom,
+        )
+        <= 0
+    ):
         parser.error("capacity inputs must be positive")
-    concurrent = (
-        args.peak_runs_per_second * args.mean_run_seconds * args.headroom
-    )
+    concurrent = args.peak_runs_per_second * args.mean_run_seconds * args.headroom
     workers = math.ceil(concurrent / args.worker_concurrency)
     events_per_day = args.peak_runs_per_second * 86400 * args.events_per_run
     storage_gib = (

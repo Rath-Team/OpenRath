@@ -54,6 +54,35 @@ Most agent frameworks begin with an agent loop. OpenRath begins with **Session**
 
 OpenRath is designed for this: many agents collaborating across many branchable sessions, while still tracing every role, workspace, memory write, and final output.
 
+## v2.0.0 durable runtime (unreleased)
+
+The v2 candidate adds explicit `@step` / `@router` execution plans, durable
+Runs and checkpoints, effect reconciliation, tenant-scoped Agent Server APIs,
+and governed Provider/Tool/Sandbox/Memory adapters. The HTTP contract is
+currently **Beta**; v1 JSONL imports are historical and cannot resume an active
+Run.
+
+Embedded mode is intended for a trusted process. Agent Server mode is the
+strict durable profile: tokens need explicit action grants, object access is
+tenant/project scoped, and synchronous steps cannot declare a preemptive
+timeout. Use an async step or isolated executor for enforceable deadlines.
+
+```python
+runtime = LocalRuntime(
+    store,
+    effect_ledger=ledger,
+    production_mode=True,
+)
+server = AgentServer(store, runtime, auth=auth, audit_sink=audit)
+```
+
+Production PostgreSQL schema migration is a separate operation:
+`openrath-migrate` followed by `openrath-migrate --check`. Runtime identities
+do not need DDL privileges. See
+[`deploy/docs/operations-v2.md`](deploy/docs/operations-v2.md),
+[`deploy/docs/migration-v2.md`](deploy/docs/migration-v2.md), and the generated
+[`deploy/docs/openapi-v2.json`](deploy/docs/openapi-v2.json).
+
 <p align="center">
   <img src="assets/readme/diagrams/paradigm-map.png" alt="Multi-Agent Multi-Session Map" width="860" />
 </p>

@@ -1,6 +1,10 @@
 """Shared v2 adapter contracts."""
 
-from rath.adapters.context import AdapterRequestContext
+from rath.adapters.context import (
+    AdapterRequestContext,
+    merge_policy_constraints,
+    with_policy_constraints,
+)
 from rath.adapters.memory import MemoryExecutor, MemoryHandler
 from rath.adapters.provider import ProviderExecutor, ProviderHandler
 from rath.adapters.sandbox import SandboxExecutor, SandboxHandler
@@ -13,13 +17,22 @@ from rath.adapters.specs import (
     SandboxSpec,
     ToolSpec,
 )
-from rath.adapters.tool import ToolExecutor, ToolHandler, ToolOutputTooLarge
+from rath.adapters.tool import (
+    ApprovalGrant,
+    ApprovalValidator,
+    ToolExecutor,
+    ToolHandler,
+    ToolOutputTooLarge,
+)
 
 __all__ = [
     "AdapterRequestContext",
+    "ApprovalGrant",
+    "ApprovalValidator",
     "MemoryNamespace",
     "MemoryExecutor",
     "MemoryHandler",
+    "merge_policy_constraints",
     "ProviderCapability",
     "ProviderExecutor",
     "ProviderHandler",
@@ -34,4 +47,5 @@ __all__ = [
     "ToolOutputTooLarge",
     "ToolSpec",
     "validate_json",
+    "with_policy_constraints",
 ]

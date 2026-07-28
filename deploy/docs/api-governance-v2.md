@@ -14,8 +14,35 @@ when the repository owner approves the release.
 - **Experimental**: explicitly labelled research integrations and extension
   hooks. They may change in a minor release and must not be required for the
   durable Run, security, or storage contracts.
-- Unlabelled public APIs are treated as Stable. Internal modules and names
-  beginning with `_` are not public contracts.
+- Unlabelled v2 additions are not Stable. They remain Experimental until a
+  release note and this policy explicitly classify them. Internal modules and
+  names beginning with `_` are not public contracts.
+
+The Agent Server OpenAPI document currently labels `/v1` operations **Beta**.
+Stable error codes and persisted fields may be promoted independently only
+after the RC evidence gate passes.
+
+## Action and object authorization
+
+Authentication alone grants no access. Tokens carry explicit action grants;
+`*` is an intentionally privileged reference-only grant. The service enforces
+the following minimum actions:
+
+| Resource | Read | Mutate/control |
+| --- | --- | --- |
+| Assistant | `assistant.read` | `assistant.create` |
+| Session | `session.read` | `session.create` |
+| Run | `run.read` | `run.create`, `run.cancel`, `run.resume` |
+| Interrupt | `interrupt.read` | `interrupt.decide` |
+| Feedback | — | `feedback.create` |
+| Memory | `memory.search` | `memory.put`, `memory.delete` |
+| Metrics | `metrics.read` | — |
+
+Run, Session, Interrupt, Feedback, and Memory operations also verify tenant and
+project scope. A user-scoped memory namespace cannot name another principal
+unless the token has `memory.admin`. Cross-scope objects are returned as not
+found to avoid disclosing their existence. Control-plane mutations emit
+redacted security audit events when an `AuditSink` is configured.
 
 ## SemVer and deprecation
 

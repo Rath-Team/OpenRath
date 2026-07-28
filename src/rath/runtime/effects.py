@@ -47,6 +47,9 @@ class ToolInvocation:
     status: InvocationStatus
     created_at: datetime
     updated_at: datetime
+    node_id: str | None = None
+    checkpoint_sequence: int | None = None
+    invocation_sequence: int | None = None
     idempotency_key: str | None = None
     result: JSONValue | None = None
     error: str | None = None
@@ -76,6 +79,8 @@ class EffectLedger(Protocol):
         effect_class: EffectClass,
         arguments_digest: str,
         idempotency_key: str | None,
+        node_id: str | None = None,
+        checkpoint_sequence: int | None = None,
     ) -> ToolInvocation: ...
 
     def get(self, invocation_id: UUID) -> ToolInvocation: ...
@@ -89,6 +94,8 @@ class EffectLedger(Protocol):
     def reconcile_stale(
         self, *, older_than: datetime
     ) -> tuple[ToolInvocation, ...]: ...
+
+    def watermark(self, run_id: UUID) -> int: ...
 
 
 def arguments_digest(arguments: Mapping[str, object]) -> str:
@@ -161,19 +168,10 @@ class SQLiteEffectLedger:
         effect_class: EffectClass,
         arguments_digest: str,
         idempotency_key: str | None,
+        node_id: str | None = None,
+        checkpoint_sequence: int | None = None,
     ) -> ToolInvocation:
         now = datetime.now(timezone.utc)
-        invocation = ToolInvocation(
-            id=uuid4(),
-            run_id=run_id,
-            tool_name=tool_name,
-            effect_class=effect_class,
-            arguments_digest=arguments_digest,
-            idempotency_key=idempotency_key,
-            status=InvocationStatus.PREPARED,
-            created_at=now,
-            updated_at=now,
-        )
         connection = self._connect()
         try:
             connection.execute("BEGIN IMMEDIATE")
@@ -196,12 +194,35 @@ class SQLiteEffectLedger:
                         )
                     connection.commit()
                     return existing
+            row = connection.execute(
+                """
+                SELECT COALESCE(MAX(invocation_sequence), 0) AS value
+                FROM tool_invocations WHERE run_id = ?
+                """,
+                (str(run_id),),
+            ).fetchone()
+            invocation_sequence = int(row["value"]) + 1
+            invocation = ToolInvocation(
+                id=uuid4(),
+                run_id=run_id,
+                tool_name=tool_name,
+                effect_class=effect_class,
+                arguments_digest=arguments_digest,
+                idempotency_key=idempotency_key,
+                status=InvocationStatus.PREPARED,
+                created_at=now,
+                updated_at=now,
+                node_id=node_id,
+                checkpoint_sequence=checkpoint_sequence,
+                invocation_sequence=invocation_sequence,
+            )
             connection.execute(
                 """
                 INSERT INTO tool_invocations(
                     id, run_id, tool_name, effect_class, idempotency_key,
-                    arguments_digest, status, created_at, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    arguments_digest, status, created_at, updated_at,
+                    node_id, checkpoint_sequence, invocation_sequence
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     str(invocation.id),
@@ -213,6 +234,9 @@ class SQLiteEffectLedger:
                     invocation.status.value,
                     now.isoformat(),
                     now.isoformat(),
+                    node_id,
+                    checkpoint_sequence,
+                    invocation_sequence,
                 ),
             )
             connection.commit()
@@ -259,9 +283,7 @@ class SQLiteEffectLedger:
             error=error,
         )
 
-    def reconcile_stale(
-        self, *, older_than: datetime
-    ) -> tuple[ToolInvocation, ...]:
+    def reconcile_stale(self, *, older_than: datetime) -> tuple[ToolInvocation, ...]:
         connection = self._connect()
         try:
             connection.execute("BEGIN IMMEDIATE")
@@ -279,8 +301,11 @@ class SQLiteEffectLedger:
                 effect = EffectClass(row["effect_class"])
                 target = (
                     InvocationStatus.PREPARED
-                    if effect
-                    in {EffectClass.NONE, EffectClass.READ_ONLY, EffectClass.IDEMPOTENT}
+                    if effect in {EffectClass.NONE, EffectClass.READ_ONLY}
+                    or (
+                        effect is EffectClass.IDEMPOTENT
+                        and row["idempotency_key"] is not None
+                    )
                     else InvocationStatus.AMBIGUOUS
                 )
                 connection.execute(
@@ -306,6 +331,23 @@ class SQLiteEffectLedger:
             raise
         finally:
             connection.close()
+
+    def watermark(self, run_id: UUID) -> int:
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                """
+                SELECT COALESCE(
+                    MAX(invocation_sequence),
+                    COUNT(*)
+                ) AS value FROM tool_invocations
+                WHERE run_id = ? AND status = ?
+                """,
+                (str(run_id), InvocationStatus.SUCCEEDED.value),
+            ).fetchone()
+        finally:
+            connection.close()
+        return int(row["value"]) if row is not None else 0
 
     def _transition(
         self,
@@ -367,6 +409,17 @@ class SQLiteEffectLedger:
             error=row["error"],
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
+            node_id=(row["node_id"] if "node_id" in row.keys() else None),
+            checkpoint_sequence=(
+                row["checkpoint_sequence"]
+                if "checkpoint_sequence" in row.keys()
+                else None
+            ),
+            invocation_sequence=(
+                row["invocation_sequence"]
+                if "invocation_sequence" in row.keys()
+                else None
+            ),
         )
 
 
@@ -374,10 +427,6 @@ class PostgresEffectLedger:
     """Effect ledger sharing a production Postgres Run schema."""
 
     def __init__(self, dsn: str, *, schema: str = "openrath") -> None:
-        from rath.runtime.postgres import PostgresRunStore
-
-        bootstrap = PostgresRunStore(dsn, schema=schema)
-        bootstrap.close()
         self.dsn = dsn
         self.schema = schema
 
@@ -400,17 +449,32 @@ class PostgresEffectLedger:
         effect_class: EffectClass,
         arguments_digest: str,
         idempotency_key: str | None,
+        node_id: str | None = None,
+        checkpoint_sequence: int | None = None,
     ) -> ToolInvocation:
         now = datetime.now(timezone.utc)
         invocation_id = uuid4()
         connection = self._connect()
         try:
+            connection.execute(
+                "SELECT id FROM runs WHERE id = %s FOR UPDATE",
+                (run_id,),
+            ).fetchone()
+            sequence_row = connection.execute(
+                """
+                SELECT COALESCE(MAX(invocation_sequence), 0) AS value
+                FROM tool_invocations WHERE run_id = %s
+                """,
+                (run_id,),
+            ).fetchone()
+            invocation_sequence = int(sequence_row["value"]) + 1
             row = connection.execute(
                 """
                 INSERT INTO tool_invocations(
                     id, run_id, tool_name, effect_class, idempotency_key,
-                    arguments_digest, status, created_at, updated_at
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    arguments_digest, status, created_at, updated_at,
+                    node_id, checkpoint_sequence, invocation_sequence
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (run_id, idempotency_key) DO NOTHING RETURNING *
                 """,
                 (
@@ -423,6 +487,9 @@ class PostgresEffectLedger:
                     InvocationStatus.PREPARED.value,
                     now,
                     now,
+                    node_id,
+                    checkpoint_sequence,
+                    invocation_sequence,
                 ),
             ).fetchone()
             if row is None:
@@ -486,9 +553,7 @@ class PostgresEffectLedger:
             error=error,
         )
 
-    def reconcile_stale(
-        self, *, older_than: datetime
-    ) -> tuple[ToolInvocation, ...]:
+    def reconcile_stale(self, *, older_than: datetime) -> tuple[ToolInvocation, ...]:
         connection = self._connect()
         try:
             rows = connection.execute(
@@ -504,8 +569,11 @@ class PostgresEffectLedger:
                 effect = EffectClass(row["effect_class"])
                 target = (
                     InvocationStatus.PREPARED
-                    if effect
-                    in {EffectClass.NONE, EffectClass.READ_ONLY, EffectClass.IDEMPOTENT}
+                    if effect in {EffectClass.NONE, EffectClass.READ_ONLY}
+                    or (
+                        effect is EffectClass.IDEMPOTENT
+                        and row["idempotency_key"] is not None
+                    )
                     else InvocationStatus.AMBIGUOUS
                 )
                 updated = connection.execute(
@@ -529,6 +597,24 @@ class PostgresEffectLedger:
             raise
         finally:
             connection.close()
+
+    def watermark(self, run_id: UUID) -> int:
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                """
+                SELECT COALESCE(
+                    MAX(invocation_sequence),
+                    COUNT(*)
+                ) AS value FROM tool_invocations
+                WHERE run_id = %s AND status = %s
+                """,
+                (run_id, InvocationStatus.SUCCEEDED.value),
+            ).fetchone()
+            connection.commit()
+        finally:
+            connection.close()
+        return int(row["value"]) if row is not None else 0
 
     def _transition(
         self,
@@ -587,4 +673,7 @@ class PostgresEffectLedger:
             error=row["error"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
+            node_id=row.get("node_id"),
+            checkpoint_sequence=row.get("checkpoint_sequence"),
+            invocation_sequence=row.get("invocation_sequence"),
         )

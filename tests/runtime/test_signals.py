@@ -42,3 +42,8 @@ def test_signal_failure_does_not_change_durable_outcome() -> None:
     )
     assert bus.receive() is None
     assert bus.failures == 2
+
+
+def test_in_memory_receive_without_timeout_is_non_blocking() -> None:
+    bus = InMemorySignalBus()
+    assert bus.receive(timeout_seconds=0) is None

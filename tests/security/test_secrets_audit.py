@@ -52,4 +52,3 @@ def test_audit_sink_preserves_security_correlation_without_secret_values() -> No
         assert event.tenant_id == "local"
 
     asyncio.run(exercise())
-

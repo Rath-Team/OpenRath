@@ -10,6 +10,7 @@ from rath.definition import EffectClass, step
 from rath.flow import Workflow
 from rath.runtime import InterruptKind, LocalRuntime, RunStatus, SQLiteRunStore
 from rath.security import (
+    InMemoryAuditSink,
     LocalTrustedPolicy,
     Principal,
     PrincipalKind,
@@ -41,6 +42,98 @@ class _Approval(Workflow):
         return session
 
 
+def test_control_mutation_emits_redacted_audit(tmp_path: Path) -> None:
+    import asyncio
+
+    async def exercise() -> None:
+        store = SQLiteRunStore(tmp_path / "audit.db")
+        runtime = LocalRuntime(store)
+        context = SecurityContext(
+            principal=Principal(id="operator", kind=PrincipalKind.USER),
+            tenant_id="tenant",
+            grants=frozenset({"*"}),
+        )
+        audit = InMemoryAuditSink()
+        server = AgentServer(
+            store,
+            runtime,
+            auth=StaticTokenAuth({"super-secret-token": context}),
+            audit_sink=audit,
+        )
+        server.register_assistant("echo", _Echo(), revision_id=uuid4())
+        transport = httpx.ASGITransport(app=server.app)
+        headers = {"Authorization": "Bearer super-secret-token"}
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://test",
+        ) as client:
+            session = await client.post("/v1/sessions", headers=headers)
+            run = await client.post(
+                "/v1/runs",
+                headers=headers,
+                json={
+                    "assistant_id": "echo",
+                    "session_id": session.json()["id"],
+                },
+            )
+            response = await client.post(
+                f"/v1/runs/{run.json()['id']}/cancel",
+                headers=headers,
+            )
+            assert response.status_code == 200
+
+        assert [event.action for event in audit.events] == ["run.cancel"]
+        assert "super-secret-token" not in repr(audit.events)
+
+    asyncio.run(exercise())
+
+
+def test_server_requires_explicit_action_grants(tmp_path: Path) -> None:
+    import asyncio
+
+    async def exercise() -> None:
+        store = SQLiteRunStore(tmp_path / "authorization.db")
+        runtime = LocalRuntime(store)
+        denied = SecurityContext(
+            principal=Principal(id="user", kind=PrincipalKind.USER),
+            tenant_id="tenant",
+        )
+        reader = SecurityContext(
+            principal=Principal(id="reader", kind=PrincipalKind.USER),
+            tenant_id="tenant",
+            grants=frozenset({"assistant.read"}),
+        )
+        server = AgentServer(
+            store,
+            runtime,
+            auth=StaticTokenAuth({"denied": denied, "reader": reader}),
+        )
+        server.register_assistant("echo", _Echo(), revision_id=uuid4())
+        transport = httpx.ASGITransport(app=server.app)
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://test",
+        ) as client:
+            no_grant = await client.get(
+                "/v1/assistants",
+                headers={"Authorization": "Bearer denied"},
+            )
+            assert no_grant.status_code == 403
+            allowed = await client.get(
+                "/v1/assistants",
+                headers={"Authorization": "Bearer reader"},
+            )
+            assert allowed.status_code == 200
+            mutation = await client.post(
+                "/v1/assistants",
+                headers={"Authorization": "Bearer reader"},
+                json={"id": "alias", "template_id": "echo"},
+            )
+            assert mutation.status_code == 403
+
+    asyncio.run(exercise())
+
+
 def test_server_auth_tenant_idempotency_and_sse_sync(tmp_path: Path) -> None:
     import asyncio
 
@@ -50,6 +143,7 @@ def test_server_auth_tenant_idempotency_and_sse_sync(tmp_path: Path) -> None:
         tenant = SecurityContext(
             principal=Principal(id="user-1", kind=PrincipalKind.USER),
             tenant_id="tenant-1",
+            grants=frozenset({"*"}),
         )
         server = AgentServer(
             store,
@@ -67,9 +161,11 @@ def test_server_auth_tenant_idempotency_and_sse_sync(tmp_path: Path) -> None:
                 "Authorization": "Bearer token",
                 "Idempotency-Key": "req-1",
             }
+            session = await client.post("/v1/sessions", headers=headers)
+            assert session.status_code == 201
             body = {
                 "assistant_id": "echo",
-                "session_id": str(uuid4()),
+                "session_id": session.json()["id"],
                 "state": {"value": 1},
             }
             first = await client.post("/v1/runs", headers=headers, json=body)
@@ -90,8 +186,13 @@ def test_server_auth_tenant_idempotency_and_sse_sync(tmp_path: Path) -> None:
             assert stream.status_code == 200
             assert "run.checkpoint.created" in stream.text
             assert (await client.get("/health/ready")).status_code == 200
-            assert (await client.get("/openapi.json")).status_code == 200
-            assert (await client.get("/metrics")).status_code == 200
+            openapi = await client.get("/openapi.json")
+            assert openapi.status_code == 200
+            schema = openapi.json()
+            assert schema["paths"]["/v1/runs"]["post"]["operationId"] == "createRun"
+            assert schema["components"]["securitySchemes"]["bearerAuth"]
+            assert all(operations for operations in schema["paths"].values())
+            assert (await client.get("/metrics", headers=headers)).status_code == 200
 
             session = await client.post("/v1/sessions", headers=headers)
             assert session.status_code == 201
@@ -114,19 +215,19 @@ def test_server_auth_tenant_idempotency_and_sse_sync(tmp_path: Path) -> None:
             )
             assert alias.status_code == 201
             assert alias.json()["kind"] == "alias"
+            alias_session = await client.post("/v1/sessions", headers=headers)
+            assert alias_session.status_code == 201
             alias_run = await client.post(
                 "/v1/runs",
                 headers={"Authorization": "Bearer token"},
                 json={
                     "assistant_id": "tenant-echo",
-                    "session_id": str(uuid4()),
+                    "session_id": alias_session.json()["id"],
                     "state": {"value": 3},
                 },
             )
             assert alias_run.status_code == 201
-            listed_assistants = await client.get(
-                "/v1/assistants", headers=headers
-            )
+            listed_assistants = await client.get("/v1/assistants", headers=headers)
             assert {item["id"] for item in listed_assistants.json()["items"]} == {
                 "echo",
                 "tenant-echo",
@@ -136,6 +237,11 @@ def test_server_auth_tenant_idempotency_and_sse_sync(tmp_path: Path) -> None:
                 headers={**headers, "Last-Event-ID": "1"},
             )
             assert "id: 1\n" not in reconnected.text
+            invalid_cursor = await client.get(
+                f"/v1/runs/{run_id}/stream",
+                headers={**headers, "Last-Event-ID": "not-an-integer"},
+            )
+            assert invalid_cursor.status_code == 400
             feedback = await client.post(
                 "/v1/feedback",
                 headers=headers,
@@ -159,7 +265,7 @@ def test_store_api_is_policy_governed_and_tenant_scoped(tmp_path: Path) -> None:
     async def exercise() -> None:
         store = SQLiteRunStore(tmp_path / "store-api.db")
         runtime = LocalRuntime(store)
-        local = SecurityContext.local()
+        local = SecurityContext.local(grants=("*", "trusted_host"))
         calls: list[tuple[str, str, dict[str, object]]] = []
 
         def memory_handler(operation, namespace, payload, context):  # type: ignore[no-untyped-def]
@@ -206,6 +312,7 @@ def test_server_interrupt_inbox_and_decision_resume(tmp_path: Path) -> None:
         tenant = SecurityContext(
             principal=Principal(id="reviewer", kind=PrincipalKind.USER),
             tenant_id="tenant",
+            grants=frozenset({"*"}),
         )
         server = AgentServer(
             store,
@@ -223,12 +330,14 @@ def test_server_interrupt_inbox_and_decision_resume(tmp_path: Path) -> None:
             base_url="http://test",
         ) as client:
             headers = {"Authorization": "Bearer token"}
+            session = await client.post("/v1/sessions", headers=headers)
+            assert session.status_code == 201
             created = await client.post(
                 "/v1/runs",
                 headers=headers,
                 json={
                     "assistant_id": "approval",
-                    "session_id": str(uuid4()),
+                    "session_id": session.json()["id"],
                 },
             )
             assert created.status_code == 201
@@ -240,10 +349,10 @@ def test_server_interrupt_inbox_and_decision_resume(tmp_path: Path) -> None:
             decided = await client.post(
                 f"/v1/interrupts/{interrupt['id']}/decision",
                 headers=headers,
-                    json={
-                        "kind": "approve",
-                        "reason": "expected test operation",
-                    },
+                json={
+                    "kind": "approve",
+                    "reason": "expected test operation",
+                },
             )
             assert decided.status_code == 200
             completed = runtime.work_once(worker_id="worker-2")

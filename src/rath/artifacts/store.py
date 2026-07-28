@@ -103,6 +103,22 @@ def _chunks(content: bytes | BinaryIO, size: int = 1024 * 1024) -> Iterator[byte
         yield chunk
 
 
+def _read_response_bounded(body: object, maximum: int) -> bytes:
+    reader = getattr(body, "read", None)
+    if not callable(reader):
+        raise TypeError("artifact response body is not readable")
+    value = bytearray()
+    while True:
+        chunk = reader(min(1024 * 1024, maximum - len(value) + 1))
+        if not isinstance(chunk, bytes):
+            raise TypeError("artifact response body did not return bytes")
+        if not chunk:
+            return bytes(value)
+        value.extend(chunk)
+        if len(value) > maximum:
+            raise ValueError("artifact exceeds configured size limit")
+
+
 def _manifest(artifact: Artifact) -> bytes:
     value = {
         "tenant_id": artifact.tenant_id,
@@ -279,32 +295,47 @@ class S3ArtifactStore:
         media_type: str = "application/octet-stream",
         metadata: Mapping[str, object] | None = None,
     ) -> Artifact:
-        data = b"".join(_chunks(content))
-        if len(data) > self.max_bytes:
-            raise ValueError("artifact exceeds configured size limit")
-        artifact = Artifact(
-            tenant_id=tenant_id,
-            digest=hashlib.sha256(data).hexdigest(),
-            size=len(data),
-            media_type=media_type,
-            created_at=datetime.now(timezone.utc),
-            metadata=freeze_mapping(metadata, field="artifact.metadata"),
-        )
-        payload_key, manifest_key = self._keys(tenant_id, artifact.digest)
-        self.client.put_object(
-            Bucket=self.bucket,
-            Key=payload_key,
-            Body=data,
-            ContentType=media_type,
-            Metadata={"sha256": artifact.digest},
-        )
-        self.client.put_object(
-            Bucket=self.bucket,
-            Key=manifest_key,
-            Body=_manifest(artifact),
-            ContentType="application/json",
-        )
-        return artifact
+        digest = hashlib.sha256()
+        total = 0
+        with tempfile.TemporaryFile() as staged:
+            for chunk in _chunks(content):
+                total += len(chunk)
+                if total > self.max_bytes:
+                    raise ValueError("artifact exceeds configured size limit")
+                digest.update(chunk)
+                staged.write(chunk)
+            artifact = Artifact(
+                tenant_id=tenant_id,
+                digest=digest.hexdigest(),
+                size=total,
+                media_type=media_type,
+                created_at=datetime.now(timezone.utc),
+                metadata=freeze_mapping(metadata, field="artifact.metadata"),
+            )
+            payload_key, manifest_key = self._keys(tenant_id, artifact.digest)
+            staged.seek(0)
+            self.client.put_object(
+                Bucket=self.bucket,
+                Key=payload_key,
+                Body=staged,
+                ContentLength=total,
+                ContentType=media_type,
+                Metadata={"sha256": artifact.digest},
+            )
+            try:
+                self.client.put_object(
+                    Bucket=self.bucket,
+                    Key=manifest_key,
+                    Body=_manifest(artifact),
+                    ContentType="application/json",
+                )
+            except BaseException:
+                self.client.delete_objects(
+                    Bucket=self.bucket,
+                    Delete={"Objects": [{"Key": payload_key}], "Quiet": True},
+                )
+                raise
+            return artifact
 
     def get(self, tenant_id: str, digest: str) -> bytes:
         payload_key, _ = self._keys(tenant_id, digest)
@@ -314,7 +345,10 @@ class S3ArtifactStore:
             if _not_found(exc):
                 raise ArtifactNotFound(digest) from exc
             raise
-        value = cast(bytes, response["Body"].read())
+        content_length = response.get("ContentLength")
+        if content_length is not None and int(content_length) > self.max_bytes:
+            raise ValueError("artifact exceeds configured size limit")
+        value = _read_response_bounded(response["Body"], self.max_bytes)
         if hashlib.sha256(value).hexdigest() != digest:
             raise IOError("artifact digest verification failed")
         return value
@@ -327,7 +361,9 @@ class S3ArtifactStore:
             if _not_found(exc):
                 raise ArtifactNotFound(digest) from exc
             raise
-        artifact = _parse_manifest(response["Body"].read())
+        artifact = _parse_manifest(
+            _read_response_bounded(response["Body"], 1024 * 1024)
+        )
         if artifact.tenant_id != tenant_id or artifact.digest != digest:
             raise IOError("artifact manifest identity mismatch")
         return artifact

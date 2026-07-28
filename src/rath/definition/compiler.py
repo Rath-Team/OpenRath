@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import inspect
 import json
+import textwrap
 from collections.abc import Callable, Mapping
 from uuid import NAMESPACE_URL, UUID, uuid5
 
@@ -37,6 +38,7 @@ class WorkflowCompiler:
         workflow: object,
         *,
         revision_id: UUID,
+        production_durable: bool = False,
         input_schema: Mapping[str, JSONValue] | None = None,
         state_schema: Mapping[str, JSONValue] | None = None,
         policy_manifest: Mapping[str, JSONValue] | None = None,
@@ -44,7 +46,11 @@ class WorkflowCompiler:
         name = f"{type(workflow).__module__}.{type(workflow).__qualname__}"
         version = str(getattr(workflow, "workflow_version", "1"))
         nodes, entrypoint, durable, issues = self._nodes(workflow)
-        self._validate(nodes, entrypoint)
+        self._validate(
+            nodes,
+            entrypoint,
+            production_durable=production_durable,
+        )
         edges = tuple(
             EdgeSpec(source=node.id, target=target)
             for node in nodes
@@ -115,7 +121,12 @@ class WorkflowCompiler:
                 id="legacy.forward",
                 kind=NodeKind.OPAQUE,
                 handler=f"{type(workflow).__module__}.{type(workflow).__qualname__}.forward",
-                is_async=inspect.iscoroutinefunction(getattr(workflow, "forward", None)),
+                implementation_hash=self._implementation_hash(
+                    getattr(type(workflow), "forward")
+                ),
+                is_async=inspect.iscoroutinefunction(
+                    getattr(workflow, "forward", None)
+                ),
                 retry=RetryPolicy(),
                 effects=EffectClass.NON_IDEMPOTENT,
                 checkpoint=False,
@@ -141,6 +152,7 @@ class WorkflowCompiler:
                     id=name,
                     kind=metadata.kind,
                     handler=f"{type(workflow).__module__}.{type(workflow).__qualname__}.{name}",
+                    implementation_hash=self._implementation_hash(function),
                     is_async=inspect.iscoroutinefunction(function),
                     retry=metadata.retry,
                     effects=metadata.effects,
@@ -156,11 +168,47 @@ class WorkflowCompiler:
             )
         return tuple(nodes), entries[0], True, ()
 
-    def _validate(self, nodes: tuple[NodeSpec, ...], entrypoint: str) -> None:
+    @staticmethod
+    def _implementation_hash(function: Callable[..., object]) -> str:
+        """Fingerprint executable source so behavior changes alter plan identity."""
+        try:
+            material = textwrap.dedent(inspect.getsource(function)).strip()
+        except (OSError, TypeError):
+            code = function.__code__
+            material = json.dumps(
+                {
+                    "bytecode": code.co_code.hex(),
+                    "constants": repr(code.co_consts),
+                    "names": code.co_names,
+                    "varnames": code.co_varnames,
+                    "argcount": code.co_argcount,
+                    "kwonlyargcount": code.co_kwonlyargcount,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+        return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+    def _validate(
+        self,
+        nodes: tuple[NodeSpec, ...],
+        entrypoint: str,
+        *,
+        production_durable: bool = False,
+    ) -> None:
         ids = {node.id for node in nodes}
         if len(ids) != len(nodes):
             raise DefinitionError("workflow node ids must be unique")
         for node in nodes:
+            if (
+                production_durable
+                and not node.is_async
+                and node.timeout_seconds is not None
+            ):
+                raise DefinitionError(
+                    "synchronous durable steps cannot guarantee preemptive timeout; "
+                    "use an async handler or an isolated executor"
+                )
             for successor in node.successors:
                 if successor not in ids:
                     raise DefinitionError(
@@ -197,4 +245,3 @@ class WorkflowCompiler:
                     )
                 )
         return ResourceManifestV2(providers=tuple(providers))
-

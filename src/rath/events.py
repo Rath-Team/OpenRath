@@ -145,4 +145,3 @@ class SessionEventLog:
             events=(*self.events, event),
             parent_session_ids=self.parent_session_ids,
         )
-

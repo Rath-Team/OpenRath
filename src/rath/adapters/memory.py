@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import time
 from collections.abc import Awaitable, Mapping
 from typing import Literal, Protocol, cast
 
-from rath.adapters.context import AdapterRequestContext
+from rath.adapters.context import (
+    AdapterRequestContext,
+    effective_timeout_seconds,
+    with_policy_constraints,
+)
 from rath.adapters.specs import MemoryNamespace
 from rath.context import RunContext
 from rath.security import Action, PolicyEngine, ResourceRef, authorize
@@ -45,7 +50,7 @@ class MemoryExecutor:
         tenant_id = run_context.security.tenant_id
         if namespace.tenant_id != tenant_id or adapter_context.tenant_id != tenant_id:
             raise PermissionError("memory namespace tenant mismatch")
-        await authorize(
+        decision = await authorize(
             self.policy,
             action=Action(f"memory.{operation}"),
             resource=ResourceRef(
@@ -65,9 +70,21 @@ class MemoryExecutor:
             ),
             context=run_context,
         )
+        adapter_context = with_policy_constraints(
+            adapter_context,
+            decision.constraints,
+        )
+        timeout = effective_timeout_seconds(
+            timeout_seconds,
+            adapter_context=adapter_context,
+            run_remaining_seconds=run_context.remaining_seconds(),
+        )
+        started = time.monotonic()
         result = handler(operation, namespace, payload, adapter_context)
         if inspect.isawaitable(result):
             return await asyncio.wait_for(
-                cast(Awaitable[object], result), timeout=timeout_seconds
+                cast(Awaitable[object], result), timeout=timeout
             )
+        if time.monotonic() - started > timeout:
+            raise TimeoutError("memory operation exceeded timeout")
         return result

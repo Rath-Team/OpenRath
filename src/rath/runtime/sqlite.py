@@ -128,6 +128,9 @@ CREATE TABLE IF NOT EXISTS tool_invocations (
     error TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
+    node_id TEXT,
+    checkpoint_sequence INTEGER,
+    invocation_sequence INTEGER,
     UNIQUE (run_id, idempotency_key)
 );
 
@@ -185,6 +188,7 @@ CREATE INDEX IF NOT EXISTS evaluation_experiments_revision_idx
 
 CREATE TABLE IF NOT EXISTS revisions (
     id TEXT PRIMARY KEY,
+    content_digest TEXT NOT NULL UNIQUE,
     code_digest TEXT NOT NULL,
     plan_hash TEXT NOT NULL,
     manifest_json TEXT NOT NULL,
@@ -259,6 +263,52 @@ class SQLiteRunStore:
                     connection.execute(
                         "ALTER TABLE runs ADD COLUMN priority INTEGER NOT NULL DEFAULT 0"
                     )
+                revision_columns = {
+                    row[1]
+                    for row in connection.execute(
+                        "PRAGMA table_info(revisions)"
+                    ).fetchall()
+                }
+                if "content_digest" not in revision_columns:
+                    connection.execute(
+                        "ALTER TABLE revisions ADD COLUMN content_digest TEXT"
+                    )
+                    connection.execute(
+                        """
+                        UPDATE revisions
+                        SET content_digest = code_digest || ':' || id
+                        WHERE content_digest IS NULL
+                        """
+                    )
+                invocation_columns = {
+                    row[1]
+                    for row in connection.execute(
+                        "PRAGMA table_info(tool_invocations)"
+                    ).fetchall()
+                }
+                for name, kind in (
+                    ("node_id", "TEXT"),
+                    ("checkpoint_sequence", "INTEGER"),
+                    ("invocation_sequence", "INTEGER"),
+                ):
+                    if name not in invocation_columns:
+                        connection.execute(
+                            f"ALTER TABLE tool_invocations ADD COLUMN {name} {kind}"
+                        )
+                connection.execute(
+                    """
+                    CREATE UNIQUE INDEX IF NOT EXISTS
+                        tool_invocations_run_sequence_idx
+                    ON tool_invocations (run_id, invocation_sequence)
+                    WHERE invocation_sequence IS NOT NULL
+                    """
+                )
+                connection.execute(
+                    """
+                    CREATE UNIQUE INDEX IF NOT EXISTS revisions_content_digest_idx
+                    ON revisions (content_digest)
+                    """
+                )
                 interrupt_columns = {
                     row[1]
                     for row in connection.execute(
@@ -369,16 +419,75 @@ class SQLiteRunStore:
             raise KeyError(str(run_id))
         return self._run_from_row(row)
 
-    def list_runs(self, *, tenant_id: str) -> tuple[Run, ...]:
+    def list_runs(
+        self,
+        *,
+        tenant_id: str,
+        after: UUID | None = None,
+        limit: int | None = None,
+        session_id: UUID | None = None,
+        statuses: tuple[RunStatus, ...] | None = None,
+    ) -> tuple[Run, ...]:
+        if limit is not None and limit < 1:
+            raise ValueError("limit must be positive")
         connection = self._connect()
         try:
+            clauses = ["tenant_id = ?"]
+            parameters: list[object] = [tenant_id]
+            if after is not None:
+                cursor = connection.execute(
+                    "SELECT created_at, id FROM runs WHERE id = ? AND tenant_id = ?",
+                    (str(after), tenant_id),
+                ).fetchone()
+                if cursor is None:
+                    raise KeyError(str(after))
+                clauses.append("(created_at, id) > (?, ?)")
+                parameters.extend((cursor["created_at"], cursor["id"]))
+            if session_id is not None:
+                clauses.append("session_id = ?")
+                parameters.append(str(session_id))
+            if statuses:
+                placeholders = ", ".join("?" for _ in statuses)
+                clauses.append(f"status IN ({placeholders})")
+                parameters.extend(item.value for item in statuses)
+            suffix = " LIMIT ?" if limit is not None else ""
+            if limit is not None:
+                parameters.append(limit)
             rows = connection.execute(
-                "SELECT * FROM runs WHERE tenant_id = ? ORDER BY created_at, id",
-                (tenant_id,),
+                f"""
+                SELECT * FROM runs WHERE {" AND ".join(clauses)}
+                ORDER BY created_at, id{suffix}
+                """,
+                parameters,
             ).fetchall()
         finally:
             connection.close()
         return tuple(self._run_from_row(row) for row in rows)
+
+    def count_runs(
+        self,
+        *,
+        status: RunStatus,
+        tenant_id: str | None = None,
+    ) -> int:
+        connection = self._connect()
+        try:
+            if tenant_id is None:
+                row = connection.execute(
+                    "SELECT COUNT(*) AS value FROM runs WHERE status = ?",
+                    (status.value,),
+                ).fetchone()
+            else:
+                row = connection.execute(
+                    """
+                    SELECT COUNT(*) AS value FROM runs
+                    WHERE status = ? AND tenant_id = ?
+                    """,
+                    (status.value, tenant_id),
+                ).fetchone()
+        finally:
+            connection.close()
+        return int(row["value"])
 
     def transition_run(
         self,
@@ -431,15 +540,29 @@ class SQLiteRunStore:
             updated_row = self._required_run_row(connection, run_id)
             return self._run_from_row(updated_row)
 
-    def list_run_events(self, run_id: UUID) -> tuple[RunEvent, ...]:
+    def list_run_events(
+        self,
+        run_id: UUID,
+        *,
+        after_sequence: int = 0,
+        limit: int | None = None,
+    ) -> tuple[RunEvent, ...]:
+        if after_sequence < 0:
+            raise ValueError("after_sequence must not be negative")
+        if limit is not None and limit < 1:
+            raise ValueError("limit must be positive")
         connection = self._connect()
         try:
+            suffix = " LIMIT ?" if limit is not None else ""
+            parameters: list[object] = [str(run_id), after_sequence]
+            if limit is not None:
+                parameters.append(limit)
             rows = connection.execute(
-                """
+                f"""
                 SELECT * FROM run_events
-                WHERE run_id = ? ORDER BY sequence
+                WHERE run_id = ? AND sequence > ? ORDER BY sequence{suffix}
                 """,
-                (str(run_id),),
+                parameters,
             ).fetchall()
         finally:
             connection.close()
@@ -894,12 +1017,14 @@ class SQLiteRunStore:
                 "SELECT * FROM run_leases WHERE run_id = ?",
                 (str(current.id),),
             ).fetchone()
-            lease_id = UUID(previous["id"]) if previous is not None else UUID(
-                bytes=hashlib.sha256(str(current.id).encode("utf-8")).digest()[:16]
+            lease_id = (
+                UUID(previous["id"])
+                if previous is not None
+                else UUID(
+                    bytes=hashlib.sha256(str(current.id).encode("utf-8")).digest()[:16]
+                )
             )
-            token = (
-                int(previous["fencing_token"]) + 1 if previous is not None else 1
-            )
+            token = int(previous["fencing_token"]) + 1 if previous is not None else 1
             created_at = (
                 _parse_time(previous["created_at"])
                 if previous is not None
@@ -1176,6 +1301,7 @@ class SQLiteRunStore:
             or not bool(row["active"])
             or row["holder_worker_id"] != worker_id
             or int(row["fencing_token"]) != fencing_token
+            or _parse_time(row["expires_at"]) <= _now()
         ):
             raise ConflictError("lease fencing token is stale or not owned")
         return cast(sqlite3.Row, row)

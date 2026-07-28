@@ -47,3 +47,39 @@ def test_v1_migration_inventory_is_read_only_and_machine_readable(
         "imported": 0,
         "invalid": 0,
     }
+
+
+def test_v1_migration_reports_bad_filename_and_continues(tmp_path: Path) -> None:
+    source = tmp_path / "sessions"
+    source.mkdir()
+    (source / "not-a-uuid.jsonl").write_text("{}\n", encoding="utf-8")
+    session = Session(chunk_table=ChunkTable(rows=()))
+    SessionWriter(session, path=source / f"{session.id}.jsonl").close()
+    report = tmp_path / "inventory.json"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "scripts/migrate_v1_to_v2.py",
+            "--source",
+            str(source),
+            "--report",
+            str(report),
+            "--tenant",
+            "tenant-1",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload = json.loads(report.read_text(encoding="utf-8"))
+    assert payload["summary"] == {
+        "total": 2,
+        "ready": 1,
+        "imported": 0,
+        "invalid": 1,
+    }
+    invalid = next(item for item in payload["sessions"] if item["status"] == "invalid")
+    assert invalid["error_code"] == "invalid_session_id"

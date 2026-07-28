@@ -105,7 +105,9 @@ def test_close_does_not_remove_user_supplied_working_dir(tmp_path: object) -> No
     assert sentinel.read_text(encoding="utf-8") == "do not delete me"
 
 
-def test_filesystem_calls_reject_absolute_paths_outside_workspace(tmp_path: object) -> None:
+def test_filesystem_calls_reject_absolute_paths_outside_workspace(
+    tmp_path: object,
+) -> None:
     import pathlib
 
     root = pathlib.Path(str(tmp_path)) / "workspace"  # type: ignore[arg-type]

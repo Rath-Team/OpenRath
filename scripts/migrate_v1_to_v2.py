@@ -36,10 +36,10 @@ def main() -> None:
         ]
     )
     rows: list[dict[str, object]] = []
+    if args.apply:
+        PostgresRunStore.migrate(args.postgres_dsn, schema=args.schema)
     runtime = (
-        PostgresRunStore(args.postgres_dsn, schema=args.schema)
-        if args.apply
-        else None
+        PostgresRunStore(args.postgres_dsn, schema=args.schema) if args.apply else None
     )
     resources = PostgresResourceStore(runtime) if runtime is not None else None
     artifacts = (
@@ -49,8 +49,9 @@ def main() -> None:
     )
     try:
         for path in candidates:
-            session_id = UUID(path.name.split(".jsonl", 1)[0])
+            session_id: UUID | None = None
             try:
+                session_id = UUID(path.name.split(".jsonl", 1)[0])
                 legacy = load_session(session_id, path=path)
                 row: dict[str, object] = {
                     "session_id": str(session_id),
@@ -60,16 +61,21 @@ def main() -> None:
                     "chunks": len(legacy.chunk_table.rows),
                     "status": "ready",
                 }
-                if runtime is not None and resources is not None and artifacts is not None:
-                    artifact = artifacts.put(
-                        args.tenant,
-                        path.read_bytes(),
-                        media_type="application/x-ndjson",
-                        metadata={
-                            "provenance": "legacy-import",
-                            "legacy_session_id": str(session_id),
-                        },
-                    )
+                if (
+                    runtime is not None
+                    and resources is not None
+                    and artifacts is not None
+                ):
+                    with path.open("rb") as source_file:
+                        artifact = artifacts.put(
+                            args.tenant,
+                            source_file,
+                            media_type="application/x-ndjson",
+                            metadata={
+                                "provenance": "legacy-import",
+                                "legacy_session_id": str(session_id),
+                            },
+                        )
                     resources.ensure_session(
                         SessionRecord(
                             id=session_id,
@@ -110,9 +116,16 @@ def main() -> None:
             except Exception as exc:
                 rows.append(
                     {
-                        "session_id": str(session_id),
+                        "session_id": (
+                            str(session_id) if session_id is not None else None
+                        ),
                         "path": str(path),
                         "status": "invalid",
+                        "error_code": (
+                            "invalid_session_id"
+                            if session_id is None
+                            else "invalid_session"
+                        ),
                         "error": f"{type(exc).__name__}: {exc}",
                     }
                 )

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 from collections.abc import Mapping
@@ -72,9 +73,7 @@ class Revision:
     created_at: datetime
 
     @classmethod
-    def create(
-        cls, *, code_digest: str, manifest: DeploymentManifest
-    ) -> "Revision":
+    def create(cls, *, code_digest: str, manifest: DeploymentManifest) -> "Revision":
         if len(code_digest) != 64:
             raise ValueError("code_digest must be a SHA-256 digest")
         int(code_digest, 16)
@@ -83,6 +82,20 @@ class Revision:
             f"openrath-revision:{code_digest}:{manifest.canonical_json()}",
         )
         return cls(identity, code_digest, manifest, datetime.now(timezone.utc))
+
+    @property
+    def content_digest(self) -> str:
+        """SHA-256 identity covering executable code and deployment manifest."""
+
+        payload = json.dumps(
+            {
+                "code_digest": self.code_digest,
+                "manifest": json.loads(self.manifest.canonical_json()),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 @runtime_checkable
@@ -114,17 +127,22 @@ class SQLiteRevisionStore:
             ).fetchone()
             if existing is not None:
                 loaded = self.get(revision.id)
-                if loaded.code_digest != revision.code_digest or loaded.manifest != revision.manifest:
+                if (
+                    loaded.code_digest != revision.code_digest
+                    or loaded.manifest != revision.manifest
+                ):
                     raise RevisionConflict("revision identity is immutable")
                 return loaded
             connection.execute(
                 """
                 INSERT INTO revisions(
-                    id, code_digest, plan_hash, manifest_json, created_at
-                ) VALUES (?, ?, ?, ?, ?)
+                    id, content_digest, code_digest, plan_hash,
+                    manifest_json, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
                 """,
                 (
                     str(revision.id),
+                    revision.content_digest,
                     revision.code_digest,
                     revision.manifest.plan_hash,
                     revision.manifest.canonical_json(),
@@ -164,12 +182,14 @@ class PostgresRevisionStore:
             row = connection.execute(
                 """
                 INSERT INTO revisions(
-                    id, code_digest, plan_hash, manifest_json, created_at
-                ) VALUES (%s, %s, %s, %s, %s)
+                    id, content_digest, code_digest, plan_hash,
+                    manifest_json, created_at
+                ) VALUES (%s, %s, %s, %s, %s, %s)
                 ON CONFLICT (id) DO NOTHING RETURNING id
                 """,
                 (
                     revision.id,
+                    revision.content_digest,
                     revision.code_digest,
                     revision.manifest.plan_hash,
                     Jsonb(manifest),
@@ -178,7 +198,10 @@ class PostgresRevisionStore:
             ).fetchone()
         if row is None:
             loaded = self.get(revision.id)
-            if loaded.code_digest != revision.code_digest or loaded.manifest != revision.manifest:
+            if (
+                loaded.code_digest != revision.code_digest
+                or loaded.manifest != revision.manifest
+            ):
                 raise RevisionConflict("revision identity is immutable")
             return loaded
         return revision

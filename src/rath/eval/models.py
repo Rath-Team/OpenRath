@@ -96,4 +96,3 @@ class Experiment:
 class GateDecision(str, Enum):
     PASS = "pass"
     FAIL = "fail"
-

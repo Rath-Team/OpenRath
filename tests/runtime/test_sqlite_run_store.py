@@ -157,9 +157,7 @@ def test_interrupt_decision_and_waiting_resume_are_atomic(tmp_path: Path) -> Non
     assert decided.decision is not None
     assert decided.decision.actor_id == "user-1"
     assert store.list_interrupts(tenant_id="tenant-1") == ()
-    assert store.list_interrupts(
-        tenant_id="tenant-1", pending_only=False
-    ) == (decided,)
+    assert store.list_interrupts(tenant_id="tenant-1", pending_only=False) == (decided,)
     with pytest.raises(ConflictError, match="already decided"):
         store.decide_interrupt(
             interrupt.id,
@@ -189,13 +187,34 @@ def test_interrupt_deadline_expires_run_atomically(tmp_path: Path) -> None:
     store.create_interrupt(interrupt, expected_run_version=running.version)
     assert interrupt.expires_at is not None
 
-    assert store.expire_interrupts(
-        now=interrupt.expires_at + timedelta(seconds=1)
-    ) == (interrupt.id,)
+    assert store.expire_interrupts(now=interrupt.expires_at + timedelta(seconds=1)) == (
+        interrupt.id,
+    )
     expired = store.get_interrupt(interrupt.id)
     assert expired.decision is not None
     assert expired.decision.kind is ApprovalDecisionKind.REJECT
     assert store.get_run(running.id).status is RunStatus.TIMED_OUT
-    assert store.expire_interrupts(
-        now=interrupt.expires_at + timedelta(seconds=2)
-    ) == ()
+    assert (
+        store.expire_interrupts(now=interrupt.expires_at + timedelta(seconds=2)) == ()
+    )
+
+
+def test_store_pushes_down_run_and_event_cursors(tmp_path: Path) -> None:
+    store = SQLiteRunStore(tmp_path / "runtime.db")
+    first = store.create_run(_run())
+    second = store.create_run(_run())
+    third = store.create_run(_run())
+
+    page = store.list_runs(tenant_id="tenant-1", limit=2)
+    assert page == (first, second)
+    assert store.list_runs(
+        tenant_id="tenant-1",
+        after=second.id,
+        limit=2,
+    ) == (third,)
+
+    store.append_run_event(first.id, "custom.one", {})
+    store.append_run_event(first.id, "custom.two", {})
+    events = store.list_run_events(first.id, after_sequence=1, limit=1)
+    assert len(events) == 1
+    assert events[0].sequence == 2

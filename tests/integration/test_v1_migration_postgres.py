@@ -55,6 +55,7 @@ def test_v1_session_import_real_postgres(tmp_path: Path) -> None:
         assert result.returncode == 0, result.stderr
         payload = json.loads(report.read_text(encoding="utf-8"))
         assert payload["summary"]["imported"] == 1
+        PostgresRunStore.migrate(dsn, schema=schema)
         store = PostgresRunStore(dsn, schema=schema)
         runs = store.list_runs(tenant_id="migration-tenant")
         assert len(runs) == 1

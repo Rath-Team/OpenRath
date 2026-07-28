@@ -52,4 +52,3 @@ def regression_gate(
     if candidate.mean_score < baseline.mean_score - maximum_regression:
         return GateDecision.FAIL
     return GateDecision.PASS
-

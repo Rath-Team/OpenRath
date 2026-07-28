@@ -24,4 +24,3 @@ def redact(value: object) -> object:
     if isinstance(value, (list, tuple)):
         return [redact(item) for item in value]
     return value
-

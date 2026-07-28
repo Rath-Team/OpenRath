@@ -11,7 +11,9 @@ class SchemaValidationError(ValueError):
     pass
 
 
-def validate_json(value: object, schema: Mapping[str, object], *, path: str = "$") -> None:
+def validate_json(
+    value: object, schema: Mapping[str, object], *, path: str = "$"
+) -> None:
     expected = schema.get("type")
     if expected == "object":
         if not isinstance(value, Mapping):
@@ -52,7 +54,16 @@ def validate_json(value: object, schema: Mapping[str, object], *, path: str = "$
         raise SchemaValidationError(f"{path} must be a boolean")
     elif expected == "null" and value is not None:
         raise SchemaValidationError(f"{path} must be null")
-    elif expected not in (None, "object", "array", "string", "integer", "number", "boolean", "null"):
+    elif expected not in (
+        None,
+        "object",
+        "array",
+        "string",
+        "integer",
+        "number",
+        "boolean",
+        "null",
+    ):
         raise SchemaValidationError(f"{path} uses unsupported schema type {expected!r}")
     enum = schema.get("enum")
     if isinstance(enum, Sequence) and value not in enum:

@@ -102,10 +102,7 @@ class InMemoryResourceStore:
             id, tenant_id, template_id, revision_id, datetime.now(timezone.utc)
         )
         existing = self.assistants.setdefault(key, item)
-        if (
-            existing.template_id != template_id
-            or existing.revision_id != revision_id
-        ):
+        if existing.template_id != template_id or existing.revision_id != revision_id:
             raise ValueError("assistant id already has a different revision")
         return existing
 
@@ -203,10 +200,7 @@ class SQLiteResourceStore:
                 ),
             )
         existing = self.get_assistant(tenant_id, id)
-        if (
-            existing.template_id != template_id
-            or existing.revision_id != revision_id
-        ):
+        if existing.template_id != template_id or existing.revision_id != revision_id:
             raise ValueError("assistant id already has a different revision")
         return existing
 
@@ -361,10 +355,7 @@ class PostgresResourceStore:
                 (tenant_id, id, template_id, revision_id, item.created_at),
             )
         existing = self.get_assistant(tenant_id, id)
-        if (
-            existing.template_id != template_id
-            or existing.revision_id != revision_id
-        ):
+        if existing.template_id != template_id or existing.revision_id != revision_id:
             raise ValueError("assistant id already has a different revision")
         return existing
 

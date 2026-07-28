@@ -29,7 +29,7 @@ from rath.backend import (
 from rath.backend.opensandbox import OpenSandboxBackend
 from tests.conftest import opensandbox_real
 
-pytestmark = opensandbox_real
+pytestmark = [opensandbox_real, pytest.mark.opensandbox]
 
 
 @pytest.fixture
@@ -70,10 +70,13 @@ def test_concurrent_distinct_path_writes_run_in_parallel(os_sandbox) -> None:
     assert all(r > 0 for r in results)
     # If they serialised, we'd expect ~n × per_call. Parallel should beat
     # serial by at least 2×. Generous to avoid CI flake against a real server.
-    assert elapsed < per_call * n * 0.7, (
-        f"distinct-path writes did not run in parallel: "
-        f"per-call ≈ {per_call:.2f}s, {n} parallel took {elapsed:.2f}s"
-    )
+    # Below 10 ms the fixed thread-pool and transport setup costs dominate the
+    # measured operation, so the ratio is not useful evidence of serialization.
+    if per_call > 0.01:
+        assert elapsed < per_call * n * 0.7, (
+            f"distinct-path writes did not run in parallel: "
+            f"per-call ≈ {per_call:.2f}s, {n} parallel took {elapsed:.2f}s"
+        )
 
     for name, want in payloads.items():
         r = sb.dispatch(BackendToolFilesRead(path=name, encoding=None))

@@ -111,7 +111,10 @@ def test_runtime_marks_step_exception_failed(tmp_path: Path) -> None:
 
     assert failed is not None
     assert failed.status is RunStatus.FAILED
-    assert any(event.type == "run.execution.failed" for event in store.list_run_events(failed.id))
+    assert any(
+        event.type == "run.execution.failed"
+        for event in store.list_run_events(failed.id)
+    )
 
 
 def test_worker_restores_security_context_after_process_restart(

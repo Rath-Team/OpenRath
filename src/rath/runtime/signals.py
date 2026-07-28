@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import queue
 from dataclasses import dataclass
 from datetime import datetime
@@ -102,11 +103,17 @@ class RedisSignalBus:
         self.client.ltrim(self.key, 0, 9999)  # type: ignore[attr-defined]
 
     def receive(self, *, timeout_seconds: float = 0) -> RunSignal | None:
-        timeout = max(0, int(timeout_seconds))
-        result = self.client.brpop(self.key, timeout=timeout)  # type: ignore[attr-defined]
-        if result is None:
+        if timeout_seconds <= 0:
+            payload = self.client.rpop(self.key)  # type: ignore[attr-defined]
+        else:
+            timeout = max(1, math.ceil(timeout_seconds))
+            result = self.client.brpop(  # type: ignore[attr-defined]
+                self.key,
+                timeout=timeout,
+            )
+            payload = result[1] if result is not None else None
+        if payload is None:
             return None
-        _, payload = result
         data = json.loads(payload)
         return RunSignal(
             kind=SignalKind(data["kind"]),

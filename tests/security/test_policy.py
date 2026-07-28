@@ -96,4 +96,3 @@ def test_policy_constraints_validate_resource_budgets() -> None:
         PolicyConstraints(max_output_bytes=0)
     with pytest.raises(ValueError, match="timeout_seconds"):
         PolicyConstraints(timeout_seconds=-1)
-

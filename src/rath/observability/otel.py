@@ -29,12 +29,8 @@ class OpenTelemetry:
                 "OpenTelemetry support requires `pip install openrath[otel]`"
             ) from exc
         self._trace = trace
-        self._tracer = trace.get_tracer(
-            service_name, tracer_provider=tracer_provider
-        )
-        self._meter = metrics.get_meter(
-            service_name, meter_provider=meter_provider
-        )
+        self._tracer = trace.get_tracer(service_name, tracer_provider=tracer_provider)
+        self._meter = metrics.get_meter(service_name, meter_provider=meter_provider)
         self._counters: dict[str, Any] = {}
 
     @contextmanager

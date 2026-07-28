@@ -190,9 +190,8 @@ class LocalTrustedPolicy:
         resource: ResourceRef,
         context: RunContext,
     ) -> PolicyDecision:
-        allowed = (
-            context.security.tenant_id == "local"
-            and context.security.has_grant("trusted_host")
+        allowed = context.security.tenant_id == "local" and context.security.has_grant(
+            "trusted_host"
         )
         return PolicyDecision(
             effect=PolicyEffect.ALLOW if allowed else PolicyEffect.DENY,

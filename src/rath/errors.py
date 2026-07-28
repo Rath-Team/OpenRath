@@ -57,4 +57,3 @@ class RathError(RuntimeError):
             "retryable": self.retryable,
             "details": thaw_json(self.details),
         }
-

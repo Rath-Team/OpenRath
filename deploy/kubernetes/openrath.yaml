@@ -5,6 +5,12 @@ metadata:
 automountServiceAccountToken: false
 ---
 apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: openrath-migrate
+automountServiceAccountToken: false
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: openrath
@@ -21,8 +27,11 @@ metadata:
 spec:
   backoffLimit: 3
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: openrath-migrate
     spec:
-      serviceAccountName: openrath
+      serviceAccountName: openrath-migrate
       restartPolicy: OnFailure
       securityContext:
         runAsNonRoot: true
@@ -31,13 +40,14 @@ spec:
       containers:
         - name: migrate
           image: ghcr.io/rath-team/openrath:2.0.0-review
-          imagePullPolicy: IfNotPresent
+          # Release automation must replace the review tag with image@sha256.
+          imagePullPolicy: Always
           command: ["openrath-migrate"]
           envFrom:
             - configMapRef:
                 name: openrath
             - secretRef:
-                name: openrath-runtime
+                name: openrath-migration
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -67,7 +77,8 @@ spec:
       containers:
         - name: openrath
           image: ghcr.io/rath-team/openrath:2.0.0-review
-          imagePullPolicy: IfNotPresent
+          # Release automation must replace the review tag with image@sha256.
+          imagePullPolicy: Always
           envFrom:
             - configMapRef:
                 name: openrath
@@ -149,6 +160,8 @@ spec:
       containers:
         - name: worker
           image: ghcr.io/rath-team/openrath:2.0.0-review
+          # Release automation must replace the review tag with image@sha256.
+          imagePullPolicy: Always
           command: ["openrath-worker", "--app", "examples.v2_server_app:server"]
           envFrom:
             - configMapRef:
@@ -162,6 +175,22 @@ spec:
             limits:
               cpu: "2"
               memory: 1Gi
+          readinessProbe:
+            exec:
+              command: ["openrath-migrate", "--check"]
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          startupProbe:
+            exec:
+              command: ["openrath-migrate", "--check"]
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep 5"]
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
@@ -213,17 +242,35 @@ metadata:
   name: openrath-default-deny
 spec:
   podSelector:
-    matchLabels:
-      app.kubernetes.io/name: openrath
+    matchExpressions:
+      - key: app.kubernetes.io/name
+        operator: In
+        values: ["openrath", "openrath-worker", "openrath-migrate"]
   policyTypes: ["Ingress", "Egress"]
   ingress:
     - ports:
         - protocol: TCP
           port: 8000
   egress:
-    - to: []
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              openrath.io/data-plane: "allowed"
       ports:
         - protocol: TCP
           port: 5432
+        - protocol: TCP
+          port: 6379
+        - protocol: TCP
+          port: 9000
         - protocol: TCP
           port: 443

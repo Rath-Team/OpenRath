@@ -177,7 +177,12 @@ class PostgresEvaluationStore:
                 ON CONFLICT(name, version) DO UPDATE
                 SET examples_json = excluded.examples_json
                 """,
-                (dataset.id, dataset.name, dataset.version, Jsonb(_dataset_json(dataset))),
+                (
+                    dataset.id,
+                    dataset.name,
+                    dataset.version,
+                    Jsonb(_dataset_json(dataset)),
+                ),
             )
         return dataset
 

@@ -23,14 +23,9 @@ def _experiment(score: float) -> Experiment:
 
 def test_regression_gate_blocks_absolute_and_relative_regression() -> None:
     baseline = _experiment(0.9)
-    assert (
-        regression_gate(_experiment(0.89), baseline=baseline) is GateDecision.PASS
-    )
-    assert (
-        regression_gate(_experiment(0.85), baseline=baseline) is GateDecision.FAIL
-    )
+    assert regression_gate(_experiment(0.89), baseline=baseline) is GateDecision.PASS
+    assert regression_gate(_experiment(0.85), baseline=baseline) is GateDecision.FAIL
     assert (
         regression_gate(_experiment(0.79), baseline=_experiment(0.7))
         is GateDecision.FAIL
     )
-

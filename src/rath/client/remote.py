@@ -86,18 +86,12 @@ class RemoteClient:
         elif operation == "put":
             response = self._client.post("/v1/store/items", json=body)
         else:
-            response = self._client.request(
-                "DELETE", "/v1/store/items", json=body
-            )
+            response = self._client.request("DELETE", "/v1/store/items", json=body)
         response.raise_for_status()
         return cast(dict[str, Any], response.json())
 
-    def list_runs(
-        self, *, limit: int = 50, after: str | None = None
-    ) -> dict[str, Any]:
-        response = self._client.get(
-            "/v1/runs", params={"limit": limit, "after": after}
-        )
+    def list_runs(self, *, limit: int = 50, after: str | None = None) -> dict[str, Any]:
+        response = self._client.get("/v1/runs", params={"limit": limit, "after": after})
         response.raise_for_status()
         return cast(dict[str, Any], response.json())
 
@@ -307,7 +301,9 @@ class AsyncRemoteClient:
         response.raise_for_status()
         return cast(dict[str, Any], response.json())
 
-    async def events(self, run_id: str, *, after: int = 0) -> AsyncIterator[dict[str, Any]]:
+    async def events(
+        self, run_id: str, *, after: int = 0
+    ) -> AsyncIterator[dict[str, Any]]:
         response = await self._client.get(
             f"/v1/runs/{run_id}/events",
             params={"after": after},

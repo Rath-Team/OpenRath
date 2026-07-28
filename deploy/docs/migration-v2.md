@@ -37,6 +37,35 @@ active v2 Run.
 The import is idempotent per legacy Session ID. Imported content carries
 `provenance=legacy-import`, `trust=untrusted`, and `resumable=false`.
 Remote sandbox identities are not reattached. Credentials are not copied.
+An invalid filename or malformed Session is isolated into the JSON report and
+does not abort the remaining batch.
+
+On Windows PowerShell, use the same dry-run/apply split:
+
+```powershell
+uv run python scripts/migrate_v1_to_v2.py `
+  --source C:\data\v1\sessions `
+  --report .\migration-inventory.json `
+  --tenant TENANT_ID
+
+uv run python scripts/migrate_v1_to_v2.py `
+  --source C:\data\v1\sessions `
+  --report .\migration-result.json `
+  --tenant TENANT_ID `
+  --apply `
+  --postgres-dsn $env:OPENRATH_POSTGRES_DSN `
+  --artifact-root C:\data\openrath-artifacts
+```
+
+Run database schema migration separately with a DDL-capable identity:
+
+```bash
+openrath-migrate
+openrath-migrate --check
+```
+
+`PostgresRunStore` does not auto-migrate by default; API and worker roles need
+only runtime DML privileges.
 
 ## Rollback
 

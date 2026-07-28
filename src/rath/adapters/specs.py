@@ -43,11 +43,14 @@ class ProviderSpec:
     def __post_init__(self) -> None:
         if not self.id or not self.kind or not self.model:
             raise ValueError("provider id, kind, and model are required")
-        if min(
-            self.connect_timeout_seconds,
-            self.read_timeout_seconds,
-            self.total_timeout_seconds,
-        ) <= 0:
+        if (
+            min(
+                self.connect_timeout_seconds,
+                self.read_timeout_seconds,
+                self.total_timeout_seconds,
+            )
+            <= 0
+        ):
             raise ValueError("provider timeouts must be positive")
         if self.max_concurrency < 1:
             raise ValueError("provider max_concurrency must be positive")
@@ -101,7 +104,10 @@ class SandboxSpec:
             raise ValueError("sandbox id is required")
         if self.ttl_seconds <= 0:
             raise ValueError("sandbox ttl_seconds must be positive")
-        if self.isolation is not SandboxIsolation.TRUSTED_HOST and not self.image_digest:
+        if (
+            self.isolation is not SandboxIsolation.TRUSTED_HOST
+            and not self.image_digest
+        ):
             raise ValueError("container sandboxes require an immutable image_digest")
         if self.network == "allowlist" and not self.allowed_hosts:
             raise ValueError("network allowlist requires at least one host")
@@ -118,4 +124,3 @@ class MemoryNamespace:
     def __post_init__(self) -> None:
         if not self.tenant_id:
             raise ValueError("memory namespace tenant_id is required")
-

@@ -133,4 +133,3 @@ class Provenance:
             "metadata",
             freeze_mapping(self.metadata, field="provenance.metadata"),
         )
-

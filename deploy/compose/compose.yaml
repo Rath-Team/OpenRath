@@ -78,7 +78,7 @@ services:
     cap_drop: [ALL]
 
   postgres:
-    image: postgres:17-alpine
+    image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
     environment:
       POSTGRES_DB: openrath
       POSTGRES_USER: openrath
@@ -93,7 +93,7 @@ services:
     restart: unless-stopped
 
   redis:
-    image: redis:8-alpine
+    image: redis:8-alpine@sha256:8096655e437712b07503796fb64d81359256cfcff0ab29d95a7da72863786efb
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     profiles: ["signals"]
     healthcheck:
@@ -110,7 +110,7 @@ services:
     cap_drop: [ALL]
 
   minio:
-    image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     command: ["server", "/data", "--console-address", ":9001"]
     profiles: ["artifacts"]
     environment:

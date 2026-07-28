@@ -48,7 +48,9 @@ class RetryPolicy:
         if self.base_seconds <= 0:
             raise ValueError("base_seconds must be greater than zero")
         if self.max_seconds < self.base_seconds:
-            raise ValueError("max_seconds must be greater than or equal to base_seconds")
+            raise ValueError(
+                "max_seconds must be greater than or equal to base_seconds"
+            )
 
     def to_dict(self) -> dict[str, object]:
         return {
@@ -64,6 +66,7 @@ class NodeSpec:
     kind: NodeKind
     handler: str
     is_async: bool
+    implementation_hash: str | None = None
     retry: RetryPolicy = field(default_factory=RetryPolicy)
     effects: EffectClass = EffectClass.NON_IDEMPOTENT
     idempotency_key: str | None = None
@@ -76,6 +79,10 @@ class NodeSpec:
             raise ValueError("node id must not be empty")
         if not self.handler.strip():
             raise ValueError("node handler must not be empty")
+        if self.implementation_hash is not None:
+            if len(self.implementation_hash) != 64:
+                raise ValueError("node implementation_hash must be a SHA-256 digest")
+            int(self.implementation_hash, 16)
         if self.timeout_seconds is not None and self.timeout_seconds <= 0:
             raise ValueError("node timeout_seconds must be greater than zero")
         if (
@@ -83,15 +90,14 @@ class NodeSpec:
             and self.retry.max_attempts > 1
             and not self.idempotency_key
         ):
-            raise ValueError(
-                "non-idempotent retries require a stable idempotency key"
-            )
+            raise ValueError("non-idempotent retries require a stable idempotency key")
 
     def to_dict(self) -> dict[str, object]:
         return {
             "id": self.id,
             "kind": self.kind.value,
             "handler": self.handler,
+            "implementation_hash": self.implementation_hash,
             "is_async": self.is_async,
             "retry": self.retry.to_dict(),
             "effects": self.effects.value,
@@ -212,4 +218,3 @@ class ExecutionPlan:
             sort_keys=True,
             separators=(",", ":"),
         )
-

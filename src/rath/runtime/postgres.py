@@ -45,7 +45,14 @@ def _json(value: object) -> object:
 class PostgresRunStore:
     """Transactional Postgres store using row locks and fencing tokens."""
 
-    def __init__(self, dsn: str, *, schema: str = "openrath") -> None:
+    def __init__(
+        self,
+        dsn: str,
+        *,
+        schema: str = "openrath",
+        auto_migrate: bool = False,
+        pool_max_size: int = 20,
+    ) -> None:
         if not dsn.strip():
             raise ValueError("dsn must not be empty")
         if not _SCHEMA_NAME.fullmatch(schema):
@@ -53,7 +60,10 @@ class PostgresRunStore:
         self.dsn = dsn
         self.schema = schema
         self._closed = False
-        self._migrate()
+        if pool_max_size < 1:
+            raise ValueError("pool_max_size must be positive")
+        if auto_migrate:
+            self.migrate(dsn, schema=schema)
         try:
             from psycopg import sql
             from psycopg.rows import dict_row
@@ -66,7 +76,7 @@ class PostgresRunStore:
         self._pool = ConnectionPool(
             self.dsn,
             min_size=1,
-            max_size=20,
+            max_size=pool_max_size,
             timeout=10,
             kwargs={"row_factory": dict_row},
             configure=self._configure_connection,
@@ -81,7 +91,35 @@ class PostgresRunStore:
         )
         connection.commit()
 
-    def _migrate(self) -> None:
+    @staticmethod
+    def _migrations() -> tuple[tuple[int, str, str, str], ...]:
+        root = files("rath.runtime").joinpath("migrations/postgres")
+        output: list[tuple[int, str, str, str]] = []
+        for item in root.iterdir():
+            match = re.fullmatch(r"(\d{4})_[a-z0-9_]+\.sql", item.name)
+            if match is None:
+                continue
+            migration = item.read_text(encoding="utf-8")
+            output.append(
+                (
+                    int(match.group(1)),
+                    item.name,
+                    migration,
+                    hashlib.sha256(migration.encode("utf-8")).hexdigest(),
+                )
+            )
+        output.sort(key=lambda item: item[0])
+        expected = list(range(1, len(output) + 1))
+        if [item[0] for item in output] != expected:
+            raise RuntimeError("PostgreSQL migrations must be contiguous from 0001")
+        return tuple(output)
+
+    @classmethod
+    def migrate(cls, dsn: str, *, schema: str = "openrath") -> None:
+        if not dsn.strip():
+            raise ValueError("dsn must not be empty")
+        if not _SCHEMA_NAME.fullmatch(schema):
+            raise ValueError("schema must be a safe lowercase PostgreSQL identifier")
         try:
             import psycopg
             from psycopg import sql
@@ -89,27 +127,134 @@ class PostgresRunStore:
             raise RuntimeError(
                 "Postgres support requires `pip install openrath[postgres]`"
             ) from exc
-        migration = (
-            files("rath.runtime")
-            .joinpath("migrations/postgres/0001_initial.sql")
-            .read_text(encoding="utf-8")
-        )
-        with psycopg.connect(self.dsn) as connection:
+        migrations = cls._migrations()
+        with psycopg.connect(dsn) as connection:
             connection.execute(
-                sql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(
-                    sql.Identifier(self.schema)
+                sql.SQL("CREATE SCHEMA IF NOT EXISTS {}").format(sql.Identifier(schema))
+            )
+            connection.execute(
+                sql.SQL("SET search_path TO {}").format(sql.Identifier(schema))
+            )
+            table_row = connection.execute(
+                "SELECT to_regclass('schema_migrations')"
+            ).fetchone()
+            table_exists = table_row[0] if table_row is not None else None
+            for migration_version, filename, migration, checksum in migrations:
+                existing = (
+                    connection.execute(
+                        "SELECT version FROM schema_migrations WHERE version = %s",
+                        (migration_version,),
+                    ).fetchone()
+                    if table_exists is not None
+                    else None
                 )
-            )
-            connection.execute(
-                sql.SQL("SET search_path TO {}").format(sql.Identifier(self.schema))
-            )
-            connection.execute(migration)
+                if existing is not None:
+                    continue
+                connection.execute(migration)
+                table_exists = "schema_migrations"
+                if migration_version == 1:
+                    connection.execute(
+                        """
+                        INSERT INTO schema_migrations(version, applied_at)
+                        VALUES (%s, %s)
+                        """,
+                        (migration_version, _now()),
+                    )
+                else:
+                    connection.execute(
+                        """
+                        INSERT INTO schema_migrations(
+                            version, filename, checksum, applied_at
+                        ) VALUES (%s, %s, %s, %s)
+                        """,
+                        (migration_version, filename, checksum, _now()),
+                    )
+            # Migration 0002 introduces checksum metadata. Backfill the
+            # immutable 0001 identity for legacy schemas after it is applied.
+            first = migrations[0]
             connection.execute(
                 """
-                INSERT INTO schema_migrations(version, applied_at)
-                VALUES (1, %s) ON CONFLICT (version) DO NOTHING
+                UPDATE schema_migrations
+                SET filename = COALESCE(filename, %s),
+                    checksum = COALESCE(checksum, %s)
+                WHERE version = 1
                 """,
-                (_now(),),
+                (first[1], first[3]),
+            )
+            for migration_version, filename, _, checksum in migrations:
+                row = connection.execute(
+                    """
+                    SELECT filename, checksum FROM schema_migrations
+                    WHERE version = %s
+                    """,
+                    (migration_version,),
+                ).fetchone()
+                if row != (filename, checksum):
+                    raise RuntimeError(f"migration {filename} checksum mismatch")
+
+    @classmethod
+    def verify_schema(cls, dsn: str, *, schema: str = "openrath") -> None:
+        if not _SCHEMA_NAME.fullmatch(schema):
+            raise ValueError("schema must be a safe lowercase PostgreSQL identifier")
+        import psycopg
+        from psycopg import sql
+
+        migrations = cls._migrations()
+        required_tables = {
+            "runs",
+            "run_events",
+            "checkpoints",
+            "interrupts",
+            "run_leases",
+            "tool_invocations",
+        }
+        with psycopg.connect(dsn) as connection:
+            migration_rows = connection.execute(
+                sql.SQL(
+                    """
+                    SELECT version, filename, checksum
+                    FROM {}.schema_migrations ORDER BY version
+                    """
+                ).format(sql.Identifier(schema))
+            ).fetchall()
+            rows = connection.execute(
+                """
+                SELECT table_name FROM information_schema.tables
+                WHERE table_schema = %s
+                """,
+                (schema,),
+            ).fetchall()
+            column_rows = connection.execute(
+                """
+                SELECT table_name, column_name
+                FROM information_schema.columns
+                WHERE table_schema = %s
+                  AND table_name IN ('schema_migrations', 'tool_invocations')
+                """,
+                (schema,),
+            ).fetchall()
+        expected_rows = [
+            (migration_version, filename, checksum)
+            for migration_version, filename, _, checksum in migrations
+        ]
+        if migration_rows != expected_rows:
+            raise RuntimeError("OpenRath schema migration checksums are not current")
+        present = {str(value[0]) for value in rows}
+        missing = required_tables - present
+        if missing:
+            raise RuntimeError(f"OpenRath schema is missing tables: {sorted(missing)}")
+        present_columns = {(str(row[0]), str(row[1])) for row in column_rows}
+        required_columns = {
+            ("schema_migrations", "filename"),
+            ("schema_migrations", "checksum"),
+            ("tool_invocations", "node_id"),
+            ("tool_invocations", "checkpoint_sequence"),
+            ("tool_invocations", "invocation_sequence"),
+        }
+        missing_columns = required_columns - present_columns
+        if missing_columns:
+            raise RuntimeError(
+                f"OpenRath schema is missing columns: {sorted(missing_columns)}"
             )
 
     @contextmanager
@@ -149,7 +294,7 @@ class PostgresRunStore:
                         )
                     return self._run_from_row(existing)
             inserted = connection.execute(
-                    """
+                """
                     INSERT INTO runs(
                         id, plan_id, revision_id, session_id, tenant_id, status,
                         state_json, next_nodes_json, idempotency_key, context_json,
@@ -161,24 +306,24 @@ class PostgresRunStore:
                     ON CONFLICT DO NOTHING
                     RETURNING id
                     """,
-                    (
-                        run.id,
-                        run.plan_id,
-                        run.revision_id,
-                        run.session_id,
-                        run.tenant_id,
-                        run.status.value,
-                        _json(run.state),
-                        _json(run.next_nodes),
-                        run.idempotency_key,
-                        _json(run.context),
-                        run.priority,
-                        fingerprint,
-                        run.created_at,
-                        run.updated_at,
-                        run.version,
-                    ),
-                ).fetchone()
+                (
+                    run.id,
+                    run.plan_id,
+                    run.revision_id,
+                    run.session_id,
+                    run.tenant_id,
+                    run.status.value,
+                    _json(run.state),
+                    _json(run.next_nodes),
+                    run.idempotency_key,
+                    _json(run.context),
+                    run.priority,
+                    fingerprint,
+                    run.created_at,
+                    run.updated_at,
+                    run.version,
+                ),
+            ).fetchone()
             if inserted is None:
                 if run.idempotency_key is not None:
                     existing = connection.execute(
@@ -208,16 +353,71 @@ class PostgresRunStore:
             raise KeyError(str(run_id))
         return self._run_from_row(row)
 
-    def list_runs(self, *, tenant_id: str) -> tuple[Run, ...]:
+    def list_runs(
+        self,
+        *,
+        tenant_id: str,
+        after: UUID | None = None,
+        limit: int | None = None,
+        session_id: UUID | None = None,
+        statuses: tuple[RunStatus, ...] | None = None,
+    ) -> tuple[Run, ...]:
+        if limit is not None and limit < 1:
+            raise ValueError("limit must be positive")
         with self._transaction() as connection:
+            clauses = ["tenant_id = %s"]
+            parameters: list[object] = [tenant_id]
+            if after is not None:
+                cursor = connection.execute(
+                    """
+                    SELECT created_at, id FROM runs
+                    WHERE id = %s AND tenant_id = %s
+                    """,
+                    (after, tenant_id),
+                ).fetchone()
+                if cursor is None:
+                    raise KeyError(str(after))
+                clauses.append("(created_at, id) > (%s, %s)")
+                parameters.extend((cursor["created_at"], cursor["id"]))
+            if session_id is not None:
+                clauses.append("session_id = %s")
+                parameters.append(session_id)
+            if statuses:
+                clauses.append("status = ANY(%s)")
+                parameters.append([item.value for item in statuses])
+            suffix = " LIMIT %s" if limit is not None else ""
+            if limit is not None:
+                parameters.append(limit)
             rows = connection.execute(
-                """
-                SELECT * FROM runs WHERE tenant_id = %s
-                ORDER BY created_at, id
+                f"""
+                SELECT * FROM runs WHERE {" AND ".join(clauses)}
+                ORDER BY created_at, id{suffix}
                 """,
-                (tenant_id,),
+                parameters,
             ).fetchall()
         return tuple(self._run_from_row(row) for row in rows)
+
+    def count_runs(
+        self,
+        *,
+        status: RunStatus,
+        tenant_id: str | None = None,
+    ) -> int:
+        with self._transaction() as connection:
+            if tenant_id is None:
+                row = connection.execute(
+                    "SELECT COUNT(*) AS value FROM runs WHERE status = %s",
+                    (status.value,),
+                ).fetchone()
+            else:
+                row = connection.execute(
+                    """
+                    SELECT COUNT(*) AS value FROM runs
+                    WHERE status = %s AND tenant_id = %s
+                    """,
+                    (status.value, tenant_id),
+                ).fetchone()
+        return int(row["value"])
 
     def transition_run(
         self,
@@ -258,14 +458,28 @@ class PostgresRunStore:
             )
             return self._run_from_row(row)
 
-    def list_run_events(self, run_id: UUID) -> tuple[RunEvent, ...]:
+    def list_run_events(
+        self,
+        run_id: UUID,
+        *,
+        after_sequence: int = 0,
+        limit: int | None = None,
+    ) -> tuple[RunEvent, ...]:
+        if after_sequence < 0:
+            raise ValueError("after_sequence must not be negative")
+        if limit is not None and limit < 1:
+            raise ValueError("limit must be positive")
         with self._transaction() as connection:
+            suffix = " LIMIT %s" if limit is not None else ""
+            parameters: list[object] = [run_id, after_sequence]
+            if limit is not None:
+                parameters.append(limit)
             rows = connection.execute(
-                """
+                f"""
                 SELECT * FROM run_events
-                WHERE run_id = %s ORDER BY sequence
+                WHERE run_id = %s AND sequence > %s ORDER BY sequence{suffix}
                 """,
-                (run_id,),
+                parameters,
             ).fetchall()
         return tuple(
             RunEvent(
@@ -535,9 +749,7 @@ class PostgresRunStore:
                 )
                 if RunStatus(row["run_status"]) is RunStatus.WAITING:
                     current = self._run_from_row(
-                        self._required_run_row(
-                            connection, row["run_id"], lock=True
-                        )
+                        self._required_run_row(connection, row["run_id"], lock=True)
                     )
                     self._update_status(
                         connection,
@@ -643,9 +855,7 @@ class PostgresRunStore:
             lease_id = (
                 previous["id"]
                 if previous is not None
-                else UUID(
-                    bytes=hashlib.sha256(str(current.id).encode()).digest()[:16]
-                )
+                else UUID(bytes=hashlib.sha256(str(current.id).encode()).digest()[:16])
             )
             token = int(previous["fencing_token"]) + 1 if previous else 1
             created_at = previous["created_at"] if previous else claimed_at
@@ -824,6 +1034,7 @@ class PostgresRunStore:
             or not row["active"]
             or row["holder_worker_id"] != worker_id
             or int(row["fencing_token"]) != fencing_token
+            or row["expires_at"] <= _now()
         ):
             raise ConflictError("lease fencing token is stale or not owned")
         return cast(Mapping[str, Any], row)
@@ -892,6 +1103,12 @@ class PostgresRunStore:
         type: str,
         data: Mapping[str, object],
     ) -> RunEvent:
+        # Serialize sequence allocation with every other event writer for this
+        # Run. MAX(sequence)+1 is safe only while the parent row is locked.
+        connection.execute(
+            "SELECT id FROM runs WHERE id = %s FOR UPDATE",
+            (run_id,),
+        ).fetchone()
         row = connection.execute(
             """
             SELECT COALESCE(MAX(sequence), 0) AS sequence

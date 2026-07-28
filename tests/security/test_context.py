@@ -72,4 +72,3 @@ def test_run_context_deadline_check_uses_stable_error_code() -> None:
 
     assert raised.value.code.value == "runtime.deadline_exceeded"
     assert isinstance(context.request_id, UUID)
-

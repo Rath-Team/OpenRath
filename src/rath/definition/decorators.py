@@ -94,4 +94,3 @@ def router(
 
 def _metadata(function: Callable[..., Any]) -> _NodeMetadata | None:
     return cast(_NodeMetadata | None, getattr(function, _METADATA_ATTR, None))
-

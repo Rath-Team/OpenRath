@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+import time
 from collections.abc import Awaitable, Mapping
 from typing import Protocol, cast
 
-from rath.adapters.context import AdapterRequestContext
+from rath.adapters.context import (
+    AdapterRequestContext,
+    effective_timeout_seconds,
+    with_policy_constraints,
+)
 from rath.adapters.specs import SandboxSpec
 from rath.context import RunContext
 from rath.security import Action, PolicyEngine, ResourceRef, authorize
@@ -46,7 +51,7 @@ class SandboxExecutor:
             raise ValueError("sandbox timeout must be positive")
         if adapter_context.tenant_id != run_context.security.tenant_id:
             raise PermissionError("adapter and run tenant mismatch")
-        await authorize(
+        decision = await authorize(
             self.policy,
             action=Action("sandbox.execute"),
             resource=ResourceRef(
@@ -61,9 +66,21 @@ class SandboxExecutor:
             ),
             context=run_context,
         )
+        adapter_context = with_policy_constraints(
+            adapter_context,
+            decision.constraints,
+        )
+        timeout = effective_timeout_seconds(
+            timeout_seconds,
+            adapter_context=adapter_context,
+            run_remaining_seconds=run_context.remaining_seconds(),
+        )
+        started = time.monotonic()
         result = handler(operation, payload, spec, adapter_context)
         if inspect.isawaitable(result):
             return await asyncio.wait_for(
-                cast(Awaitable[object], result), timeout=timeout_seconds
+                cast(Awaitable[object], result), timeout=timeout
             )
+        if time.monotonic() - started > timeout:
+            raise TimeoutError(f"sandbox {spec.id!r} exceeded timeout")
         return result

@@ -10,7 +10,13 @@ from rath.runtime.effects import (
     arguments_digest,
     reconcile_stale_effects,
 )
-from rath.runtime.local import LocalRuntime, StepContext
+from rath.runtime.execution import (
+    ExecutionServices,
+    PythonStepExecutor,
+    StepExecutor,
+    StepSuspended,
+)
+from rath.runtime.local import LocalRuntime, PlanMismatchError, StepContext
 from rath.runtime.models import (
     ApprovalDecision,
     ApprovalDecisionKind,
@@ -46,6 +52,7 @@ __all__ = [
     "ClaimedRun",
     "ConflictError",
     "EffectLedger",
+    "ExecutionServices",
     "Interrupt",
     "InterruptKind",
     "InvocationStatus",
@@ -53,7 +60,9 @@ __all__ = [
     "InMemorySignalBus",
     "InvalidRunTransition",
     "LocalRuntime",
+    "PlanMismatchError",
     "PostgresRunStore",
+    "PythonStepExecutor",
     "PostgresEffectLedger",
     "Reconciliation",
     "RedisSignalBus",
@@ -68,6 +77,8 @@ __all__ = [
     "SignalKind",
     "SQLiteEffectLedger",
     "StepContext",
+    "StepExecutor",
+    "StepSuspended",
     "ToolInvocation",
     "arguments_digest",
     "reconcile_stale_effects",

@@ -124,3 +124,22 @@ def test_step_metadata_rejects_unsafe_retry_contract() -> None:
         def unsafe(state, context):  # type: ignore[no-untyped-def]
             return state
 
+
+def test_production_durable_rejects_sync_step_timeout() -> None:
+    class _TimedSync(Workflow):
+        @step(entry=True, timeout_seconds=0.1)
+        def run(self, state, context):  # type: ignore[no-untyped-def]
+            return state
+
+        def forward(self, session: Session) -> Session:
+            return session
+
+    with pytest.raises(
+        DefinitionError,
+        match="synchronous durable steps cannot guarantee preemptive timeout",
+    ):
+        WorkflowCompiler().compile(
+            _TimedSync(),
+            revision_id=uuid4(),
+            production_durable=True,
+        )

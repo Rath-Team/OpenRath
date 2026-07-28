@@ -25,4 +25,3 @@ def test_error_details_are_immutable_copies() -> None:
     details["nested"]["value"] = 2
 
     assert error.details["nested"]["value"] == 1  # type: ignore[index]
-

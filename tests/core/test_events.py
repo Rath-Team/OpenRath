@@ -66,4 +66,3 @@ def test_append_assigns_next_sequence_without_mutating_original() -> None:
     assert log.events == ()
     assert updated.events[0].sequence == 1
     assert isinstance(updated.events[0].created_at, datetime)
-

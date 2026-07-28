@@ -13,7 +13,9 @@ __all__ = ["AuthProvider", "StaticTokenAuth"]
 
 @runtime_checkable
 class AuthProvider(Protocol):
-    async def authenticate(self, authorization: str | None) -> SecurityContext | None: ...
+    async def authenticate(
+        self, authorization: str | None
+    ) -> SecurityContext | None: ...
 
 
 class StaticTokenAuth:
