@@ -181,6 +181,8 @@ def test_arun_session_loop_write_file_via_tool_then_stop(tmp_path: Any) -> None:
 def test_arun_session_loop_parallel_safe_tools_overlap(tmp_path: Any) -> None:
     """Three writes on distinct paths run concurrently."""
     n = 3
+    in_flight = 0
+    max_in_flight = 0
     paths = [str(tmp_path / f"par_{i}.txt") for i in range(n)]
     parts = tuple(
         _tool_call(
@@ -193,6 +195,10 @@ def test_arun_session_loop_parallel_safe_tools_overlap(tmp_path: Any) -> None:
 
     # Sleeping tool to make parallelism observable. resource_key returns the
     # path so distinct paths land on distinct queues.
+    import threading
+
+    counter_lock = threading.Lock()
+
     class _SleepyWrite(FlowToolCall):
         parallel_safe = True
 
@@ -215,9 +221,17 @@ def test_arun_session_loop_parallel_safe_tools_overlap(tmp_path: Any) -> None:
             }
 
         def __call__(self, session: Session, arguments: Mapping[str, Any]) -> Any:
-            time.sleep(0.25)
-            with open(arguments["path"], "w", encoding="utf-8") as fp:
-                fp.write(str(arguments["content"]))
+            nonlocal in_flight, max_in_flight
+            with counter_lock:
+                in_flight += 1
+                max_in_flight = max(max_in_flight, in_flight)
+            try:
+                time.sleep(0.25)
+                with open(arguments["path"], "w", encoding="utf-8") as fp:
+                    fp.write(str(arguments["content"]))
+            finally:
+                with counter_lock:
+                    in_flight -= 1
             return True
 
     executor = _ScriptedAsyncExecutor([_tool_round(*parts, rid="r-par"), _stop("done")])
@@ -225,7 +239,6 @@ def test_arun_session_loop_parallel_safe_tools_overlap(tmp_path: Any) -> None:
     backend = get("local")
     with backend.open() as sandbox:
         user = Session.from_user_message("write three").bind_sandbox(sandbox)
-        t0 = time.perf_counter()
         out = runtime().run(
             _arun_session_loop(
                 user,
@@ -235,12 +248,12 @@ def test_arun_session_loop_parallel_safe_tools_overlap(tmp_path: Any) -> None:
                 tools=[_SleepyWrite()],
             )
         )
-        elapsed = time.perf_counter() - t0
 
     for p in paths:
         assert open(p, encoding="utf-8").read().startswith("slot-")
-    # 3 × 0.25s serial would be 0.75s; parallel must finish well under that.
-    assert elapsed < 0.5, f"parallel-safe tools did not overlap; elapsed={elapsed:.3f}s"
+    assert max_in_flight >= 2, (
+        f"parallel-safe tools did not overlap; max_in_flight={max_in_flight}"
+    )
     # Transcript order must remain the call order.
     tool_rows = [r for r in out.chunk_table.rows if r.kind == ChunkKind.TOOL_RESULT]
     assert [r.payload.get("tool_call_id") for r in tool_rows] == [
