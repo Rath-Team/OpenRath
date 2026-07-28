@@ -86,20 +86,32 @@ jobs:
           push: false
           load: true
           tags: openrath:review
-      - uses: aquasecurity/trivy-action@dc5a429b52fcf669ce959baa2c2dd26090d2a6c4 # v0.32.0
-        with:
-          image-ref: openrath:review
-          severity: CRITICAL,HIGH
-          exit-code: "1"
-          ignore-unfixed: true
-      - uses: aquasecurity/trivy-action@dc5a429b52fcf669ce959baa2c2dd26090d2a6c4 # v0.32.0
-        with:
-          image-ref: openrath:review
-          format: cyclonedx
-          output: openrath-v2-sbom.cdx.json
-      - uses: aquasecurity/trivy-action@dc5a429b52fcf669ce959baa2c2dd26090d2a6c4 # v0.32.0
-        with:
-          scan-type: fs
-          scan-ref: .
-          scanners: secret
-          exit-code: "1"
+      - name: Scan image, generate SBOM, and scan repository secrets
+        env:
+          TRIVY_IMAGE: aquasec/trivy@sha256:e2b22eac59c02003d8749f5b8d9bd073b62e30fefaef5b7c8371204e0a4b0c08 # v0.67.2
+        run: |
+          mkdir -p "$RUNNER_TEMP/trivy-cache"
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" \
+            "$TRIVY_IMAGE" image \
+            --severity CRITICAL,HIGH \
+            --exit-code 1 \
+            --ignore-unfixed \
+            openrath:review
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" \
+            -v "$PWD:/workspace" \
+            "$TRIVY_IMAGE" image \
+            --format cyclonedx \
+            --output /workspace/openrath-v2-sbom.cdx.json \
+            openrath:review
+          docker run --rm \
+            -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" \
+            -v "$PWD:/workspace:ro" \
+            "$TRIVY_IMAGE" fs \
+            --scanners secret \
+            --exit-code 1 \
+            --skip-dirs /workspace/.git \
+            /workspace

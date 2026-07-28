@@ -34,4 +34,8 @@ def test_production_workflow_pins_actions_and_service_images() -> None:
     assert "redis:8-alpine@sha256:" in workflow
     assert "minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:" in workflow
     assert "pip-audit" in workflow
-    assert "scanners: secret" in workflow
+    assert "--scanners secret" in workflow
+    assert (
+        "aquasec/trivy@sha256:"
+        "e2b22eac59c02003d8749f5b8d9bd073b62e30fefaef5b7c8371204e0a4b0c08" in workflow
+    )
