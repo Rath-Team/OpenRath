@@ -328,7 +328,7 @@
   "info": {
     "description": "Beta v2 durable Agent Server API.",
     "title": "OpenRath Agent Server",
-    "version": "2.0.0-unreleased"
+    "version": "2.0.0rc1"
   },
   "openapi": "3.1.0",
   "paths": {

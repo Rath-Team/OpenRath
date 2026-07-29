@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
+import sys
 import threading
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Callable, Protocol, runtime_checkable
 from uuid import UUID, uuid4
 
 from rath._json import JSONValue, freeze_mapping
@@ -21,7 +23,27 @@ __all__ = [
     "AuditKind",
     "AuditSink",
     "InMemoryAuditSink",
+    "StructuredAuditSink",
 ]
+
+_SENSITIVE_AUDIT_FIELDS = frozenset(
+    {"api_key", "authorization", "cookie", "password", "secret", "token"}
+)
+
+
+def _redact_audit(value: object) -> object:
+    if isinstance(value, Mapping):
+        return {
+            str(key): (
+                "<redacted>"
+                if any(part in str(key).lower() for part in _SENSITIVE_AUDIT_FIELDS)
+                else _redact_audit(item)
+            )
+            for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_redact_audit(item) for item in value]
+    return value
 
 
 class AuditKind(str, Enum):
@@ -110,3 +132,51 @@ class InMemoryAuditSink:
     async def emit(self, event: AuditEvent) -> None:
         with self._lock:
             self._events.append(event)
+
+
+class StructuredAuditSink:
+    """Emit redacted, newline-delimited JSON security audit records.
+
+    The default sink writes and flushes stdout so container log collectors can
+    retain the security stream independently from diagnostic traces. Sink
+    failures deliberately propagate: a production reference deployment must
+    not silently discard an audit record.
+    """
+
+    def __init__(self, sink: Callable[[str], None] | None = None) -> None:
+        self._sink = sink or self._write_stdout
+
+    @staticmethod
+    def _write_stdout(line: str) -> None:
+        sys.stdout.write(line + "\n")
+        sys.stdout.flush()
+
+    async def emit(self, event: AuditEvent) -> None:
+        record: dict[str, object] = {
+            "schema": "openrath.security-audit/1",
+            "id": str(event.id),
+            "kind": event.kind.value,
+            "occurred_at": event.occurred_at.isoformat(),
+            "tenant_id": event.tenant_id,
+            "principal_id": event.principal_id,
+            "request_id": str(event.request_id),
+            "trace_id": event.trace_id,
+            "action": event.action,
+            "resource_kind": event.resource_kind,
+            "resource_id": event.resource_id,
+            "outcome": event.outcome,
+            "reason": event.reason,
+            "policy_id": event.policy_id,
+            "attributes": dict(event.attributes),
+        }
+        safe = _redact_audit(record)
+        assert isinstance(safe, dict)
+        self._sink(
+            json.dumps(
+                safe,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            )
+        )

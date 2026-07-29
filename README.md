@@ -54,9 +54,9 @@ Most agent frameworks begin with an agent loop. OpenRath begins with **Session**
 
 OpenRath is designed for this: many agents collaborating across many branchable sessions, while still tracing every role, workspace, memory write, and final output.
 
-## v2.0.0 durable runtime (unreleased)
+## v2.0.0 durable runtime (release candidate)
 
-The v2 candidate adds explicit `@step` / `@router` execution plans, durable
+The `2.0.0rc1` candidate adds explicit `@step` / `@router` execution plans, durable
 Runs and checkpoints, effect reconciliation, tenant-scoped Agent Server APIs,
 and governed Provider/Tool/Sandbox/Memory adapters. The HTTP contract is
 currently **Beta**; v1 JSONL imports are historical and cannot resume an active

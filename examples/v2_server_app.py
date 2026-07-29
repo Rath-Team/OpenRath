@@ -9,7 +9,12 @@ from uuid import UUID
 from rath.definition import EffectClass, step
 from rath.flow import Workflow
 from rath.runtime import LocalRuntime, PostgresEffectLedger, PostgresRunStore
-from rath.security import Principal, PrincipalKind, SecurityContext
+from rath.security import (
+    Principal,
+    PrincipalKind,
+    SecurityContext,
+    StructuredAuditSink,
+)
 from rath.server import AgentServer, StaticTokenAuth
 from rath.session import Session
 
@@ -37,6 +42,15 @@ class SlowWorkflow(Workflow):
 dsn = os.environ["OPENRATH_POSTGRES_DSN"]
 token = os.environ["OPENRATH_TOKEN"]
 tenant_id = os.getenv("OPENRATH_TENANT_ID", "default")
+grants = frozenset(
+    grant.strip()
+    for grant in os.environ["OPENRATH_GRANTS"].split(",")
+    if grant.strip()
+)
+if not grants or "*" in grants:
+    raise RuntimeError(
+        "OPENRATH_GRANTS must contain explicit action grants and must not use '*'"
+    )
 store = PostgresRunStore(
     dsn,
     schema=os.getenv("OPENRATH_DB_SCHEMA", "openrath"),
@@ -56,10 +70,11 @@ server = AgentServer(
             token: SecurityContext(
                 principal=Principal(id="reference-user", kind=PrincipalKind.SERVICE),
                 tenant_id=tenant_id,
-                grants=frozenset({"*"}),
+                grants=grants,
             )
         }
     ),
+    audit_sink=StructuredAuditSink(),
     embedded_worker=os.getenv("OPENRATH_EMBEDDED_WORKER", "true").lower() == "true",
     worker_id=os.getenv("HOSTNAME", "standalone-worker"),
     worker_lease_seconds=float(os.getenv("OPENRATH_WORKER_LEASE_SECONDS", "30")),

@@ -19,6 +19,7 @@ data:
   OPENRATH_EMBEDDED_WORKER: "false"
   OPENRATH_DB_SCHEMA: openrath
   OPENRATH_TENANT_ID: default
+  OPENRATH_GRANTS: assistant.read,session.read,session.create,run.read,run.create,run.cancel,run.resume,interrupt.read,interrupt.decide,feedback.create,metrics.read
 ---
 apiVersion: batch/v1
 kind: Job
@@ -39,7 +40,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: migrate
-          image: ghcr.io/rath-team/openrath:2.0.0-review
+          image: ghcr.io/rath-team/openrath:2.0.0rc1
           # Release automation must replace the review tag with image@sha256.
           imagePullPolicy: Always
           command: ["openrath-migrate"]
@@ -76,7 +77,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: openrath
-          image: ghcr.io/rath-team/openrath:2.0.0-review
+          image: ghcr.io/rath-team/openrath:2.0.0rc1
           # Release automation must replace the review tag with image@sha256.
           imagePullPolicy: Always
           envFrom:
@@ -159,7 +160,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: worker
-          image: ghcr.io/rath-team/openrath:2.0.0-review
+          image: ghcr.io/rath-team/openrath:2.0.0rc1
           # Release automation must replace the review tag with image@sha256.
           imagePullPolicy: Always
           command: ["openrath-worker", "--app", "examples.v2_server_app:server"]

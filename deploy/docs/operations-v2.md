@@ -23,6 +23,12 @@ allows same-process filesystem/network behavior and is unsuitable for
 untrusted tenants. Service deployments should supply a fail-closed policy,
 governed adapter executors, durable effect ledger, and audit sink.
 
+The reference server requires `OPENRATH_GRANTS` with explicit actions and
+rejects the wildcard grant. It emits redacted newline-delimited JSON audit
+records to stdout. Production operators must configure a collector, retention,
+access control, and delivery alert for that stream; an in-memory sink is never
+production evidence.
+
 The Kubernetes template is fail closed for egress. PostgreSQL, Redis, S3, and
 an HTTPS egress gateway must run in a namespace labelled
 `openrath.io/data-plane=allowed`; DNS is limited to `kube-system`. If the CNI

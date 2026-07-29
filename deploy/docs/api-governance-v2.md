@@ -1,7 +1,8 @@
 # OpenRath v2 API and maintenance policy
 
-This policy is part of the v2.0.0 review candidate and becomes effective only
-when the repository owner approves the release.
+This policy is part of the v2.0.0 release candidate. The RC publishes it for
+compatibility feedback; final Stable promotions and the v1 maintenance window
+still require repository-owner approval before GA.
 
 ## Stability levels
 
@@ -21,6 +22,9 @@ when the repository owner approves the release.
 The Agent Server OpenAPI document currently labels `/v1` operations **Beta**.
 Stable error codes and persisted fields may be promoted independently only
 after the RC evidence gate passes.
+
+For `2.0.0rc1`, the Python v1 façade remains supported and the Agent Server
+remains Beta. The RC does not begin or end a maintenance window.
 
 ## Action and object authorization
 

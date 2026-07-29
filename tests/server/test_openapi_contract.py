@@ -11,13 +11,13 @@ def test_committed_openapi_matches_generator() -> None:
         Path("deploy/docs/openapi-v2.json").read_text(encoding="utf-8")
     )
     assert committed == _openapi_document(
-        "2.0.0-unreleased",
+        "2.0.0rc1",
         store_enabled=True,
     )
 
 
 def test_openapi_documents_security_actions_and_schemas() -> None:
-    document = _openapi_document("2.0.0-unreleased", store_enabled=True)
+    document = _openapi_document("2.0.0rc1", store_enabled=True)
     paths = document["paths"]
     assert paths["/v1/runs"]["post"]["x-openrath-action"] == "run.create"
     assert paths["/metrics"]["get"]["security"] == [{"bearerAuth": []}]

@@ -1,7 +1,13 @@
-name: Test OpenViking
+name: Test OpenViking contracts and live service
 
 on:
   workflow_dispatch:
+    inputs:
+      require_live:
+        description: Fail when live OpenViking credentials are unavailable
+        required: true
+        type: boolean
+        default: true
   push:
     branches: [main]
     paths:
@@ -32,11 +38,8 @@ permissions:
 
 jobs:
   test-openviking:
-    name: pytest (openviking)
+    name: pytest (openviking contracts)
     runs-on: ubuntu-latest
-    # OpenViking tests require a running server with reachable embedding +
-    # VLM providers; allow failure in PRs until the CI environment is stable.
-    continue-on-error: ${{ github.event_name == 'pull_request' }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - uses: astral-sh/setup-uv@e58605a9b6da7c637471fab8847a5e5a6b8df081 # v5
@@ -62,6 +65,14 @@ jobs:
           fi
       - name: Run OpenViking SDK and offline contracts
         run: uv run pytest -q tests/memory/unit
+      - name: Require live credentials for release validation
+        if: >-
+          github.event_name == 'workflow_dispatch' &&
+          inputs.require_live &&
+          steps.creds.outputs.available != 'true'
+        run: |
+          echo "Live OpenViking credentials are required for release validation." >&2
+          exit 1
       - name: Start OpenViking server
         if: steps.creds.outputs.available == 'true'
         env:
@@ -76,9 +87,11 @@ jobs:
           echo "OPEN_VIKING_ROOT_API_KEY=${key}" >> "$GITHUB_ENV"
           echo "OPEN_VIKING_URL=http://127.0.0.1:1933" >> "$GITHUB_ENV"
       - name: Skip OpenViking (no repository secrets)
-        if: steps.creds.outputs.available != 'true'
+        if: >-
+          steps.creds.outputs.available != 'true' &&
+          github.event_name != 'workflow_dispatch'
         run: |
-          echo "Skipping OpenViking integration tests."
+          echo "Only offline OpenViking contracts ran for this change."
           echo "Configure repository secrets OPEN_VIKING_EMBEDDING_API_KEY + OPEN_VIKING_VLM_API_KEY,"
           echo "or OPENAI_API_KEY, to run the live server job."
       - name: Run OpenViking tests

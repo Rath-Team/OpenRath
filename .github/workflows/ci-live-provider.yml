@@ -1,0 +1,33 @@
+name: Test live provider release gate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-provider:
+    name: pytest (live provider required)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+        with:
+          python-version: '3.12'
+      - name: Require approved provider credentials
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [[ -z "${OPENAI_API_KEY}" && -z "${ANTHROPIC_API_KEY}" ]]; then
+            echo "An approved live provider credential is required." >&2
+            exit 1
+          fi
+      - name: Install live provider test dependencies
+        run: uv sync --dev --frozen
+      - name: Run live provider lifecycle tests
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: uv run pytest -q -m live_llm

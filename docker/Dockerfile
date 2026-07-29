@@ -15,6 +15,13 @@ RUN pip install uv==0.7.18 \
 
 FROM python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de AS runtime
 
+ARG OPENRATH_VERSION=0+unknown
+ARG OPENRATH_REVISION=unknown
+LABEL org.opencontainers.image.title="OpenRath" \
+      org.opencontainers.image.source="https://github.com/Rath-Team/OpenRath" \
+      org.opencontainers.image.version="${OPENRATH_VERSION}" \
+      org.opencontainers.image.revision="${OPENRATH_REVISION}"
+
 ENV PATH="/opt/venv/bin:${PATH}" \
     PYTHONPATH="/app" \
     PYTHONDONTWRITEBYTECODE=1 \

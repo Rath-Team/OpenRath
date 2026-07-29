@@ -5,7 +5,7 @@ services:
     build:
       context: ../..
       dockerfile: docker/Dockerfile
-    image: openrath:2.0.0-review
+    image: openrath:2.0.0rc1
     entrypoint: ["openrath-migrate"]
     environment:
       OPENRATH_POSTGRES_DSN: postgresql://openrath:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/openrath
@@ -24,12 +24,13 @@ services:
     build:
       context: ../..
       dockerfile: docker/Dockerfile
-    image: openrath:2.0.0-review
+    image: openrath:2.0.0rc1
     environment:
       OPENRATH_APP: examples.v2_server_app:app
       OPENRATH_POSTGRES_DSN: postgresql://openrath:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/openrath
       OPENRATH_TOKEN: ${OPENRATH_TOKEN:?set OPENRATH_TOKEN}
       OPENRATH_TENANT_ID: ${OPENRATH_TENANT_ID:-default}
+      OPENRATH_GRANTS: assistant.read,session.read,session.create,run.read,run.create,run.cancel,run.resume,interrupt.read,interrupt.decide,feedback.create,metrics.read
       OPENRATH_EMBEDDED_WORKER: "false"
     ports:
       - "${OPENRATH_PORT:-8000}:8000"
@@ -58,13 +59,14 @@ services:
     build:
       context: ../..
       dockerfile: docker/Dockerfile
-    image: openrath:2.0.0-review
+    image: openrath:2.0.0rc1
     entrypoint: ["openrath-worker"]
     command: ["--app", "examples.v2_server_app:server"]
     environment:
       OPENRATH_POSTGRES_DSN: postgresql://openrath:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/openrath
       OPENRATH_TOKEN: ${OPENRATH_TOKEN:?set OPENRATH_TOKEN}
       OPENRATH_TENANT_ID: ${OPENRATH_TENANT_ID:-default}
+      OPENRATH_GRANTS: assistant.read,session.read,session.create,run.read,run.create,run.cancel,run.resume,interrupt.read,interrupt.decide,feedback.create,metrics.read
       OPENRATH_EMBEDDED_WORKER: "false"
     depends_on:
       migrate:
