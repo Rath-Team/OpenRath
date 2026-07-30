@@ -146,3 +146,23 @@ def test_inline_key_takes_precedence_over_credentials(
     )
     store = ConfigStore.load()
     assert store.get_llm_provider("main").api_key == "sk-inline"
+
+
+def test_removing_last_key_deletes_stale_credentials_sidecar(
+    _isolate_openrath_home: Path,
+) -> None:
+    store = ConfigStore(path=resolve_config_path())
+    store.config.llm.providers["main"] = LLMProviderConfig(
+        provider_kind="openai",
+        model="gpt-5",
+        api_key="sk-remove-me",
+    )
+    store.save()
+    assert _credentials_path().is_file()
+
+    store.config.llm.providers["main"].api_key = None
+    store.save()
+
+    assert not _credentials_path().exists()
+    reloaded = ConfigStore(path=resolve_config_path())
+    assert reloaded.get_llm_provider("main").api_key is None

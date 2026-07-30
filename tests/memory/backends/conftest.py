@@ -119,7 +119,7 @@ def add_resource_with_retry(
     raise last_exc
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(scope="session", autouse=True)
 def _openviking_canary() -> Iterator[None]:
     pytest.importorskip("openviking", reason="openviking optional extra not installed")
     url = os.environ.get("OPEN_VIKING_URL", _DEFAULT_URL)

@@ -15,6 +15,7 @@ from pathlib import Path
 from uuid import UUID
 
 from rath.config.paths import resolve_config_dir
+from rath.utils.ids import coerce_uuid_str
 
 __all__ = [
     "SANDBOXES_DIR_NAME",
@@ -48,7 +49,7 @@ def local_root() -> Path:
 
 def local_sandbox_dir(sandbox_id: UUID | str) -> Path:
     """``<local_root>/<sandbox_id>`` — the stable working_dir for a Local sandbox."""
-    return local_root() / str(sandbox_id)
+    return local_root() / coerce_uuid_str(sandbox_id, field="sandbox_id")
 
 
 def opensandbox_root() -> Path:
@@ -58,7 +59,8 @@ def opensandbox_root() -> Path:
 
 def opensandbox_index_path(sandbox_id: UUID | str) -> Path:
     """``<opensandbox_root>/<sandbox_id>.json`` — registry entry for a remote sandbox."""
-    return opensandbox_root() / f"{sandbox_id}{OPENSANDBOX_INDEX_SUFFIX}"
+    sid = coerce_uuid_str(sandbox_id, field="sandbox_id")
+    return opensandbox_root() / f"{sid}{OPENSANDBOX_INDEX_SUFFIX}"
 
 
 def ensure_local_root() -> Path:

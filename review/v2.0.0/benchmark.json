@@ -1,0 +1,17 @@
+{
+  "schema": "openrath.v2.benchmark/1",
+  "profile": "sqlite-single-worker-one-step",
+  "runs": 500,
+  "throughput_runs_per_second": 38.318744250606294,
+  "latency_ms": {
+    "mean": 26.053890199998932,
+    "p50": 24.10760000020673,
+    "p95": 27.95830000013666,
+    "p99": 103.07360000024346
+  },
+  "environment": {
+    "python": "3.10.18",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel"
+  }
+}

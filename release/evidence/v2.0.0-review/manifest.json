@@ -1,0 +1,86 @@
+{
+  "schema": "openrath.review-evidence/1",
+  "generated_at": "2026-07-28T12:19:38+08:00",
+  "baseline_commit": "ec0ac921fe95de4d925113f63b4bda0934880f42",
+  "implementation_commit": "51a26c4a23850876548c61340da2d2da3bc834ce",
+  "branch": "codex/v2-review-remediation",
+  "intended_release": "2.0.0",
+  "package_version": "1.3.0",
+  "release_approved": false,
+  "source_tree_clean_at_implementation_commit": true,
+  "artifacts": {
+    "wheel": {
+      "path": "dist/openrath-1.3.0-py3-none-any.whl",
+      "sha256": "296705e4af199393ff81cfeab0034faa07c3366bb635bc25e8e2c1f19324f388"
+    },
+    "sdist": {
+      "path": "dist/openrath-1.3.0.tar.gz",
+      "sha256": "d34ca3adf76e5b3c99bde107a884189699c0d9de7df6da88d1b4a57217581016"
+    },
+    "openapi": {
+      "path": "deploy/docs/openapi-v2.json",
+      "sha256": "d2af9657b8c7346d1d8ef1097418af0548fc9ad6ca2817c82eb5895497c1d648"
+    },
+    "local_image": {
+      "reference": "openrath:review",
+      "local_image_id": "sha256:181247207c0f57e438c42676579a32d98cd7f9ea66c2c6b1bf2c233526723b14",
+      "registry_digest": null
+    },
+    "sbom": {
+      "path": "release/evidence/v2.0.0-review/openrath-v2-review.sbom.cdx.json",
+      "sha256": "cd38253ce326ee89c2e1075a2aa39aa7374cbdefe840c0e087527f198e9398ad"
+    },
+    "image_scan": {
+      "path": "release/evidence/v2.0.0-review/image-scan-high-critical.json",
+      "sha256": "824fd0f2b1eff05156c58ba16df4c08ca2eacb7635536291a37405e291c3afdb",
+      "fixed_high_or_critical_findings": 0
+    },
+    "repository_secret_scan": {
+      "path": "release/evidence/v2.0.0-review/repository-secret-scan.json",
+      "sha256": "8fc6fd9d2056aa23cc1d3e1719364096fccfae487164a990ea201df085df281d",
+      "findings": 0
+    }
+  },
+  "validation": {
+    "ruff": "passed",
+    "mypy_source_files": 166,
+    "offline_tests": {
+      "passed": 1043,
+      "skipped": 20,
+      "failed": 0
+    },
+    "openapi_contract_tests": {
+      "passed": 2,
+      "failed": 0
+    },
+    "opensandbox_real": {
+      "full_run_passed": 45,
+      "full_run_skipped": 3,
+      "environment_sensitive_timing_failures": 1,
+      "corrected_focused_rerun_passed": 1
+    },
+    "postgres_redis_s3_integration": {
+      "passed": 10,
+      "failed": 0
+    },
+    "dependency_audits": {
+      "production": "no known vulnerabilities",
+      "all_extras_and_groups": "no known vulnerabilities"
+    },
+    "review_soak": {
+      "duration_seconds": 10.032811900004162,
+      "completed_runs": 143,
+      "failed_runs": 0,
+      "profile": "sqlite-single-worker-one-step"
+    }
+  },
+  "blocking_gates": [
+    "approved live LLM/provider lifecycle",
+    "approved live OpenViking lifecycle",
+    "published immutable OpenRath registry image digest",
+    "eight-hour target-like soak",
+    "one-to-four worker scale test",
+    "target-cluster backup/restore and rollout/rollback drills",
+    "final CI and evidence regeneration on the frozen RC commit"
+  ]
+}

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from rath.memory import MemoryStore
+from rath.memory import MemoryStore, MemoryStoreSpec
 from rath.memory.adapters.local import LocalMemoryBackend
 
 
@@ -30,8 +30,18 @@ def backend() -> Iterator[LocalMemoryBackend]:
 
 
 @pytest.fixture
-def store(backend: LocalMemoryBackend) -> Iterator[MemoryStore]:
-    s = backend.open()
+def store(
+    backend: LocalMemoryBackend,
+    tmp_path: Path,
+) -> Iterator[MemoryStore]:
+    spec = MemoryStoreSpec(
+        options={
+            "resource_import_roots": [str(tmp_path)],
+            "resource_allowed_http_hosts": ["127.0.0.1"],
+            "resource_allow_private_hosts": True,
+        },
+    )
+    s = backend.open(spec)
     try:
         yield s
     finally:

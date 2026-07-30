@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openrath.dev/schemas/ga-approval-v1.json",
+  "title": "OpenRath GA approval",
+  "type": "object",
+  "required": [
+    "schema",
+    "version",
+    "source_commit",
+    "approved",
+    "approved_at",
+    "approvers",
+    "requested_by",
+    "environment",
+    "environment_reviews",
+    "repository",
+    "workflow_run_id",
+    "actions"
+  ],
+  "properties": {
+    "schema": {
+      "const": "openrath.ga-approval/1"
+    },
+    "version": {
+      "const": "2.0.0"
+    },
+    "source_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "approved": {
+      "const": true
+    },
+    "approved_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "approvers": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "requested_by": {
+      "type": "string",
+      "minLength": 1
+    },
+    "environment": {
+      "const": "ga-release"
+    },
+    "environment_reviews": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["review_id", "reviewer", "approved_at"],
+        "properties": {
+          "review_id": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]*$"
+          },
+          "reviewer": {
+            "type": "string",
+            "minLength": 1
+          },
+          "approved_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "repository": {
+      "type": "string",
+      "pattern": "^[^/\\s]+/[^/\\s]+$"
+    },
+    "workflow_run_id": {
+      "type": "string",
+      "pattern": "^[1-9][0-9]*$"
+    },
+    "actions": {
+      "type": "object",
+      "required": [
+        "pypi",
+        "ghcr",
+        "github_release"
+      ],
+      "properties": {
+        "pypi": {"const": true},
+        "ghcr": {"const": true},
+        "github_release": {"const": true}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

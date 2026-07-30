@@ -1,0 +1,19 @@
+{
+  "schema": "openrath.v2.soak/1",
+  "profile": "sqlite-single-worker-one-step",
+  "duration_seconds": 30.003353699999934,
+  "completed_runs": 1050,
+  "failed_runs": 0,
+  "throughput_runs_per_second": 34.996087787346326,
+  "resource_delta": {
+    "threads": 0,
+    "traced_memory_bytes": 312383,
+    "peak_traced_memory_bytes": 337934
+  },
+  "environment": {
+    "python": "3.10.18",
+    "platform": "Windows-10-10.0.26200-SP0",
+    "processor": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel"
+  },
+  "scope": "Review profile only; repeat for the approved 8h/24h duration on target hardware before production rollout."
+}

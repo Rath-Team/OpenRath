@@ -13,6 +13,8 @@ from datetime import timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
 
+import pytest
+
 from rath.memory.persistence import (
     PersistentMemoryRegistry,
     local_memory_root,
@@ -54,6 +56,15 @@ def test_local_store_dir_accepts_str(_isolate_openrath_home: Path) -> None:
     """UUIDs may arrive as strings from JSON; both forms must resolve identically."""
     sid = uuid4()
     assert local_store_dir(str(sid)) == local_store_dir(sid)
+
+
+@pytest.mark.parametrize("bad_id", ["../escape", "/tmp/escape", "not-a-uuid"])
+def test_local_store_dir_rejects_path_like_ids(
+    _isolate_openrath_home: Path,
+    bad_id: str,
+) -> None:
+    with pytest.raises(ValueError, match="store_id must be a UUID"):
+        local_store_dir(bad_id)
 
 
 def test_ensure_local_memory_root_creates_and_is_idempotent(

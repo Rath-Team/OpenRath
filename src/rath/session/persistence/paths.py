@@ -14,6 +14,7 @@ from pathlib import Path
 from uuid import UUID
 
 from rath.config.paths import resolve_config_dir
+from rath.utils.ids import coerce_uuid_str
 
 __all__ = [
     "SESSIONS_DIR_NAME",
@@ -41,7 +42,8 @@ def session_file(session_id: UUID | str) -> Path:
     Accepts either a :class:`uuid.UUID` or a string; both are normalized via
     ``str(id)`` so callers don't have to think about it.
     """
-    return sessions_dir() / f"{session_id}{SESSION_FILE_SUFFIX}"
+    sid = coerce_uuid_str(session_id, field="session_id")
+    return sessions_dir() / f"{sid}{SESSION_FILE_SUFFIX}"
 
 
 def session_partial_file(session_id: UUID | str) -> Path:
@@ -53,7 +55,8 @@ def session_partial_file(session_id: UUID | str) -> Path:
     writing process crashed mid-session (or that the runtime drain timed
     out and abandoned the writer).
     """
-    return sessions_dir() / f"{session_id}{SESSION_PARTIAL_SUFFIX}"
+    sid = coerce_uuid_str(session_id, field="session_id")
+    return sessions_dir() / f"{sid}{SESSION_PARTIAL_SUFFIX}"
 
 
 def ensure_sessions_dir() -> Path:

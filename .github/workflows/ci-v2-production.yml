@@ -1,0 +1,127 @@
+name: v2 production gates
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 55432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+      redis:
+        image: redis:8-alpine@sha256:8096655e437712b07503796fb64d81359256cfcff0ab29d95a7da72863786efb
+        ports:
+          - 56379:6379
+    env:
+      OPENRATH_TEST_POSTGRES_DSN: postgresql://postgres@127.0.0.1:55432/postgres
+      OPENRATH_TEST_REDIS_URL: redis://127.0.0.1:56379/0
+      OPENRATH_TEST_S3_ENDPOINT: http://127.0.0.1:59000
+      OPENRATH_TEST_S3_ACCESS_KEY: openrathtest
+      OPENRATH_TEST_S3_SECRET_KEY: openrath-test-secret
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+      - name: Start S3-compatible object store
+        run: >-
+          docker run -d --name minio -p 59000:9000
+          -e MINIO_ROOT_USER=openrathtest
+          -e MINIO_ROOT_PASSWORD=openrath-test-secret
+          minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+          server /data
+      - run: uv lock --check
+      - run: uv sync --frozen --extra postgres --extra server --extra s3 --extra redis --extra otel
+      - run: uv run ruff check src tests scripts examples
+      - run: uv run ruff format --check src tests example
+      - run: uv run mypy src/rath
+      - name: Audit exact production dependency set
+        run: |
+          uv export --frozen --no-dev --no-emit-project \
+            --extra server --extra postgres --extra s3 --extra redis --extra otel \
+            --output-file production-requirements.txt
+          uvx pip-audit --no-deps --disable-pip -r production-requirements.txt
+      - name: Audit every published extra and development group
+        run: |
+          uv export --frozen --all-extras --all-groups --no-emit-project \
+            --output-file all-requirements.txt
+          uvx pip-audit --no-deps --disable-pip -r all-requirements.txt
+      - run: uv run pytest -q -n auto -m "not live_llm and not opensandbox and not openviking"
+      - run: uv run python scripts/soak_v2.py --duration-seconds 10 --max-runs 500
+      - run: uv build
+      - name: Validate reference deployments
+        env:
+          POSTGRES_PASSWORD: review-only-password
+          OPENRATH_TOKEN: review-only-token
+          MINIO_ROOT_PASSWORD: review-only-minio-password
+        run: |
+          docker compose -f deploy/compose/compose.yaml config --quiet
+          docker run --rm \
+            -v "$PWD/deploy/kubernetes:/manifests:ro" \
+            ghcr.io/yannh/kubeconform:v0.7.0@sha256:85dbef6b4b312b99133decc9c6fc9495e9fc5f92293d4ff3b7e1b30f5611823c \
+            -strict -summary /manifests
+
+  container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          push: false
+          load: true
+          tags: openrath:review
+      - name: Scan image, generate SBOM, and scan repository secrets
+        env:
+          TRIVY_IMAGE: aquasec/trivy@sha256:e2b22eac59c02003d8749f5b8d9bd073b62e30fefaef5b7c8371204e0a4b0c08 # v0.67.2
+        run: |
+          mkdir -p "$RUNNER_TEMP/trivy-cache"
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" \
+            "$TRIVY_IMAGE" image \
+            --severity CRITICAL,HIGH \
+            --exit-code 1 \
+            --ignore-unfixed \
+            openrath:review
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" \
+            -v "$PWD:/workspace" \
+            "$TRIVY_IMAGE" image \
+            --format cyclonedx \
+            --output /workspace/openrath-v2-sbom.cdx.json \
+            openrath:review
+          docker run --rm \
+            -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" \
+            -v "$PWD:/workspace:ro" \
+            "$TRIVY_IMAGE" fs \
+            --scanners secret \
+            --exit-code 1 \
+            --skip-dirs /workspace/.git \
+            --skip-dirs /workspace/.venv \
+            --skip-dirs /workspace/.mypy_cache \
+            --skip-dirs /workspace/.pytest_cache \
+            --skip-dirs /workspace/.ruff_cache \
+            --skip-dirs /workspace/build \
+            --skip-dirs /workspace/dist \
+            /workspace

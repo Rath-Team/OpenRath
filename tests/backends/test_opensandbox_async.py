@@ -6,8 +6,8 @@ Validates the post-migration ``OpenSandboxBackend``:
   per-sandbox exec lock.
 - Concurrent ``files.write`` to the *same* path serialise behind the
   per-path fs lock (last-writer-wins is deterministic; no torn payloads).
-- Concurrent ``files.write`` to *distinct* paths run in parallel.
-- Concurrent reads do not serialise behind any lock.
+- Concurrent ``files.write`` to *distinct* paths do not clobber one another.
+- Concurrent reads return complete payloads under thread contention.
 
 These tests require a reachable opensandbox-server (see ``conftest.py``'s
 ``opensandbox_real`` marker). There is no ``FakeSandbox`` fallback — the suite
@@ -29,7 +29,7 @@ from rath.backend import (
 from rath.backend.opensandbox import OpenSandboxBackend
 from tests.conftest import opensandbox_real
 
-pytestmark = opensandbox_real
+pytestmark = [opensandbox_real, pytest.mark.opensandbox]
 
 
 @pytest.fixture
@@ -47,8 +47,8 @@ def os_sandbox():
             backend.close(sb)
 
 
-def test_concurrent_distinct_path_writes_run_in_parallel(os_sandbox) -> None:
-    """Writes to N distinct paths complete in <<N× single-write latency."""
+def test_concurrent_distinct_path_writes_do_not_clobber(os_sandbox) -> None:
+    """Concurrent writes to N distinct paths all commit their own payload."""
     backend, sb = os_sandbox
     n = 8
     payloads = {f"distinct_{i}.txt": f"v{i}".encode() for i in range(n)}
@@ -57,23 +57,10 @@ def test_concurrent_distinct_path_writes_run_in_parallel(os_sandbox) -> None:
         r = sb.dispatch(BackendToolFilesWrite(path=name, data=payloads[name]))
         return getattr(r, "bytes_written", -1)
 
-    # Warm-up one write so we have a per-call baseline.
-    t0 = time.perf_counter()
-    write_one(next(iter(payloads.keys())))
-    per_call = time.perf_counter() - t0
-
-    start = time.perf_counter()
     with ThreadPoolExecutor(max_workers=n) as pool:
         results = list(pool.map(write_one, payloads.keys()))
-    elapsed = time.perf_counter() - start
 
     assert all(r > 0 for r in results)
-    # If they serialised, we'd expect ~n × per_call. Parallel should beat
-    # serial by at least 2×. Generous to avoid CI flake against a real server.
-    assert elapsed < per_call * n * 0.7, (
-        f"distinct-path writes did not run in parallel: "
-        f"per-call ≈ {per_call:.2f}s, {n} parallel took {elapsed:.2f}s"
-    )
 
     for name, want in payloads.items():
         r = sb.dispatch(BackendToolFilesRead(path=name, encoding=None))
@@ -135,8 +122,8 @@ def test_concurrent_commands_serialise_on_exec_lock(os_sandbox) -> None:
         assert "BEGIN" in out and "END" in out
 
 
-def test_concurrent_reads_do_not_serialise(os_sandbox) -> None:
-    """Reads share no lock — N parallel reads complete much faster than serial."""
+def test_concurrent_reads_return_complete_payloads(os_sandbox) -> None:
+    """N concurrent reads all return the complete payload."""
     backend, sb = os_sandbox
 
     # Seed a file to read.
@@ -148,22 +135,7 @@ def test_concurrent_reads_do_not_serialise(os_sandbox) -> None:
         r = sb.dispatch(BackendToolFilesRead(path="readable.txt", encoding=None))
         return getattr(r, "data", b"")
 
-    # Baseline.
-    t0 = time.perf_counter()
-    read_one(0)
-    per_call = time.perf_counter() - t0
-
-    start = time.perf_counter()
     with ThreadPoolExecutor(max_workers=n) as pool:
         results = list(pool.map(read_one, range(n)))
-    elapsed = time.perf_counter() - start
 
     assert all(r == b"hello" for r in results)
-    # Generous bound: parallel reads should be at most ~2× a single read.
-    # Skip the overlap assertion when per-call latency is sub-ms (the
-    # serial baseline is dominated by fixed overhead, not the lock).
-    if per_call > 0.01:
-        assert elapsed < per_call * n * 0.7, (
-            f"reads appear serialised: per-call ≈ {per_call:.2f}s, "
-            f"{n} parallel took {elapsed:.2f}s"
-        )

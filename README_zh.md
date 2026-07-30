@@ -54,6 +54,17 @@
 
 OpenRath 为此而设计：多个 Agent 在多个可分支 Session 上协作，同时仍能追踪每个 role、workspace、memory 写入和最终输出。
 
+## v2.0.0 durable runtime（候选版本）
+
+`2.0.0rc1` 新增显式 `@step` / `@router` 执行计划、durable Run 与
+Checkpoint、effect reconciliation、tenant-scoped Agent Server API，以及受
+治理的 Provider/Tool/Sandbox/Memory adapter。HTTP contract 在 RC 阶段仍为
+**Beta**；v1 JSONL 导入仅作为历史记录，不能恢复 active Run。
+
+Embedded mode 面向可信本地进程。Agent Server mode 是严格的 durable
+profile：token 必须具有显式 action grants，对象访问按 tenant/project
+隔离；需要强制 deadline 时应使用 async step 或 isolated executor。
+
 <p align="center">
   <img src="assets/readme/diagrams/paradigm-map.png" alt="多智能体多会话映射" width="860" />
 </p>

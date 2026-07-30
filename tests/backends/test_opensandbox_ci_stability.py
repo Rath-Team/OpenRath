@@ -2,18 +2,23 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
+import rath.backend.opensandbox as opensandbox_adapter
 from rath.backend.opensandbox import (
     _command_stdout_rerun_allowed,
     _is_transient_code_run_result,
     _is_transient_sandbox_create_error,
+    _run_code_with_retry,
     _should_retry_command_for_empty_stdout,
 )
 
 pytest.importorskip("opensandbox")
+from code_interpreter import CodeInterpreter  # noqa: E402
 from opensandbox.exceptions import SandboxInternalException  # noqa: E402
 from opensandbox.models.execd import (  # noqa: E402
     Execution,
@@ -73,8 +78,6 @@ def test_command_stdout_rerun_limited_to_print_probes() -> None:
 
 
 def test_transient_code_run_detects_busy_session() -> None:
-    from types import SimpleNamespace
-
     execution = SimpleNamespace(
         error=SimpleNamespace(value="error running codes session is busy")
     )
@@ -82,12 +85,39 @@ def test_transient_code_run_detects_busy_session() -> None:
 
 
 def test_transient_code_run_ignores_real_failures() -> None:
-    from types import SimpleNamespace
-
     execution = SimpleNamespace(
         error=SimpleNamespace(value="SyntaxError: invalid syntax"),
     )
     assert not _is_transient_code_run_result(execution)
+
+
+def test_busy_result_after_client_timeout_stays_a_timeout(monkeypatch) -> None:
+    calls = 0
+    busy = SimpleNamespace(
+        error=SimpleNamespace(value="error running codes session is busy")
+    )
+
+    class FakeCodes:
+        async def run(self, source, *, language):  # type: ignore[no-untyped-def]
+            return None
+
+    async def fake_create(native):  # type: ignore[no-untyped-def]
+        return SimpleNamespace(codes=FakeCodes())
+
+    async def fake_await(awaitable, timeout):  # type: ignore[no-untyped-def]
+        nonlocal calls
+        await awaitable
+        calls += 1
+        if calls == 1:
+            raise TimeoutError("client deadline")
+        return busy
+
+    monkeypatch.setattr(CodeInterpreter, "create", staticmethod(fake_create))
+    monkeypatch.setattr(opensandbox_adapter, "_await_maybe_timeout", fake_await)
+    monkeypatch.setattr(opensandbox_adapter, "_CODE_RUN_BACKOFF_S", (0.0,))
+
+    with pytest.raises(TimeoutError, match="remained busy after timeout"):
+        asyncio.run(_run_code_with_retry(object(), "pass", "python", 0.5))
 
 
 def test_transient_create_error_rejects_bind_rejection() -> None:

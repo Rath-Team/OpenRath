@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://openrath.dev/schemas/ga-gate-report-v1.json",
+  "title": "OpenRath GA gate report",
+  "type": "object",
+  "required": [
+    "schema",
+    "gate",
+    "source_commit",
+    "result",
+    "generated_at",
+    "environment",
+    "evidence",
+    "open_risks",
+    "details"
+  ],
+  "properties": {
+    "schema": {
+      "const": "openrath.ga-gate-report/1"
+    },
+    "gate": {
+      "enum": [
+        "tests",
+        "live_adapters",
+        "performance",
+        "soak",
+        "drills",
+        "compatibility"
+      ]
+    },
+    "source_commit": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "result": {
+      "const": "passed"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "environment": {
+      "type": "object",
+      "required": [
+        "profile",
+        "target_like"
+      ],
+      "properties": {
+        "profile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "target_like": {
+          "const": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "path",
+          "sha256",
+          "size"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^[^\\\\:]+$"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "size": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "open_risks": {
+      "type": "array"
+    },
+    "details": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}

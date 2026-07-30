@@ -1,0 +1,127 @@
+name: openrath-v2
+
+services:
+  migrate:
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile
+    image: openrath:2.0.0rc1
+    entrypoint: ["openrath-migrate"]
+    environment:
+      OPENRATH_POSTGRES_DSN: postgresql://openrath:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/openrath
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+
+  api:
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile
+    image: openrath:2.0.0rc1
+    environment:
+      OPENRATH_APP: examples.v2_server_app:app
+      OPENRATH_POSTGRES_DSN: postgresql://openrath:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/openrath
+      OPENRATH_TOKEN: ${OPENRATH_TOKEN:?set OPENRATH_TOKEN}
+      OPENRATH_TENANT_ID: ${OPENRATH_TENANT_ID:-default}
+      OPENRATH_GRANTS: assistant.read,session.read,session.create,run.read,run.create,run.cancel,run.resume,interrupt.read,interrupt.decide,feedback.create,metrics.read
+      OPENRATH_EMBEDDED_WORKER: "false"
+    ports:
+      - "${OPENRATH_PORT:-8000}:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready', timeout=2)"
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 10s
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+
+  worker:
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile
+    image: openrath:2.0.0rc1
+    entrypoint: ["openrath-worker"]
+    command: ["--app", "examples.v2_server_app:server"]
+    environment:
+      OPENRATH_POSTGRES_DSN: postgresql://openrath:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/openrath
+      OPENRATH_TOKEN: ${OPENRATH_TOKEN:?set OPENRATH_TOKEN}
+      OPENRATH_TENANT_ID: ${OPENRATH_TENANT_ID:-default}
+      OPENRATH_GRANTS: assistant.read,session.read,session.create,run.read,run.create,run.cancel,run.resume,interrupt.read,interrupt.decide,feedback.create,metrics.read
+      OPENRATH_EMBEDDED_WORKER: "false"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+
+  postgres:
+    image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+    environment:
+      POSTGRES_DB: openrath
+      POSTGRES_USER: openrath
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U openrath -d openrath"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  redis:
+    image: redis:8-alpine@sha256:8096655e437712b07503796fb64d81359256cfcff0ab29d95a7da72863786efb
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    profiles: ["signals"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /data:size=64m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+
+  minio:
+    image: minio/minio:RELEASE.2025-09-07T16-13-09Z@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    command: ["server", "/data", "--console-address", ":9001"]
+    profiles: ["artifacts"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-openrath-local}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+    volumes:
+      - minio-data:/data
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  minio-data:

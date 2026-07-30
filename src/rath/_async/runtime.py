@@ -117,6 +117,10 @@ class OpenRathRuntime:
         except RuntimeError:
             running = None
         if running is not None:
+            # The caller already created the coroutine object. Close it before
+            # rejecting the blocking call so Python does not emit an
+            # un-awaited-coroutine warning or retain captured resources.
+            coro.close()
             raise RuntimeError(
                 "OpenRathRuntime.run() called from inside an asyncio loop; "
                 "OpenRath's public API is synchronous and must be called from "

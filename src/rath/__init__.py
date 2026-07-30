@@ -18,12 +18,33 @@ from __future__ import annotations
 from typing import Any
 
 from rath import (
+    adapters,
+    artifacts,
     backend,
+    definition,
+    deployment,
+    eval,
     flow,
     memory,
+    observability,
+    runtime,
+    security,
 )
 
-__all__ = ["backend", "flow", "memory", "session"]
+__all__ = [
+    "backend",
+    "adapters",
+    "artifacts",
+    "definition",
+    "deployment",
+    "eval",
+    "flow",
+    "memory",
+    "observability",
+    "runtime",
+    "security",
+    "session",
+]
 
 
 def __getattr__(name: str) -> Any:

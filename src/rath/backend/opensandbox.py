@@ -301,6 +301,7 @@ async def _run_code_with_retry(
 
     effective = call_timeout if call_timeout is not None else _DEFAULT_TOOL_TIMEOUT_S
     last_execution: Any = None
+    saw_client_timeout = False
     for attempt in range(_CODE_RUN_ATTEMPTS):
         ci = await CodeInterpreter.create(native)
         try:
@@ -309,6 +310,7 @@ async def _run_code_with_retry(
                 effective,
             )
         except TimeoutError:
+            saw_client_timeout = True
             if attempt + 1 >= _CODE_RUN_ATTEMPTS:
                 raise
             logger.debug("OpenSandbox code.run timed out; retrying once")
@@ -318,6 +320,10 @@ async def _run_code_with_retry(
         last_execution = execution
         if _is_transient_code_run_result(execution):
             if attempt + 1 >= _CODE_RUN_ATTEMPTS:
+                if saw_client_timeout:
+                    raise TimeoutError(
+                        "OpenSandbox code execution remained busy after timeout"
+                    )
                 break
             logger.debug(
                 "OpenSandbox code.run returned transient busy state; "

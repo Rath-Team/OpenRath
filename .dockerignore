@@ -1,0 +1,13 @@
+.git
+.github
+.mypy_cache
+.pytest_cache
+.ruff_cache
+.venv
+.workspace
+build
+dist
+docs
+tests
+**/__pycache__
+*.pyc

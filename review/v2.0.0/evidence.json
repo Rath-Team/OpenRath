@@ -1,0 +1,66 @@
+{
+  "schema": "openrath.v2.review-evidence/1",
+  "release_state": "superseded_pre_rc_snapshot",
+  "original_release_state": "hold_for_owner_review",
+  "evidence_scope": "local implementation review before v2.0.0rc1",
+  "package_version": "1.3.0",
+  "review_target": "2.0.0",
+  "superseded_by": {
+    "candidate": "v2.0.0rc1",
+    "source_commit": "feedcaadb79a349aa60c034618610231d83fb131",
+    "release_url": "https://github.com/Rath-Team/OpenRath/releases/tag/v2.0.0rc1",
+    "manifest_url": "https://github.com/Rath-Team/OpenRath/releases/download/v2.0.0rc1/manifest.json",
+    "image": "ghcr.io/rath-team/openrath@sha256:d66a1c7933e410d290528ba5091f73a9f4e94566e1bd9d917f7fd7937c6b9be2",
+    "anonymous_manifest_verified": "2026-07-30",
+    "attestation_verified": "2026-07-30"
+  },
+  "tests": {
+    "passed": 1024,
+    "skipped": 14,
+    "warnings": 1,
+    "real_backends": [
+      "postgresql-17",
+      "redis-8",
+      "minio-s3-compatible"
+    ]
+  },
+  "static_checks": {
+    "ruff": "passed",
+    "mypy_source_files": 164,
+    "uv_lock": "passed"
+  },
+  "container": {
+    "image": "openrath:2.0.0-review",
+    "image_id": "sha256:92fa787d8b2be51b2248c13628765ad630f0820b757f74d46514ab94f332c7f6",
+    "uid": 10001,
+    "read_only_root": true,
+    "lifecycle": "passed"
+  },
+  "security": {
+    "scanner": "trivy-0.67.2",
+    "high_critical": 0,
+    "sbom": "cyclonedx-1.6",
+    "mcp_minimum_version": "1.28.1"
+  },
+  "chaos": {
+    "worker_kill_recovered": true,
+    "claim_events": 2,
+    "lease_expired_events": 1
+  },
+  "backup_restore": {
+    "restored_runs": 1,
+    "restored_run_events": 6
+  },
+  "kubernetes": {
+    "validator": "kubeconform-0.7.0-strict",
+    "valid_resources": 10,
+    "invalid_resources": 0
+  },
+  "publication": {
+    "scope": "this historical pre-RC evidence bundle",
+    "pushed": false,
+    "tagged": false,
+    "released": false,
+    "deployed": false
+  }
+}

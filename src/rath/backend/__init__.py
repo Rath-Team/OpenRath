@@ -11,6 +11,7 @@ from rath.backend.errors import (
     BackendSandboxClosed,
     UnsupportedBackendTool,
 )
+from rath.backend.local import LocalBackend, TrustedHostBackend
 from rath.backend.registry import (
     current,
     get,
@@ -49,6 +50,8 @@ except ImportError:  # pragma: no cover -- optional ``opensandbox`` extra
 
 __all__ = [
     "Backend",
+    "LocalBackend",
+    "TrustedHostBackend",
     "BackendSandbox",
     "BackendSandboxSpec",
     "BackendTool",

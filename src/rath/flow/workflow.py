@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
+from uuid import UUID
+
+if TYPE_CHECKING:
+    from rath.definition import ExecutionPlan
 
 from rath.flow.agent_param import AgentParam
 from rath.llm.provider import Provider
@@ -102,6 +106,22 @@ class Workflow:
         from rath.flow.compile import CompiledWorkflow
 
         return CompiledWorkflow(self)
+
+    def compile_plan(
+        self,
+        *,
+        revision_id: UUID,
+    ) -> "ExecutionPlan":
+        """Compile explicit ``@step`` boundaries into an immutable v2 plan."""
+        from rath.definition import WorkflowCompiler
+
+        return WorkflowCompiler().compile(self, revision_id=revision_id)
+
+    def inspect_resources(self) -> "object":
+        """Return the v1 static resource inventory without compiling a v2 plan."""
+        from rath.flow.compile import collect_manifest
+
+        return collect_manifest(self)
 
     def forward(self, session: Session) -> Session:
         """Subclasses orchestrate Sessions (blocking)."""

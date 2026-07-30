@@ -94,7 +94,7 @@ class _OpenVikingHandle:
 
 @register("openviking")
 class OpenVikingBackend(MemoryBackend):
-    """:class:`~rath.memory.MemoryBackend` backed by OpenViking 0.3.x."""
+    """:class:`~rath.memory.MemoryBackend` backed by OpenViking 0.4.11+."""
 
     def __init__(self) -> None:
         self._handles: dict[str, _OpenVikingHandle] = {}
@@ -357,20 +357,25 @@ _LEVEL_INT_TO_NAME: dict[int, str] = {0: "abstract", 1: "overview", 2: "detail"}
 
 
 def _hits_from_findresult(raw: Any) -> tuple[MemoryHit, ...]:
-    """Walk an ``openviking.FindResult`` into typed :class:`MemoryHit` tuples.
+    """Normalize OpenViking retrieval results into typed :class:`MemoryHit` tuples.
 
-    The SDK exposes two parallel lists — ``raw.memories`` and ``raw.resources``
-    — each carrying ``MatchedContext`` objects with ``uri``, ``score``,
-    ``abstract``, ``overview``, ``level`` (int 0/1/2).
+    Supports 0.4.11 HTTP mappings and embedded ``FindResult`` objects. Both
+    shapes group matched contexts under ``memories``, ``resources``, and
+    ``skills`` with ``uri``, ``score``, summary, and level fields.
     """
+
+    def value(item: Any, key: str, default: Any = None) -> Any:
+        if isinstance(item, Mapping):
+            return item.get(key, default)
+        return getattr(item, key, default)
+
     matches: list[Any] = []
     for attr in ("memories", "resources", "skills"):
-        ms = getattr(raw, attr, None) or []
-        matches.extend(ms)
-    matches.sort(key=lambda m: getattr(m, "score", 0.0), reverse=True)
+        matches.extend(value(raw, attr, []) or [])
+    matches.sort(key=lambda item: float(value(item, "score", 0.0)), reverse=True)
     hits: list[MemoryHit] = []
-    for m in matches:
-        level_raw = getattr(m, "level", None)
+    for match in matches:
+        level_raw = value(match, "level")
         level: Any
         if isinstance(level_raw, int):
             level = _LEVEL_INT_TO_NAME.get(level_raw)
@@ -378,11 +383,11 @@ def _hits_from_findresult(raw: Any) -> tuple[MemoryHit, ...]:
             level = level_raw if level_raw in _LEVEL_INT_TO_NAME.values() else None
         else:
             level = None
-        snippet = getattr(m, "abstract", None) or getattr(m, "overview", None)
+        snippet = value(match, "abstract") or value(match, "overview")
         hits.append(
             MemoryHit(
-                uri=to_public_uri(str(getattr(m, "uri", ""))),
-                score=float(getattr(m, "score", 0.0)),
+                uri=to_public_uri(str(value(match, "uri", ""))),
+                score=float(value(match, "score", 0.0)),
                 snippet=snippet,
                 level=level,
             )

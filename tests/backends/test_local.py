@@ -19,7 +19,7 @@ from rath.backend import (
     ToolExecutionFailure,
     get,
 )
-from rath.backend.local import LocalBackend
+from rath.backend.local import LocalBackend, TrustedHostBackend
 
 
 def test_is_available_is_true() -> None:
@@ -51,6 +51,13 @@ def test_local_is_registered_under_name_local() -> None:
     inst = get("local")
     assert isinstance(inst, LocalBackend)
     assert inst.name == "local"
+
+
+def test_trusted_host_is_the_canonical_explicit_backend_name() -> None:
+    inst = get("trusted-host")
+    assert isinstance(inst, TrustedHostBackend)
+    assert not isinstance(inst, LocalBackend)
+    assert inst.name == "trusted-host"
 
 
 def test_handle_is_a_real_working_directory() -> None:
@@ -96,6 +103,90 @@ def test_close_does_not_remove_user_supplied_working_dir(tmp_path: object) -> No
 
     assert target.is_dir(), "user-supplied working_dir was removed by close()"
     assert sentinel.read_text(encoding="utf-8") == "do not delete me"
+
+
+def test_filesystem_calls_reject_absolute_paths_outside_workspace(
+    tmp_path: object,
+) -> None:
+    import pathlib
+
+    root = pathlib.Path(str(tmp_path)) / "workspace"  # type: ignore[arg-type]
+    outside = pathlib.Path(str(tmp_path)) / "outside.txt"  # type: ignore[arg-type]
+    root.mkdir()
+    outside.write_text("secret", encoding="utf-8")
+    backend = LocalBackend()
+    sb = backend.open(BackendSandboxSpec(working_dir=str(root)))
+    try:
+        result = sb.dispatch(BackendToolFilesRead(path=str(outside)))
+    finally:
+        backend.close(sb)
+
+    assert isinstance(result, ToolExecutionFailure)
+    assert result.kind == "path_violation"
+    assert "outside sandbox workspace" in result.message
+
+
+def test_filesystem_calls_reject_parent_traversal(tmp_path: object) -> None:
+    import pathlib
+
+    root = pathlib.Path(str(tmp_path)) / "workspace"  # type: ignore[arg-type]
+    root.mkdir()
+    backend = LocalBackend()
+    sb = backend.open(BackendSandboxSpec(working_dir=str(root)))
+    try:
+        result = sb.dispatch(BackendToolFilesWrite(path="../escape.txt", data="x"))
+    finally:
+        backend.close(sb)
+
+    assert isinstance(result, ToolExecutionFailure)
+    assert result.kind == "path_violation"
+    assert not (root.parent / "escape.txt").exists()
+
+
+def test_command_cwd_must_remain_in_workspace(tmp_path: object) -> None:
+    import pathlib
+
+    root = pathlib.Path(str(tmp_path)) / "workspace"  # type: ignore[arg-type]
+    root.mkdir()
+    backend = LocalBackend()
+    sb = backend.open(BackendSandboxSpec(working_dir=str(root)))
+    try:
+        result = sb.dispatch(
+            BackendToolCommandRun(
+                cmd=[sys.executable, "-c", "print('should not run')"],
+                cwd="..",
+            )
+        )
+    finally:
+        backend.close(sb)
+
+    assert isinstance(result, ToolExecutionFailure)
+    assert result.kind == "path_violation"
+
+
+def test_symlink_escape_is_rejected_when_supported(tmp_path: object) -> None:
+    import pathlib
+
+    root = pathlib.Path(str(tmp_path)) / "workspace"  # type: ignore[arg-type]
+    outside = pathlib.Path(str(tmp_path)) / "outside"  # type: ignore[arg-type]
+    root.mkdir()
+    outside.mkdir()
+    (outside / "secret.txt").write_text("secret", encoding="utf-8")
+    link = root / "link"
+    try:
+        link.symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlink creation is unavailable")
+
+    backend = LocalBackend()
+    sb = backend.open(BackendSandboxSpec(working_dir=str(root)))
+    try:
+        result = sb.dispatch(BackendToolFilesRead(path="link/secret.txt"))
+    finally:
+        backend.close(sb)
+
+    assert isinstance(result, ToolExecutionFailure)
+    assert result.kind == "path_violation"
 
 
 def test_command_missing_executable_returns_failure() -> None:

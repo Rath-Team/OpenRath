@@ -15,6 +15,7 @@ from pathlib import Path
 from uuid import UUID
 
 from rath.config.paths import resolve_config_dir
+from rath.utils.ids import coerce_uuid_str
 
 __all__ = [
     "MEMORY_DIR_NAME",
@@ -41,7 +42,7 @@ def local_memory_root() -> Path:
 
 def local_store_dir(store_id: UUID | str) -> Path:
     """``<local_memory_root>/<store_id>`` — the per-store directory."""
-    return local_memory_root() / str(store_id)
+    return local_memory_root() / coerce_uuid_str(store_id, field="store_id")
 
 
 def ensure_local_memory_root() -> Path:
