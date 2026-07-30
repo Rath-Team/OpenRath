@@ -79,11 +79,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           [[ "$EVIDENCE_RUN_ID" =~ ^[1-9][0-9]*$ ]]
-          run_json="$(gh run view "$EVIDENCE_RUN_ID" \
-            --repo "$GITHUB_REPOSITORY" \
-            --json headSha,conclusion)"
+          run_json="$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$EVIDENCE_RUN_ID")"
           test "$(jq -r .conclusion <<<"$run_json")" = "success"
-          test "$(jq -r .headSha <<<"$run_json")" = "$SOURCE_SHA"
+          test "$(jq -r .event <<<"$run_json")" = "workflow_dispatch"
+          test "$(jq -r .head_branch <<<"$run_json")" = "main"
+          test "$(jq -r .head_sha <<<"$run_json")" = "$SOURCE_SHA"
+          test "$(jq -r .name <<<"$run_json")" = \
+            "Collect v2.0.0 Gate C evidence"
+          test "$(jq -r .path <<<"$run_json")" = \
+            ".github/workflows/collect-v2-ga-evidence.yml"
           gate_dir="release/evidence/$VERSION/gates"
           mkdir -p "$gate_dir"
           gh run download "$EVIDENCE_RUN_ID" \
@@ -92,7 +97,8 @@ jobs:
             --dir "$gate_dir"
           uv run python scripts/release/verify_gate_reports.py \
             "$gate_dir" \
-            --source-commit "$SOURCE_SHA"
+            --source-commit "$SOURCE_SHA" \
+            --artifact-root "$gate_dir"
       - name: Record protected-environment approval
         env:
           GH_TOKEN: ${{ github.token }}

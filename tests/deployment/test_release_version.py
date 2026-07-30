@@ -79,6 +79,32 @@ def test_ga_workflows_separate_preparation_manual_pypi_and_finalization() -> Non
     assert Path("release/manual-pypi-v2.0.0.md").is_file()
 
 
+def test_gate_c_collector_is_protected_and_release_checks_its_identity() -> None:
+    collector = Path(".github/workflows/collect-v2-ga-evidence.yml").read_text(
+        encoding="utf-8"
+    )
+    prepare = Path(".github/workflows/release-v2-ga.yml").read_text(encoding="utf-8")
+
+    assert "name: Collect v2.0.0 Gate C evidence" in collector
+    assert "workflow_dispatch:" in collector
+    assert "runs-on: [self-hosted, linux, openrath-ga]" in collector
+    assert "name: ga-evidence" in collector
+    assert "OPENRATH_GA_EVIDENCE_ROOT" in collector
+    assert "openrath-v2.0.0-ga-input" in collector
+    assert "scripts/release/verify_gate_bundle.py" in collector
+    assert "scripts/release/verify_gate_reports.py" in collector
+    assert '--source-commit "$GITHUB_SHA"' in collector
+    assert 'find "$source_real" -type l' in collector
+    assert "actions/upload-artifact@" in collector
+
+    assert "actions/runs/$EVIDENCE_RUN_ID" in prepare
+    assert ".github/workflows/collect-v2-ga-evidence.yml" in prepare
+    assert "Collect v2.0.0 Gate C evidence" in prepare
+    assert 'jq -r .event <<<"$run_json"' in prepare
+    assert 'jq -r .head_branch <<<"$run_json"' in prepare
+    assert '--artifact-root "$gate_dir"' in prepare
+
+
 def test_ga_release_documents_are_present_and_not_marked_as_drafts() -> None:
     notes = Path("release/notes/v2.0.0.md").read_text(encoding="utf-8")
     checklist = Path("release/checklists/v2.0.0-ga.md").read_text(encoding="utf-8")

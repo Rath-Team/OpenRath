@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 from datetime import datetime
@@ -24,11 +25,77 @@ def _require_passed(details: dict[str, object], *names: str) -> None:
         raise ValueError("required checks did not pass: " + ", ".join(failed))
 
 
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _validate_evidence(
+    evidence: object,
+    *,
+    gate: str,
+    artifact_root: Path,
+) -> None:
+    if not isinstance(evidence, list) or not evidence:
+        raise ValueError(f"{gate}: at least one evidence reference is required")
+    root = artifact_root.resolve(strict=True)
+    seen: set[str] = set()
+    for item in evidence:
+        if not isinstance(item, dict):
+            raise ValueError(f"{gate}: evidence entry must be an object")
+        relative = item.get("path")
+        expected_hash = item.get("sha256")
+        expected_size = item.get("size")
+        if (
+            not isinstance(relative, str)
+            or not relative
+            or "\\" in relative
+            or ":" in relative
+            or Path(relative).is_absolute()
+            or ".." in Path(relative).parts
+        ):
+            raise ValueError(f"{gate}: evidence path must be a safe relative path")
+        if relative in seen:
+            raise ValueError(f"{gate}: duplicate evidence path: {relative}")
+        seen.add(relative)
+        if re.fullmatch(r"[0-9a-f]{64}", str(expected_hash or "")) is None:
+            raise ValueError(f"{gate}: evidence hash must be a SHA-256")
+        if (
+            isinstance(expected_size, bool)
+            or not isinstance(expected_size, int)
+            or expected_size < 0
+        ):
+            raise ValueError(f"{gate}: evidence size must be a non-negative integer")
+        candidate = root / relative
+        cursor = root
+        for part in Path(relative).parts:
+            cursor /= part
+            if cursor.is_symlink():
+                raise ValueError(f"{gate}: evidence path must not contain a symlink")
+        try:
+            resolved = candidate.resolve(strict=True)
+            resolved.relative_to(root)
+        except (FileNotFoundError, ValueError) as error:
+            raise ValueError(
+                f"{gate}: evidence file is missing or outside the artifact root"
+            ) from error
+        if not resolved.is_file():
+            raise ValueError(f"{gate}: evidence path is not a file: {relative}")
+        if resolved.stat().st_size != expected_size:
+            raise ValueError(f"{gate}: evidence size mismatch: {relative}")
+        if _sha256(resolved) != expected_hash:
+            raise ValueError(f"{gate}: evidence hash mismatch: {relative}")
+
+
 def _validate_common(
     report: dict[str, object],
     *,
     gate: str,
     source_commit: str,
+    artifact_root: Path,
 ) -> dict[str, object]:
     if report.get("schema") != "openrath.ga-gate-report/1":
         raise ValueError(f"{gate}: unsupported report schema")
@@ -47,11 +114,21 @@ def _validate_common(
         raise ValueError(f"{gate}: generated_at must be ISO 8601") from error
     if generated.tzinfo is None:
         raise ValueError(f"{gate}: generated_at must include a timezone")
-    if not isinstance(report.get("environment"), dict):
+    environment = report.get("environment")
+    if not isinstance(environment, dict):
         raise ValueError(f"{gate}: environment profile is required")
-    evidence = report.get("evidence")
-    if not isinstance(evidence, list) or not evidence:
-        raise ValueError(f"{gate}: at least one evidence reference is required")
+    if (
+        not isinstance(environment.get("profile"), str)
+        or not environment["profile"]
+    ):
+        raise ValueError(f"{gate}: environment profile name is required")
+    if environment.get("target_like") is not True:
+        raise ValueError(f"{gate}: environment target_like must be true")
+    _validate_evidence(
+        report.get("evidence"),
+        gate=gate,
+        artifact_root=artifact_root,
+    )
     if not isinstance(report.get("open_risks"), list):
         raise ValueError(f"{gate}: open_risks must be a list")
     details = report.get("details")
@@ -115,10 +192,12 @@ def verify_directory(
     directory: Path,
     *,
     source_commit: str,
+    artifact_root: Path | None = None,
 ) -> dict[str, Path]:
     """Verify all Gate C report files and return their paths by gate name."""
     if re.fullmatch(r"[0-9a-f]{40}", source_commit) is None:
         raise ValueError("source_commit must be 40 lowercase hexadecimal characters")
+    root = artifact_root if artifact_root is not None else directory
     validated: dict[str, Path] = {}
     for gate, filename in GATE_REPORT_FILES.items():
         path = directory / filename
@@ -134,6 +213,7 @@ def verify_directory(
             report,
             gate=gate,
             source_commit=source_commit,
+            artifact_root=root,
         )
         _validate_gate(gate, details)
         validated[gate] = path
@@ -144,10 +224,12 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("directory", type=Path)
     parser.add_argument("--source-commit", required=True)
+    parser.add_argument("--artifact-root", type=Path)
     args = parser.parse_args()
     reports = verify_directory(
         args.directory,
         source_commit=args.source_commit,
+        artifact_root=args.artifact_root,
     )
     print(f"verified {len(reports)} GA gate reports for {args.source_commit}")
 
