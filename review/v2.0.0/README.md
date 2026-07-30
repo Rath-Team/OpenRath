@@ -1,11 +1,18 @@
 # OpenRath v2.0.0 review candidate
 
-Status: **implementation complete; release on hold for user review**
+Status: **historical pre-RC evidence; superseded for release decisions**
 
-This directory is the local evidence package for the v2.0.0 implementation.
-It is not a release. The package metadata intentionally remains `1.3.0`; no
-v2 tag, registry push, GitHub release, or production deployment is permitted
-until the owner approves [release-approval.md](release-approval.md).
+This directory preserves the local implementation-review snapshot created
+before `v2.0.0rc1`. Its `1.3.0` package metadata, local image, test totals, and
+`publication=false` fields describe that snapshot only. Do not use them as the
+current release status.
+
+The authoritative RC evidence is the
+[`v2.0.0rc1` release manifest](https://github.com/Rath-Team/OpenRath/releases/download/v2.0.0rc1/manifest.json),
+bound to commit `feedcaadb79a349aa60c034618610231d83fb131` and the immutable
+OCI digest recorded in [release-approval.md](release-approval.md). The GA
+decision remains on hold until the unchecked owner and target-environment
+gates are complete.
 
 ## Implemented production surface
 

@@ -31,9 +31,11 @@ jobs:
         with:
           ref: ${{ env.RELEASE_TAG }}
           fetch-depth: 0
+          persist-credentials: false
       - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
         with:
           python-version: '3.12'
+          enable-cache: false
       - name: Validate tag and project version
         run: |
           version="${RELEASE_TAG#v}"
@@ -124,6 +126,12 @@ jobs:
             --format json \
             --output /evidence/secret-scan.json \
             --skip-dirs /workspace/.git \
+            --skip-dirs /workspace/.venv \
+            --skip-dirs /workspace/.mypy_cache \
+            --skip-dirs /workspace/.pytest_cache \
+            --skip-dirs /workspace/.ruff_cache \
+            --skip-dirs /workspace/build \
+            --skip-dirs /workspace/dist \
             /workspace
           cp dependency-audit-production.json release/evidence/"$VERSION"/
           cp dependency-audit-all.json release/evidence/"$VERSION"/

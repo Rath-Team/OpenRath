@@ -19,6 +19,22 @@ The following remain prohibited until separately approved:
 - publishing the final PyPI/GHCR/GitHub release;
 - deploying to any shared, staging, or production environment.
 
+## RC publication record
+
+The authorized RC publication completed from source commit
+`feedcaadb79a349aa60c034618610231d83fb131`:
+
+- release workflow:
+  <https://github.com/Rath-Team/OpenRath/actions/runs/30454987405>;
+- GitHub prerelease:
+  <https://github.com/Rath-Team/OpenRath/releases/tag/v2.0.0rc1>;
+- OCI artifact:
+  `ghcr.io/rath-team/openrath@sha256:d66a1c7933e410d290528ba5091f73a9f4e94566e1bd9d917f7fd7937c6b9be2`.
+
+Anonymous OCI manifest retrieval and GitHub attestation verification passed on
+2026-07-30. This record closes RC artifact publication only; it does not change
+the GA hold or approve a shared deployment.
+
 ## Owner review checklist
 
 - [ ] Review public SDK/API compatibility and the stable error model.
