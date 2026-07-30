@@ -42,29 +42,41 @@ def test_release_candidate_workflow_is_digest_and_evidence_bound() -> None:
     assert "PyPI" not in workflow
 
 
-def test_ga_workflow_is_protected_evidence_bound_and_uses_trusted_publishing() -> None:
-    workflow = Path(".github/workflows/release-v2-ga.yml").read_text(encoding="utf-8")
-    assert "workflow_dispatch:" in workflow
-    assert "evidence_run_id:" in workflow
-    assert "confirmation:" in workflow
-    assert "name: ga-release" in workflow
-    assert "scripts/release/verify_gate_reports.py" in workflow
-    assert "--stage ga" in workflow
-    assert "--approval" in workflow
-    assert "openrath-v2.0.0-ga-input" in workflow
-    assert "actions: read" in workflow
-    assert "packages: write" in workflow
-    assert "attestations: write" in workflow
-    assert "id-token: write" in workflow
-    assert (
-        "pypa/gh-action-pypi-publish"
-        "@dc37677b2e1c63e2034f94d8a5b11f265b73ba33" in workflow
+def test_ga_workflows_separate_preparation_manual_pypi_and_finalization() -> None:
+    prepare = Path(".github/workflows/release-v2-ga.yml").read_text(encoding="utf-8")
+    finalize = Path(".github/workflows/release-v2-ga-finalize.yml").read_text(
+        encoding="utf-8"
     )
-    assert "scripts/release/verify_pypi_files.py" in workflow
-    assert "skip-existing: true" in workflow
-    assert "--require-complete" in workflow
-    assert "gh release create" in workflow
-    assert "--prerelease" not in workflow
+    workflows = prepare + finalize
+
+    assert "workflow_dispatch:" in prepare
+    assert "evidence_run_id:" in prepare
+    assert "name: ga-release" in prepare
+    assert "scripts/release/verify_gate_reports.py" in prepare
+    assert "--stage ga" in prepare
+    assert "--approval" in prepare
+    assert "openrath-v2.0.0-ga-input" in prepare
+    assert "openrath-2.0.0-ga-candidate" in workflows
+    assert "attestations: write" in prepare
+    assert "pypa/gh-action-pypi-publish" not in workflows
+    assert "TWINE_PASSWORD" not in workflows
+    assert "id-token: write" in prepare
+    assert "id-token: write" not in finalize
+
+    assert "preparation_run_id:" in finalize
+    assert "workflowName" in finalize
+    assert "--artifact-root release-bundle" in finalize
+    assert "scripts/release/verify_pypi_files.py" in finalize
+    assert "--require-complete" in finalize
+    assert "imagetools create" in finalize
+    assert "gh release create" in finalize
+    assert "--prerelease" not in workflows
+
+    manual = Path("scripts/release/publish_pypi_manual.py").read_text(encoding="utf-8")
+    assert '"__token__"' in manual
+    assert '"--password"' not in manual
+    assert "twine=={TWINE_VERSION}" in manual
+    assert Path("release/manual-pypi-v2.0.0.md").is_file()
 
 
 def test_ga_release_documents_are_present_and_not_marked_as_drafts() -> None:
@@ -72,5 +84,6 @@ def test_ga_release_documents_are_present_and_not_marked_as_drafts() -> None:
     checklist = Path("release/checklists/v2.0.0-ga.md").read_text(encoding="utf-8")
     assert "OpenRath v2.0.0" in notes
     assert "Gate C" in checklist
+    assert "Trusted Publishing" not in checklist
     for marker in ("TODO", "HOLD", "DRAFT"):
         assert marker not in notes

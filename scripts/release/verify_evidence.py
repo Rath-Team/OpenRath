@@ -121,6 +121,12 @@ def _project_version() -> str:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("manifest", type=Path)
+    parser.add_argument(
+        "--artifact-root",
+        type=Path,
+        default=Path("."),
+        help="root directory used to resolve artifact paths from the manifest",
+    )
     args = parser.parse_args()
 
     manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
@@ -142,13 +148,13 @@ def main() -> None:
         if name == "image":
             assert re.fullmatch(r"sha256:[0-9a-f]{64}", artifact["digest"])
             continue
-        path = Path(artifact["path"])
+        path = args.artifact_root / artifact["path"]
         assert path.is_file(), path
         assert path.stat().st_size == artifact["size"], path
         assert _sha256(path) == artifact["sha256"], path
 
     if manifest["release_stage"] == "ga":
-        approval_path = Path(manifest["artifacts"]["approval"]["path"])
+        approval_path = args.artifact_root / manifest["artifacts"]["approval"]["path"]
         workflow = manifest.get("workflow")
         assert isinstance(workflow, dict)
         workflow_repository = workflow.get("repository")

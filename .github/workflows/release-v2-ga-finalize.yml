@@ -1,0 +1,203 @@
+name: Finalize v2.0.0 GA
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing annotated GA tag
+        required: true
+        type: string
+      preparation_run_id:
+        description: Successful Prepare v2.0.0 GA bundle run
+        required: true
+        type: string
+      confirmation:
+        description: Type "finalize v2.0.0" after the manual PyPI upload
+        required: true
+        type: string
+
+concurrency:
+  group: finalize-openrath-v2.0.0
+  cancel-in-progress: false
+
+permissions: {}
+
+jobs:
+  finalize-ga:
+    name: Verify PyPI and publish final GA surfaces
+    runs-on: ubuntu-latest
+    environment:
+      name: ga-release
+      url: https://github.com/${{ github.repository }}/releases/tag/v2.0.0
+    permissions:
+      actions: read # Read and download the protected preparation artifact.
+      attestations: read # Verify the source-SHA OCI image attestation.
+      contents: write # Create or verify the immutable GitHub Release.
+      packages: write # Promote the verified image digest to the 2.0.0 tag.
+    env:
+      IMAGE: ghcr.io/rath-team/openrath
+      PREPARATION_RUN_ID: ${{ inputs.preparation_run_id }}
+      RELEASE_TAG: ${{ inputs.tag }}
+      VERSION: 2.0.0
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
+        with:
+          python-version: '3.12'
+          enable-cache: false
+      - name: Validate dispatch, tag, version, and main ancestry
+        env:
+          RELEASE_CONFIRMATION: ${{ inputs.confirmation }}
+        run: |
+          test "$GITHUB_REF" = "refs/heads/main"
+          test "$RELEASE_CONFIRMATION" = "finalize v2.0.0"
+          test "$RELEASE_TAG" = "v2.0.0"
+          test "$(git cat-file -t "$RELEASE_TAG")" = "tag"
+          test "$(git rev-parse "$RELEASE_TAG^{}")" = "$(git rev-parse HEAD)"
+          git fetch origin main
+          git merge-base --is-ancestor HEAD origin/main
+          project_version="$(python - <<'PY'
+          import re
+          from pathlib import Path
+          text = Path("pyproject.toml").read_text(encoding="utf-8")
+          print(re.search(r'^version = "([^"]+)"$', text, re.MULTILINE).group(1))
+          PY
+          )"
+          test "$project_version" = "$VERSION"
+          test -f "release/notes/v${VERSION}.md"
+          ! grep -Eq 'TODO|HOLD|DRAFT' "release/notes/v${VERSION}.md"
+          test -z "$(git status --porcelain --untracked-files=no)"
+          echo "SOURCE_SHA=$(git rev-parse HEAD)" >> "$GITHUB_ENV"
+      - name: Download and verify the protected candidate bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [[ "$PREPARATION_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          run_json="$(gh run view "$PREPARATION_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json headSha,conclusion,event,workflowName)"
+          test "$(jq -r .conclusion <<<"$run_json")" = "success"
+          test "$(jq -r .event <<<"$run_json")" = "workflow_dispatch"
+          test "$(jq -r .headSha <<<"$run_json")" = "$SOURCE_SHA"
+          test "$(jq -r .workflowName <<<"$run_json")" = \
+            "Prepare v2.0.0 GA bundle"
+          gh run download "$PREPARATION_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --name openrath-2.0.0-ga-candidate \
+            --dir release-bundle
+          python scripts/release/verify_evidence.py \
+            release-bundle/release/evidence/"$VERSION"/manifest.json \
+            --artifact-root release-bundle
+          python scripts/release/verify_pypi_files.py \
+            --packages-dir release-bundle/dist \
+            --version "$VERSION" \
+            --require-complete \
+            --attempts 12 \
+            --delay-seconds 10
+          image_digest="$(jq -r '.artifacts.image.digest' \
+            release-bundle/release/evidence/"$VERSION"/manifest.json)"
+          [[ "$image_digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          echo "IMAGE_DIGEST=$image_digest" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+      - uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Promote the attested candidate digest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          candidate_digest="$(docker buildx imagetools inspect \
+            "$IMAGE:$SOURCE_SHA" |
+            sed -n 's/^Digest:[[:space:]]*//p' | head -1)"
+          test "$candidate_digest" = "$IMAGE_DIGEST"
+          gh attestation verify \
+            "oci://$IMAGE@$IMAGE_DIGEST" \
+            --repo "$GITHUB_REPOSITORY"
+
+          if docker buildx imagetools inspect "$IMAGE:$VERSION" \
+            >"$RUNNER_TEMP/existing-image.txt" 2>/dev/null; then
+            existing_digest="$(sed -n \
+              's/^Digest:[[:space:]]*//p' \
+              "$RUNNER_TEMP/existing-image.txt" | head -1)"
+            test "$existing_digest" = "$IMAGE_DIGEST"
+          else
+            docker buildx imagetools create \
+              --prefer-index=false \
+              --tag "$IMAGE:$VERSION" \
+              "$IMAGE@$IMAGE_DIGEST"
+          fi
+
+          promoted_digest="$(docker buildx imagetools inspect \
+            "$IMAGE:$VERSION" |
+            sed -n 's/^Digest:[[:space:]]*//p' | head -1)"
+          test "$promoted_digest" = "$IMAGE_DIGEST"
+      - name: Create or verify the immutable GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          assets=(
+            release-bundle/dist/*
+            release-bundle/release/evidence/"$VERSION"/*.json
+            release-bundle/release/evidence/"$VERSION"/*.yaml
+            release-bundle/release/evidence/"$VERSION"/gates/*.json
+          )
+          test "${#assets[@]}" -gt 2
+          if gh release view "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            release_json="$(gh release view "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --json isDraft,isPrerelease,tagName)"
+            test "$(jq -r .isDraft <<<"$release_json")" = "false"
+            test "$(jq -r .isPrerelease <<<"$release_json")" = "false"
+            test "$(jq -r .tagName <<<"$release_json")" = "$RELEASE_TAG"
+            mkdir "$RUNNER_TEMP/existing-release"
+            gh release download "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --dir "$RUNNER_TEMP/existing-release"
+            python scripts/release/verify_release_assets.py \
+              "$RUNNER_TEMP/existing-release" \
+              "${assets[@]}"
+          else
+            gh release create "$RELEASE_TAG" \
+              "${assets[@]}" \
+              --repo "$GITHUB_REPOSITORY" \
+              --verify-tag \
+              --title "OpenRath $VERSION" \
+              --notes-file "release/notes/v${VERSION}.md"
+          fi
+      - name: Verify public GA artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python scripts/release/verify_pypi_files.py \
+            --packages-dir release-bundle/dist \
+            --version "$VERSION" \
+            --require-complete
+          uv venv "$RUNNER_TEMP/verify"
+          uv pip install \
+            --python "$RUNNER_TEMP/verify/bin/python" \
+            --no-cache \
+            "openrath==$VERSION"
+          "$RUNNER_TEMP/verify/bin/python" -c \
+            "import importlib.metadata; assert importlib.metadata.version('openrath') == '$VERSION'"
+
+          docker logout ghcr.io
+          mkdir "$RUNNER_TEMP/docker-anonymous"
+          DOCKER_CONFIG="$RUNNER_TEMP/docker-anonymous" \
+            docker manifest inspect "$IMAGE@$IMAGE_DIGEST" >/dev/null
+          public_digest="$(DOCKER_CONFIG="$RUNNER_TEMP/docker-anonymous" \
+            docker buildx imagetools inspect "$IMAGE:$VERSION" |
+            sed -n 's/^Digest:[[:space:]]*//p' | head -1)"
+          test "$public_digest" = "$IMAGE_DIGEST"
+          gh attestation verify \
+            "oci://$IMAGE@$IMAGE_DIGEST" \
+            --repo "$GITHUB_REPOSITORY"
+          gh release view "$RELEASE_TAG" \
+            --repo "$GITHUB_REPOSITORY" >/dev/null

@@ -1,4 +1,4 @@
-name: Publish v2.0.0 GA
+name: Prepare v2.0.0 GA bundle
 
 on:
   workflow_dispatch:
@@ -12,31 +12,29 @@ on:
         required: true
         type: string
       confirmation:
-        description: Type "publish v2.0.0" to authorize this run
+        description: Type "prepare v2.0.0" to authorize this run
         required: true
         type: string
 
 concurrency:
-  group: publish-openrath-v2.0.0
+  group: prepare-openrath-v2.0.0
   cancel-in-progress: false
 
 permissions: {}
 
 jobs:
-  publish-ga:
-    name: Verify evidence, publish OCI, and attest
+  prepare-ga:
+    name: Verify evidence and prepare immutable artifacts
     runs-on: ubuntu-latest
     environment:
       name: ga-release
-      url: https://github.com/${{ github.repository }}/releases/tag/v2.0.0
+      url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     permissions:
-      actions: read
-      attestations: write
+      actions: read # Read the Gate C result and download its evidence artifact.
+      attestations: write # Sign the immutable source-SHA OCI image.
       contents: read
-      id-token: write
-      packages: write
-    outputs:
-      image_digest: ${{ steps.push_image.outputs.digest }}
+      id-token: write # Request GitHub's OIDC identity for keyless attestation.
+      packages: write # Push only the source-SHA image candidate to GHCR.
     env:
       RELEASE_TAG: ${{ inputs.tag }}
       EVIDENCE_RUN_ID: ${{ inputs.evidence_run_id }}
@@ -58,7 +56,7 @@ jobs:
           RELEASE_CONFIRMATION: ${{ inputs.confirmation }}
         run: |
           test "$GITHUB_REF" = "refs/heads/main"
-          test "$RELEASE_CONFIRMATION" = "publish v2.0.0"
+          test "$RELEASE_CONFIRMATION" = "prepare v2.0.0"
           test "$RELEASE_TAG" = "v2.0.0"
           test "$(git cat-file -t "$RELEASE_TAG")" = "tag"
           test "$(git rev-parse "$RELEASE_TAG^{}")" = "$(git rev-parse HEAD)"
@@ -148,9 +146,7 @@ jobs:
           file: docker/Dockerfile
           load: true
           push: false
-          tags: |
-            ${{ env.IMAGE }}:${{ env.VERSION }}
-            ${{ env.IMAGE }}:${{ env.SOURCE_SHA }}
+          tags: ${{ env.IMAGE }}:${{ env.SOURCE_SHA }}
           build-args: |
             OPENRATH_VERSION=${{ env.VERSION }}
             OPENRATH_REVISION=${{ env.SOURCE_SHA }}
@@ -168,7 +164,7 @@ jobs:
             --ignore-unfixed \
             --format json \
             --output "/workspace/$evidence_dir/image-scan.json" \
-            "$IMAGE:$VERSION"
+            "$IMAGE:$SOURCE_SHA"
           docker run --rm \
             -v /var/run/docker.sock:/var/run/docker.sock \
             -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" \
@@ -176,7 +172,7 @@ jobs:
             "$TRIVY_IMAGE" image \
             --format cyclonedx \
             --output "/workspace/$evidence_dir/sbom.cdx.json" \
-            "$IMAGE:$VERSION"
+            "$IMAGE:$SOURCE_SHA"
           docker run --rm \
             -v "$RUNNER_TEMP/trivy-cache:/root/.cache/trivy" \
             -v "$PWD:/workspace:ro" \
@@ -199,16 +195,15 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ github.token }}
-      - name: Push the already-scanned image
+      - name: Push the immutable candidate image
         id: push_image
         run: |
-          push_output="$(docker push "$IMAGE:$VERSION")"
+          push_output="$(docker push "$IMAGE:$SOURCE_SHA")"
           printf '%s\n' "$push_output"
           digest="$(sed -n \
             's/^.*digest: \(sha256:[0-9a-f]\{64\}\).*$/\1/p' \
             <<<"$push_output" | tail -1)"
           [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
-          docker push "$IMAGE:$SOURCE_SHA"
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
       - name: Build and verify final SHA-bound evidence
         env:
@@ -248,119 +243,9 @@ jobs:
       - name: Upload the final release bundle
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: openrath-2.0.0-release
+          name: openrath-2.0.0-ga-candidate
           retention-days: 90
           if-no-files-found: error
           path: |
             dist/*
             release/evidence/2.0.0/*
-            scripts/release/verify_pypi_files.py
-
-  publish-pypi:
-    name: Publish distributions to PyPI
-    needs: publish-ga
-    runs-on: ubuntu-latest
-    environment:
-      name: ga-release
-      url: https://pypi.org/p/openrath
-    permissions:
-      id-token: write
-    steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: openrath-2.0.0-release
-          path: release-bundle
-      - name: Reject conflicting existing PyPI files
-        run: |
-          python release-bundle/scripts/release/verify_pypi_files.py \
-            --packages-dir release-bundle/dist \
-            --version 2.0.0
-      - name: Publish package distributions with attestations
-        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # release/v1
-        with:
-          packages-dir: release-bundle/dist
-          print-hash: true
-          skip-existing: true
-
-  publish-github:
-    name: Create the final GitHub Release
-    needs: publish-pypi
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    env:
-      RELEASE_TAG: v2.0.0
-      VERSION: 2.0.0
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-        with:
-          ref: ${{ env.RELEASE_TAG }}
-          persist-credentials: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: openrath-2.0.0-release
-          path: release-bundle
-      - name: Create the immutable final release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
-            echo "Release $RELEASE_TAG already exists; refusing to overwrite it." >&2
-            exit 1
-          fi
-          gh release create "$RELEASE_TAG" \
-            release-bundle/dist/* \
-            release-bundle/release/evidence/"$VERSION"/*.json \
-            release-bundle/release/evidence/"$VERSION"/*.yaml \
-            release-bundle/release/evidence/"$VERSION"/gates/*.json \
-            --verify-tag \
-            --title "OpenRath $VERSION" \
-            --notes-file "release/notes/v${VERSION}.md"
-
-  verify-publication:
-    name: Verify public GA artifacts
-    needs: [publish-ga, publish-github]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    env:
-      IMAGE: ghcr.io/rath-team/openrath
-      IMAGE_DIGEST: ${{ needs.publish-ga.outputs.image_digest }}
-      VERSION: 2.0.0
-    steps:
-      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff # v6
-        with:
-          python-version: '3.12'
-          enable-cache: false
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
-        with:
-          name: openrath-2.0.0-release
-          path: release-bundle
-      - name: Verify published PyPI files match the release bundle
-        run: |
-          python release-bundle/scripts/release/verify_pypi_files.py \
-            --packages-dir release-bundle/dist \
-            --version "$VERSION" \
-            --require-complete \
-            --attempts 12 \
-            --delay-seconds 10
-      - name: Verify a fresh PyPI installation
-        run: |
-          uv venv "$RUNNER_TEMP/verify"
-          uv pip install \
-            --python "$RUNNER_TEMP/verify/bin/python" \
-            --no-cache \
-            "openrath==$VERSION"
-          "$RUNNER_TEMP/verify/bin/python" -c \
-            "import importlib.metadata; assert importlib.metadata.version('openrath') == '$VERSION'"
-      - name: Verify anonymous OCI access and provenance
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          mkdir "$RUNNER_TEMP/docker-anonymous"
-          DOCKER_CONFIG="$RUNNER_TEMP/docker-anonymous" \
-            docker manifest inspect "$IMAGE@$IMAGE_DIGEST" >/dev/null
-          gh attestation verify \
-            "oci://$IMAGE@$IMAGE_DIGEST" \
-            --repo "$GITHUB_REPOSITORY"
-          gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null
