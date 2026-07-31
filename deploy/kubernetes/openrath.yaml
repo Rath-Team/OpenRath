@@ -15,7 +15,7 @@ kind: ConfigMap
 metadata:
   name: openrath
 data:
-  OPENRATH_APP: examples.v2_server_app:app
+  OPENRATH_APP: reference_app:app
   OPENRATH_EMBEDDED_WORKER: "false"
   OPENRATH_DB_SCHEMA: openrath
   OPENRATH_TENANT_ID: default
@@ -163,7 +163,7 @@ spec:
           image: ghcr.io/rath-team/openrath:2.0.0rc1
           # Release automation must replace the review tag with image@sha256.
           imagePullPolicy: Always
-          command: ["openrath-worker", "--app", "examples.v2_server_app:server"]
+          command: ["openrath-worker", "--app", "reference_app:server"]
           envFrom:
             - configMapRef:
                 name: openrath

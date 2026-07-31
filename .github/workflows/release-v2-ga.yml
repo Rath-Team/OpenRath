@@ -120,7 +120,7 @@ jobs:
           uv lock --check
           uv sync --frozen --all-extras --all-groups
           uv run ruff format --check src tests example
-          uv run ruff check src tests scripts examples
+          uv run ruff check src tests scripts deploy/reference_app.py
           uv run mypy --no-incremental src/rath
           uv run pytest -q -n auto \
             -m "not live_llm and not opensandbox and not openviking"

@@ -54,18 +54,40 @@ Most agent frameworks begin with an agent loop. OpenRath begins with **Session**
 
 OpenRath is designed for this: many agents collaborating across many branchable sessions, while still tracing every role, workspace, memory write, and final output.
 
-## v2.0.0 durable runtime (release candidate)
+## OpenRath v2.0.0: Built for Production
 
-The `2.0.0rc1` candidate adds explicit `@step` / `@router` execution plans, durable
-Runs and checkpoints, effect reconciliation, tenant-scoped Agent Server APIs,
-and governed Provider/Tool/Sandbox/Memory adapters. The HTTP contract is
-currently **Beta**; v1 JSONL imports are historical and cannot resume an active
-Run.
+The defining change in OpenRath v2.0.0 is that OpenRath moves beyond a
+composable Python framework and becomes a durable runtime designed for
+production deployment. The existing Session-first Python API remains intact;
+the release adds a production execution and operations layer around it.
 
-Embedded mode is intended for a trusted process. Agent Server mode is the
-strict durable profile: tokens need explicit action grants, object access is
-tenant/project scoped, and synchronous steps cannot declare a preemptive
-timeout. Use an async step or isolated executor for enforceable deadlines.
+| Production concern | What OpenRath provides |
+| --- | --- |
+| Durable execution | Explicit `@step` / `@router` boundaries compile into immutable execution plans. Runs, Events, and Checkpoints survive process and worker restarts. |
+| Resilient workers | Leases, fencing, retries, cancellation, deadlines, and resumable queues prevent stale workers from silently committing new state. |
+| Controlled side effects | An Effect Ledger records outcomes and idempotency keys. Ambiguous non-idempotent effects stop in `NEEDS_REVIEW` instead of being replayed blindly. |
+| Human decisions | Durable Interrupts pause a Run for approval or input and resume it without rebuilding hidden loop state. |
+| Security and tenancy | Agent Server tokens carry explicit action grants; tenant/project scope, policy checks, secret references, trust labels, and audit remain separate boundaries. |
+| Production operations | PostgreSQL is the durable source of truth, Redis can accelerate signaling, S3-compatible storage holds artifacts, and health, migration, telemetry, container, and Kubernetes references are included. |
+
+```text
+@step / @router
+       |
+       v
+ExecutionPlan -> Run -> Event -> Checkpoint
+       |                          |
+       |                          +-> Interrupt / Effect Ledger
+       |
+       +-> PostgreSQL durable state
+       +-> optional Redis signals
+       +-> S3-compatible artifacts
+                                  |
+                                  v
+                         Agent Server HTTP + SSE
+```
+
+Embedded mode remains useful inside a trusted process. Agent Server mode is the
+strict production profile:
 
 ```python
 runtime = LocalRuntime(
@@ -76,12 +98,28 @@ runtime = LocalRuntime(
 server = AgentServer(store, runtime, auth=auth, audit_sink=audit)
 ```
 
-Production PostgreSQL schema migration is a separate operation:
-`openrath-migrate` followed by `openrath-migrate --check`. Runtime identities
-do not need DDL privileges. See
-[`deploy/docs/operations-v2.md`](deploy/docs/operations-v2.md),
-[`deploy/docs/migration-v2.md`](deploy/docs/migration-v2.md), and the generated
-[`deploy/docs/openapi-v2.json`](deploy/docs/openapi-v2.json).
+Install the production profile and run schema migration as a separate
+operation:
+
+```bash
+pip install "openrath[server,postgres]"
+openrath-migrate
+openrath-migrate --check
+```
+
+Runtime identities do not need DDL privileges. Tokens need explicit action
+grants, object access is tenant/project scoped, and synchronous steps cannot
+declare a preemptive timeout; use an async step or isolated executor when a
+deadline must be enforced.
+
+OpenRath v2.0.0 is designed for production deployment while keeping interface
+maturity explicit: the Agent Server HTTP surface remains **Beta**, and v1 JSONL
+imports are historical records rather than resumable active Runs. Deployment,
+migration, security, and operations guidance lives in
+[`deploy/`](deploy/), including
+[`operations-v2.md`](deploy/docs/operations-v2.md),
+[`migration-v2.md`](deploy/docs/migration-v2.md), and the generated
+[`openapi-v2.json`](deploy/docs/openapi-v2.json).
 
 <p align="center">
   <img src="assets/readme/diagrams/paradigm-map.png" alt="Multi-Agent Multi-Session Map" width="860" />
@@ -343,6 +381,10 @@ python example/01_hello_agent.py
 | 12 | [`12_compile.py`](example/12_compile.py) | Statically `compile()` a workflow: inspect its resource manifest, run offline `validate()`, and use the lifecycle context manager. | no |
 
 Read [`example/README.md`](example/README.md) for setup details and shared helpers.
+
+For complete, production-shaped scenarios with fixed inputs, durable state, QA,
+and committed deliverables, see
+[`Rath-Team/OpenRath-Example`](https://github.com/Rath-Team/OpenRath-Example).
 
 ---
 

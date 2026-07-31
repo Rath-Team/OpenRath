@@ -26,7 +26,7 @@ services:
       dockerfile: docker/Dockerfile
     image: openrath:2.0.0rc1
     environment:
-      OPENRATH_APP: examples.v2_server_app:app
+      OPENRATH_APP: reference_app:app
       OPENRATH_POSTGRES_DSN: postgresql://openrath:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/openrath
       OPENRATH_TOKEN: ${OPENRATH_TOKEN:?set OPENRATH_TOKEN}
       OPENRATH_TENANT_ID: ${OPENRATH_TENANT_ID:-default}
@@ -61,7 +61,7 @@ services:
       dockerfile: docker/Dockerfile
     image: openrath:2.0.0rc1
     entrypoint: ["openrath-worker"]
-    command: ["--app", "examples.v2_server_app:server"]
+    command: ["--app", "reference_app:server"]
     environment:
       OPENRATH_POSTGRES_DSN: postgresql://openrath:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/openrath
       OPENRATH_TOKEN: ${OPENRATH_TOKEN:?set OPENRATH_TOKEN}
