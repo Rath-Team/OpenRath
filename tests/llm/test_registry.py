@@ -24,6 +24,7 @@ def _stub_credentials(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     """Both built-in clients require an api key to construct; supply dummies."""
     monkeypatch.setenv("OPENAI_API_KEY", "test-key-openai")
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key-anthropic")
+    monkeypatch.setenv("ATLASCLOUD_API_KEY", "test-key-atlascloud")
     # Make sure no leftover env-var base_url steers Azure routing.
     for v in (
         "OPENAI_BASE_URL",
@@ -48,6 +49,15 @@ def test_explicit_openai_provider_kind() -> None:
 def test_anthropic_provider_kind() -> None:
     client = chat_client_for(Provider(provider_kind="anthropic"))
     assert isinstance(client, RathAnthropicChatClient)
+
+
+def test_atlascloud_provider_kind_uses_openai_compatible_client() -> None:
+    client = chat_client_for(Provider(provider_kind="atlascloud"))
+    assert isinstance(client, RathOpenAIChatClient)
+    assert client.provider.provider_kind == "openai"
+    assert client.provider.base_url == "https://api.atlascloud.ai/v1"
+    assert client.provider.model == "qwen/qwen3.5-flash"
+    assert client._client.api_key == "test-key-atlascloud"
 
 
 def test_unknown_provider_kind_raises_value_error() -> None:

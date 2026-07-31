@@ -68,7 +68,7 @@ class Provider:
     # Which adapter :func:`~rath.llm.registry.chat_client_for` constructs when
     # no custom executor is passed. ``None`` (default) selects OpenAI-compatible;
     # ``"anthropic"`` selects :class:`~rath.llm.RathAnthropicChatClient`.
-    provider_kind: Literal["openai", "anthropic", "litellm"] | None = None
+    provider_kind: Literal["openai", "anthropic", "litellm", "atlascloud"] | None = None
 
     def __str__(self) -> str:
         return self.model if self.model is not None else "(no model)"

@@ -295,6 +295,26 @@ export OPENAI_BASE_URL=https://your-gateway/v1
 export OPENAI_DEFAULT_MODEL=your-model-name
 ```
 
+Atlas Cloud 也可以作为 OpenAI 兼容 provider 选择：
+
+```bash
+export ATLASCLOUD_API_KEY=ak-...
+```
+
+```json
+{
+  "llm": {
+    "default_provider": "atlascloud",
+    "providers": {
+      "atlascloud": {
+        "provider_kind": "atlascloud",
+        "model": "qwen/qwen3.5-flash"
+      }
+    }
+  }
+}
+```
+
 你也可以在 `~/.openrath/config.json` 中配置 providers。环境变量优先级更高。
 
 ---

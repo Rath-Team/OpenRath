@@ -17,6 +17,9 @@ Public surface:
 # registry must be defined before adapters call register_chat_client. The
 # concrete client classes are re-exported here so users can ``from rath.llm
 # import RathOpenAIChatClient`` regardless of the underlying layout.
+from rath.llm import (
+    atlascloud as _atlascloud,  # noqa: F401  -- registration side-effect
+)
 from rath.llm.anthropic import (
     RathAnthropicChatClient,
     build_anthropic_kwargs,

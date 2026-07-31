@@ -272,6 +272,14 @@ def forward(self, session: Session) -> Session:
 
 A workflow can chain agents, fork sessions, compress context, call tools, dispatch to child workflows, and return a new session. Because the input and output are both `Session`, workflows can be nested without inventing a new state format at each layer.
 
+### Workflow Compile — Static Before Runtime
+
+`workflow.compile()` gives large agent systems an inspection and preflight layer before execution. It turns a nested workflow into a concrete `ResourceManifest`, so teams can see every reachable `AgentParam`, provider, memory binding, and dynamic `Selector` point in one place. That manifest makes README diagrams, CI checks, credential validation, and deterministic memory lifecycle management straightforward while preserving the normal `workflow(session)` execution path.
+
+<p align="center">
+  <img src="assets/readme/workflow-compile-static-pass.png" alt="Workflow compile static resource manifest" width="860" />
+</p>
+
 For routing that depends on the conversation at runtime, `flow.Selector` is an LLM-backed router over self-describing workflows (each carries a `description`). It returns the next workflow to run, or a no-op `flow.EmptyWorkflow` when the task is done — so `if` / `while` stay plain Python:
 
 ```python
@@ -311,6 +319,26 @@ Most LLM examples use OpenAI-compatible environment variables:
 export OPENAI_API_KEY=sk-...
 export OPENAI_BASE_URL=https://your-gateway/v1
 export OPENAI_DEFAULT_MODEL=your-model-name
+```
+
+Atlas Cloud can also be selected as an OpenAI-compatible provider:
+
+```bash
+export ATLASCLOUD_API_KEY=ak-...
+```
+
+```json
+{
+  "llm": {
+    "default_provider": "atlascloud",
+    "providers": {
+      "atlascloud": {
+        "provider_kind": "atlascloud",
+        "model": "qwen/qwen3.5-flash"
+      }
+    }
+  }
+}
 ```
 
 You can also configure providers in `~/.openrath/config.json`. Environment variables take precedence.
