@@ -32,7 +32,7 @@ RUN groupadd --system --gid 10001 openrath \
     && useradd --system --uid 10001 --gid openrath --home /app openrath
 WORKDIR /app
 COPY --from=builder /opt/venv /opt/venv
-COPY examples ./examples
+COPY deploy/reference_app.py ./reference_app.py
 USER 10001:10001
 EXPOSE 8000
 ENTRYPOINT ["openrath-server"]

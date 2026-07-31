@@ -54,16 +54,67 @@
 
 OpenRath 为此而设计：多个 Agent 在多个可分支 Session 上协作，同时仍能追踪每个 role、workspace、memory 写入和最终输出。
 
-## v2.0.0 durable runtime（候选版本）
+## OpenRath v2.0.0：面向生产环境
 
-`2.0.0rc1` 新增显式 `@step` / `@router` 执行计划、durable Run 与
-Checkpoint、effect reconciliation、tenant-scoped Agent Server API，以及受
-治理的 Provider/Tool/Sandbox/Memory adapter。HTTP contract 在 RC 阶段仍为
-**Beta**；v1 JSONL 导入仅作为历史记录，不能恢复 active Run。
+OpenRath v2.0.0 最重要的变化，是 OpenRath 从一个可组合的 Python 框架，
+进入可部署、可恢复、可运维的生产环境。原有以 Session 为核心的 Python API
+保持不变；这个版本在其外层增加了一套生产级执行与运维体系。
 
-Embedded mode 面向可信本地进程。Agent Server mode 是严格的 durable
-profile：token 必须具有显式 action grants，对象访问按 tenant/project
-隔离；需要强制 deadline 时应使用 async step 或 isolated executor。
+| 生产环境关注点 | OpenRath 提供的能力 |
+| --- | --- |
+| 持久化执行 | 显式的 `@step` / `@router` 边界会编译成不可变执行计划；Run、Event 与 Checkpoint 能跨进程和 Worker 重启保留。 |
+| Worker 故障恢复 | Lease、Fencing、Retry、Cancellation、Deadline 与可恢复队列，防止过期 Worker 静默提交新状态。 |
+| 受控副作用 | Effect Ledger 记录执行结果与幂等键；无法确认的非幂等副作用会停在 `NEEDS_REVIEW`，而不是被盲目重放。 |
+| 人工决策 | 持久化 Interrupt 可以暂停 Run 等待审批或输入，并在不重建隐藏循环状态的情况下恢复。 |
+| 安全与租户隔离 | Agent Server Token 使用显式 Action Grant；Tenant/Project Scope、Policy、Secret Reference、Trust Label 与 Audit 保持为独立边界。 |
+| 生产运维 | PostgreSQL 是持久化事实来源，Redis 可加速信号传递，S3 兼容存储保存 Artifact，并提供健康检查、迁移、遥测、容器与 Kubernetes 参考。 |
+
+```text
+@step / @router
+       |
+       v
+ExecutionPlan -> Run -> Event -> Checkpoint
+       |                          |
+       |                          +-> Interrupt / Effect Ledger
+       |
+       +-> PostgreSQL 持久化状态
+       +-> 可选 Redis 信号
+       +-> S3 兼容 Artifact
+                                  |
+                                  v
+                         Agent Server HTTP + SSE
+```
+
+Embedded mode 仍适合可信进程内部使用。Agent Server mode 是严格的生产
+Profile：
+
+```python
+runtime = LocalRuntime(
+    store,
+    effect_ledger=ledger,
+    production_mode=True,
+)
+server = AgentServer(store, runtime, auth=auth, audit_sink=audit)
+```
+
+安装生产 Profile，并将数据库 Schema 迁移作为独立操作执行：
+
+```bash
+pip install "openrath[server,postgres]"
+openrath-migrate
+openrath-migrate --check
+```
+
+运行时身份不需要 DDL 权限。Token 必须拥有显式 Action Grant，对象访问按
+Tenant/Project 隔离；同步 Step 不能声明抢占式超时，需要强制 Deadline 时应使用
+Async Step 或隔离执行器。
+
+OpenRath v2.0.0 面向生产部署，同时明确标注接口成熟度：Agent Server HTTP
+接口仍为 **Beta**；v1 JSONL 导入属于历史记录，不能恢复 Active Run。部署、
+迁移、安全和运维指南位于 [`deploy/`](deploy/)，包括
+[`operations-v2.md`](deploy/docs/operations-v2.md)、
+[`migration-v2.md`](deploy/docs/migration-v2.md) 和生成的
+[`openapi-v2.json`](deploy/docs/openapi-v2.json)。
 
 <p align="center">
   <img src="assets/readme/diagrams/paradigm-map.png" alt="多智能体多会话映射" width="860" />
@@ -325,6 +376,9 @@ python example/01_hello_agent.py
 | 12 | [`12_compile.py`](example/12_compile.py) | 静态 `compile()` 一个 workflow：查看其资源清单、离线 `validate()`、并使用生命周期上下文管理器。 | 否 |
 
 阅读 [`example/README.md`](example/README.md) 获取设置细节和共享 helpers。
+
+如需查看包含固定输入、持久化状态、质量检查和已提交交付物的完整生产化场景，
+请访问 [`Rath-Team/OpenRath-Example`](https://github.com/Rath-Team/OpenRath-Example)。
 
 ---
 

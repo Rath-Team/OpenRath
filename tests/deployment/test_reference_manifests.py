@@ -28,7 +28,7 @@ def test_kubernetes_template_covers_workloads_and_dns() -> None:
 
 
 def test_reference_server_enables_audit_and_explicit_grants() -> None:
-    app = Path("examples/v2_server_app.py").read_text(encoding="utf-8")
+    app = Path("deploy/reference_app.py").read_text(encoding="utf-8")
     compose = Path("deploy/compose/compose.yaml").read_text(encoding="utf-8")
     assert "StructuredAuditSink()" in app
     assert 'os.environ["OPENRATH_GRANTS"]' in app

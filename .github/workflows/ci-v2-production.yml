@@ -47,7 +47,7 @@ jobs:
           server /data
       - run: uv lock --check
       - run: uv sync --frozen --extra postgres --extra server --extra s3 --extra redis --extra otel
-      - run: uv run ruff check src tests scripts examples
+      - run: uv run ruff check src tests scripts deploy/reference_app.py
       - run: uv run ruff format --check src tests example
       - run: uv run mypy src/rath
       - name: Audit exact production dependency set

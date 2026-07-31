@@ -1,4 +1,4 @@
-"""Minimal standalone OpenRath v2 reference application."""
+"""Minimal deployable OpenRath v2 reference application."""
 
 from __future__ import annotations
 
