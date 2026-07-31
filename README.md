@@ -61,6 +61,15 @@ composable Python framework and becomes a durable runtime designed for
 production deployment. The existing Session-first Python API remains intact;
 the release adds a production execution and operations layer around it.
 
+<p align="center">
+  <img src="assets/readme/diagrams/v2-durable-runtime.png" alt="OpenRath v2.0.0 durable runtime overview" width="860" />
+</p>
+
+The diagram summarizes this production path: Python definitions compile into
+immutable plans, durable Runs are governed by checkpoints, leases, effects, and
+interrupts, and PostgreSQL, Redis, and S3-compatible storage provide the
+operational data plane.
+
 | Production concern | What OpenRath provides |
 | --- | --- |
 | Durable execution | Explicit `@step` / `@router` boundaries compile into immutable execution plans. Runs, Events, and Checkpoints survive process and worker restarts. |
@@ -69,22 +78,6 @@ the release adds a production execution and operations layer around it.
 | Human decisions | Durable Interrupts pause a Run for approval or input and resume it without rebuilding hidden loop state. |
 | Security and tenancy | Agent Server tokens carry explicit action grants; tenant/project scope, policy checks, secret references, trust labels, and audit remain separate boundaries. |
 | Production operations | PostgreSQL is the durable source of truth, Redis can accelerate signaling, S3-compatible storage holds artifacts, and health, migration, telemetry, container, and Kubernetes references are included. |
-
-```text
-@step / @router
-       |
-       v
-ExecutionPlan -> Run -> Event -> Checkpoint
-       |                          |
-       |                          +-> Interrupt / Effect Ledger
-       |
-       +-> PostgreSQL durable state
-       +-> optional Redis signals
-       +-> S3-compatible artifacts
-                                  |
-                                  v
-                         Agent Server HTTP + SSE
-```
 
 Embedded mode remains useful inside a trusted process. Agent Server mode is the
 strict production profile:
