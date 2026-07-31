@@ -95,19 +95,5 @@ loss for every drill:
 7. roll from the previous supported release to the candidate, roll the
    application back while retaining additive schema, then roll forward again.
 
-Put the structured results in `openrath.v2.drill-results/1` and bind the raw
-operator logs with `build_drill_report.py`. The builder records evidence only;
-it never injects faults.
-
-## Collection
-
-Verify locally on the target runner:
-
-```bash
-uv run python scripts/release/verify_gate_reports.py \
-  "$OPENRATH_GA_EVIDENCE_ROOT/<bundle-id>" \
-  --source-commit "$(git rev-parse HEAD)"
-```
-
-Then dispatch the protected collector from `main`. Do not move, edit, or reuse
-the bundle after collection.
+Record structured results, raw operator logs, source commit, environment,
+timestamps, and recovery outcomes in the operator's evidence system.

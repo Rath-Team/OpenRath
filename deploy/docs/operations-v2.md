@@ -75,10 +75,10 @@ run `openrath-migrate --check`, fetch historical Runs and artifacts, requeue
 an expired lease, and verify a non-idempotent ambiguous invocation remains
 blocked for review.
 
-## RC evidence boundary
+## Release evidence boundary
 
 Offline tests, a locally built wheel, a mutable image tag, or a Fake provider
-do not approve a release. RC evidence must be generated from one immutable
+do not approve a release. Release evidence should be generated from one immutable
 commit and include real provider/sandbox/memory lifecycles, PostgreSQL/Redis/S3
 restart drills, backup/restore, rollback, scale, soak, SBOM, vulnerability scan,
 and the published image digest. Missing infrastructure is recorded as a

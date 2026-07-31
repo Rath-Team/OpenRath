@@ -11,7 +11,7 @@ def test_committed_openapi_matches_generator() -> None:
         Path("deploy/docs/openapi-v2.json").read_text(encoding="utf-8")
     )
     assert committed == _openapi_document(
-        "2.0.0rc1",
+        "2.0.0",
         store_enabled=True,
     )
 

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "openrath"
-version = "2.0.0rc1"
+version = "2.0.0"
 description = "An open-source, torch-like API framework for dynamic multi-agent workflow."
 readme = "README.md"
 requires-python = ">=3.10,<3.14"

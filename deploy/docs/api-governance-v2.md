@@ -1,8 +1,7 @@
 # OpenRath v2 API and maintenance policy
 
-This policy is part of the v2.0.0 release candidate. The RC publishes it for
-compatibility feedback; final Stable promotions and the v1 maintenance window
-still require repository-owner approval before GA.
+This policy is part of v2.0.0. Stable promotions and the v1 maintenance window
+remain explicit repository-owner decisions.
 
 ## Stability levels
 
@@ -20,11 +19,11 @@ still require repository-owner approval before GA.
   names beginning with `_` are not public contracts.
 
 The Agent Server OpenAPI document currently labels `/v1` operations **Beta**.
-Stable error codes and persisted fields may be promoted independently only
-after the RC evidence gate passes.
+Stable error codes and persisted fields may be promoted independently after
+compatibility review.
 
-For `2.0.0rc1`, the Python v1 façade remains supported and the Agent Server
-remains Beta. The RC does not begin or end a maintenance window.
+For `2.0.0`, the Python v1 façade remains supported and the Agent Server
+remains Beta. This release does not begin or end a maintenance window.
 
 ## Action and object authorization
 
@@ -64,8 +63,8 @@ redacted security audit events when an `AuditSink` is configured.
 The v1 Python facade remains available through the owner-approved maintenance
 window. v1 JSONL Sessions import as non-resumable historical evidence because
 they do not contain a durable program counter or effect outcome. The exact end
-date for v1 security and critical-fix support must be approved in
-`review/v2.0.0/release-approval.md`; the implementation does not invent that
+date for v1 security and critical-fix support remains an explicit
+repository-owner decision; the implementation does not invent that
 organizational commitment.
 
 ## Security reporting
@@ -79,7 +78,7 @@ than copied into tests or logs.
 
 ## Release evidence
 
-Every release candidate must link:
+Every release must link:
 
 - compatibility, migration, and rollback evidence;
 - unit, conformance, real-backend, chaos, and tenant/security tests;

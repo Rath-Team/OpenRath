@@ -16,7 +16,7 @@ def main() -> None:
         type=Path,
         default=Path("deploy/docs/openapi-v2.json"),
     )
-    parser.add_argument("--version", default="2.0.0rc1")
+    parser.add_argument("--version", default="2.0.0")
     args = parser.parse_args()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(

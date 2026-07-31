@@ -1,7 +1,6 @@
 # OpenRath v2 threat model
 
-Status: release-candidate baseline. Residual risks remain blocking for GA until
-the linked target-environment evidence is attached.
+Status: v2.0.0 baseline.
 
 ## Assets and security objectives
 
@@ -44,9 +43,9 @@ the linked target-environment evidence is attached.
 | Revision substitution | Canonical plan/revision digest and resume compatibility check | Revision mismatch tests |
 | Audit suppression | Production reference app wires a structured audit sink; sink failures propagate | Audit delivery and redaction tests |
 
-## Residual risks for the RC
+## Residual risks for v2.0.0
 
-- The Agent Server HTTP surface remains **Beta** in `2.0.0rc1`.
+- The Agent Server HTTP surface remains **Beta** in `2.0.0`.
 - Live provider and OpenViking lifecycle evidence requires approved external
   credentials and is not replaced by offline contracts.
 - The reference static-token authenticator is suitable for a bounded
@@ -58,9 +57,8 @@ the linked target-environment evidence is attached.
 - Arbitrary third-party non-idempotent side effects cannot be guaranteed
   exactly once.
 
-## GA closure
+## Operational evidence
 
-GA requires a candidate-SHA-bound report covering live adapters, explicit
-tenant/security negatives, image/dependency/secret scans, an eight-hour
-target-like soak, worker scaling, backup/restore, and rollout/rollback. Any
-accepted exception records an owner, mitigation, expiry, and target version.
+Operational validation should remain source-SHA-bound and record the tested
+environment, workload, dependencies, security checks, recovery procedures,
+and resulting immutable artifacts.

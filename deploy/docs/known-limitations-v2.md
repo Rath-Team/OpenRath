@@ -1,9 +1,8 @@
-# OpenRath v2.0.0 release-candidate limitations
+# OpenRath v2.0.0 known limitations
 
-These limitations are part of the `2.0.0rc1` contract and must not be omitted
-from release notes.
+These limitations are part of the `2.0.0` operational contract.
 
-- The Agent Server `/v1` HTTP contract is Beta during the RC. Stable error
+- The Agent Server `/v1` HTTP contract remains Beta. Stable error
   codes and persisted fields are promoted only after compatibility review.
 - v1 JSONL Sessions import as non-resumable history. They do not contain a
   durable program counter or an effect outcome.

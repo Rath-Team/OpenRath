@@ -40,7 +40,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: migrate
-          image: ghcr.io/rath-team/openrath:2.0.0rc1
+          image: ghcr.io/rath-team/openrath:2.0.0
           # Release automation must replace the review tag with image@sha256.
           imagePullPolicy: Always
           command: ["openrath-migrate"]
@@ -77,7 +77,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: openrath
-          image: ghcr.io/rath-team/openrath:2.0.0rc1
+          image: ghcr.io/rath-team/openrath:2.0.0
           # Release automation must replace the review tag with image@sha256.
           imagePullPolicy: Always
           envFrom:
@@ -160,7 +160,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: worker
-          image: ghcr.io/rath-team/openrath:2.0.0rc1
+          image: ghcr.io/rath-team/openrath:2.0.0
           # Release automation must replace the review tag with image@sha256.
           imagePullPolicy: Always
           command: ["openrath-worker", "--app", "reference_app:server"]
