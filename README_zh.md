@@ -60,6 +60,14 @@ OpenRath v2.0.0 最重要的变化，是 OpenRath 从一个可组合的 Python �
 进入可部署、可恢复、可运维的生产环境。原有以 Session 为核心的 Python API
 保持不变；这个版本在其外层增加了一套生产级执行与运维体系。
 
+<p align="center">
+  <img src="assets/readme/diagrams/v2-durable-runtime.png" alt="OpenRath v2.0.0 持久化运行时概览" width="860" />
+</p>
+
+这张图概括了 OpenRath 的生产执行路径：Python 定义先编译为不可变执行计划，
+持久化 Run 由 Checkpoint、Lease、Effect 与 Interrupt 共同保障，
+PostgreSQL、Redis 和 S3 兼容存储则构成生产环境的数据与信号层。
+
 | 生产环境关注点 | OpenRath 提供的能力 |
 | --- | --- |
 | 持久化执行 | 显式的 `@step` / `@router` 边界会编译成不可变执行计划；Run、Event 与 Checkpoint 能跨进程和 Worker 重启保留。 |
@@ -68,22 +76,6 @@ OpenRath v2.0.0 最重要的变化，是 OpenRath 从一个可组合的 Python �
 | 人工决策 | 持久化 Interrupt 可以暂停 Run 等待审批或输入，并在不重建隐藏循环状态的情况下恢复。 |
 | 安全与租户隔离 | Agent Server Token 使用显式 Action Grant；Tenant/Project Scope、Policy、Secret Reference、Trust Label 与 Audit 保持为独立边界。 |
 | 生产运维 | PostgreSQL 是持久化事实来源，Redis 可加速信号传递，S3 兼容存储保存 Artifact，并提供健康检查、迁移、遥测、容器与 Kubernetes 参考。 |
-
-```text
-@step / @router
-       |
-       v
-ExecutionPlan -> Run -> Event -> Checkpoint
-       |                          |
-       |                          +-> Interrupt / Effect Ledger
-       |
-       +-> PostgreSQL 持久化状态
-       +-> 可选 Redis 信号
-       +-> S3 兼容 Artifact
-                                  |
-                                  v
-                         Agent Server HTTP + SSE
-```
 
 Embedded mode 仍适合可信进程内部使用。Agent Server mode 是严格的生产
 Profile：
