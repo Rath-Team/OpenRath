@@ -52,9 +52,8 @@ class MemoryStoreSpec:
         """Build a :class:`MemoryStoreSpec` from ``~/.openrath/config.json``.
 
         Looks up ``name`` (or ``memory.default_provider`` when ``name=None``)
-        under ``memory.providers``. Only **local** presets are modeled in
-        config today; OpenViking stores should be built explicitly via
-        :class:`MemoryStoreSpec` kwargs / ``options``.
+        under ``memory.providers``. OpenViking stores should be built
+        explicitly via :class:`MemoryStoreSpec` kwargs / ``options``.
 
         Lazy-imports :mod:`rath.config` so ``import rath.memory`` never
         touches the filesystem.
@@ -72,6 +71,20 @@ class MemoryStoreSpec:
             options["embedding_provider"] = entry.embedding_provider
         if entry.chat_provider is not None:
             options["chat_provider"] = entry.chat_provider
+        if entry.uri is not None:
+            options["uri"] = entry.uri
+        if entry.api_key is not None:
+            options["token"] = entry.api_key
+        if entry.db_name is not None:
+            options["db_name"] = entry.db_name
+        if entry.collection_name is not None:
+            options["collection_name"] = entry.collection_name
+        if entry.embedding_model is not None:
+            options["embedding_model"] = entry.embedding_model
+        if entry.embedding_dimensions is not None:
+            options["embedding_dimensions"] = entry.embedding_dimensions
+        if entry.max_scan is not None:
+            options["max_scan"] = entry.max_scan
         base = cls(
             options=MappingProxyType(options) if options else None,
         )

@@ -21,7 +21,7 @@ from typing import Iterator
 import pytest
 
 from rath.config.paths import resolve_config_dir, resolve_config_path
-from rath.config.schema import LLMProviderConfig
+from rath.config.schema import LLMProviderConfig, MemoryProviderConfig
 from rath.config.store import ConfigStore
 
 
@@ -68,6 +68,30 @@ def test_load_remerges_secret(_isolate_openrath_home: Path) -> None:
 
     reloaded = ConfigStore.load()
     assert reloaded.get_llm_provider("main").api_key == "sk-remerge"
+
+
+def test_memory_provider_api_key_split_and_remerged(
+    _isolate_openrath_home: Path,
+) -> None:
+    store = ConfigStore(path=resolve_config_path())
+    store.config.memory.providers["milvus-main"] = MemoryProviderConfig(
+        backend_kind="milvus",
+        uri="https://example.api.gcp-us-west1.zillizcloud.com",
+        api_key="sk-memory-secret",
+    )
+    store.save()
+
+    config_raw = json.loads(resolve_config_path().read_text(encoding="utf-8"))
+    entry = config_raw["memory"]["providers"]["milvus-main"]
+    assert entry["backend_kind"] == "milvus"
+    assert entry.get("api_key") in (None, "")
+
+    creds_raw = json.loads(_credentials_path().read_text(encoding="utf-8"))
+    assert creds_raw["memory"]["providers"]["milvus-main"] == "sk-memory-secret"
+
+    ConfigStore._cache.clear()
+    reloaded = ConfigStore.load()
+    assert reloaded.get_memory_provider("milvus-main").api_key == "sk-memory-secret"
 
 
 @pytest.mark.skipif(sys.platform.startswith("win"), reason="POSIX perms only")

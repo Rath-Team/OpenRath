@@ -66,6 +66,11 @@ try:
 except ImportError:  # pragma: no cover — optional ``openviking`` extra
     pass
 
+try:
+    from rath.memory.adapters import milvus as _milvus  # noqa: F401
+except ImportError:  # pragma: no cover — optional ``milvus`` extra
+    pass
+
 # The local backend has zero runtime dependencies; pin it as the default
 # so ``rath.memory.current()`` works out of the box.
 _set_default("local")

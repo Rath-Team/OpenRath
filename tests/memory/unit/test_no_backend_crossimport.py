@@ -107,6 +107,8 @@ def test_rath_memory_registry_only_contains_optional_extras():
         for name in names - {"local"}:
             if name == "openviking":
                 importlib.import_module("openviking")
+            elif name == "milvus":
+                importlib.import_module("pymilvus")
             else:
                 raise AssertionError(f"unknown adapter registered: {name!r}")
         print("OK", sorted(names))

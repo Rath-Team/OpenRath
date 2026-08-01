@@ -253,12 +253,24 @@ session = Session.from_user_message("List files").to("local", spec="./")
 
 Memory 是与 sandbox 执行平行持久平面。它不是 tool result，也不只是 prompt 文本；它是可以绑定到 Agent、在运行前 recall、在运行后 commit 的状态。
 
-基础安装包含一个零依赖的本地 memory 后端。它将数据存储在 `.openrath/memory/` 下，无需 LLM 即可支持 lexical BM25 recall，并在配置了 embedding 提供程序时可以使用 embeddings。OpenViking 作为可选后端，为需要更丰富外部 memory 服务的用户提供。
+基础安装包含一个零依赖的本地 memory 后端。它将数据存储在 `.openrath/memory/` 下，无需 LLM 即可支持 lexical BM25 recall，并在配置了 embedding 提供程序时可以使用 embeddings。OpenViking 作为可选后端，为需要更丰富外部 memory 服务的用户提供。Milvus 也作为可选向量 memory 后端提供，可用于 Milvus Lite、Milvus server 或 Zilliz Cloud 上的语义 recall。
 
 ```python
 with flow.Agent("You remember useful facts.", model="gpt-5.5", memory="local") as agent:
     agent.remember_memory("The user works mostly in Python.")
     hits = agent.recall_memory("preferred programming language")
+```
+
+Milvus 默认使用本地 Milvus Lite（`./milvus.db`），并复用现有的
+OpenAI-compatible embedding 配置：
+
+```python
+# pip install "openrath[milvus]"
+# Optional: export MILVUS_URI=http://localhost:19530 or a Zilliz Cloud URI.
+# Optional for cloud: export MILVUS_TOKEN=...
+with flow.Agent("You remember useful facts.", model="gpt-5.5", memory="milvus") as agent:
+    agent.remember_memory("The user evaluates vector databases.")
+    hits = agent.recall_memory("vector database preference")
 ```
 
 Agent memory API 有意设计得易于发现：
@@ -320,6 +332,7 @@ pip install openrath
 ```bash
 pip install "openrath[opensandbox]"
 pip install "openrath[openviking]"
+pip install "openrath[milvus]"
 ```
 
 源码开发：

@@ -68,6 +68,9 @@ otel = [
 s3 = [
     "boto3>=1.40,<2",
 ]
+milvus = [
+    "pymilvus[milvus-lite]>=3.0.0",
+]
 
 [tool.ruff]
 line-length = 88

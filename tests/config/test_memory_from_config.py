@@ -40,6 +40,33 @@ def test_named_memory_provider_round_trips_into_spec(tmp_path: Path) -> None:
     assert spec.options["chat_provider"] == "chat-main"
 
 
+def test_named_milvus_provider_round_trips_into_spec(tmp_path: Path) -> None:
+    store = _build_store_with(
+        tmp_path,
+        main=MemoryProviderConfig(
+            backend_kind="milvus",
+            uri="http://localhost:19530",
+            api_key="milvus-token",
+            db_name="default",
+            collection_name="openrath_memory",
+            embedding_provider="embed-main",
+            embedding_model="text-embedding-3-small",
+            embedding_dimensions=512,
+            max_scan=2048,
+        ),
+    )
+    spec = MemoryStoreSpec.from_config("main", store=store)
+    assert spec.options is not None
+    assert spec.options["uri"] == "http://localhost:19530"
+    assert spec.options["token"] == "milvus-token"
+    assert spec.options["db_name"] == "default"
+    assert spec.options["collection_name"] == "openrath_memory"
+    assert spec.options["embedding_provider"] == "embed-main"
+    assert spec.options["embedding_model"] == "text-embedding-3-small"
+    assert spec.options["embedding_dimensions"] == 512
+    assert spec.options["max_scan"] == 2048
+
+
 def test_default_memory_provider_used_when_name_omitted(tmp_path: Path) -> None:
     cfg_path = tmp_path / "config.json"
     store = ConfigStore(path=cfg_path)
