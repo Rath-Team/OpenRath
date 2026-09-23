@@ -37,7 +37,10 @@ It turns agent runtime state into explicit, composable Python objects:
 ## OpenRath in the PyTorch Lens
 
 <p align="center">
-  <img src="assets/readme/diagrams/pytorch-lens.png" alt="OpenRath in the PyTorch Lens" width="860" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/diagrams/pytorch-lens-dark.svg" />
+    <img src="assets/readme/diagrams/pytorch-lens.svg" alt="OpenRath in the PyTorch Lens" width="860" />
+  </picture>
 </p>
 
 | PyTorch idea | OpenRath idea | What it means |
@@ -62,7 +65,10 @@ production deployment. The existing Session-first Python API remains intact;
 the release adds a production execution and operations layer around it.
 
 <p align="center">
-  <img src="assets/readme/diagrams/v2-durable-runtime.png" alt="OpenRath v2.0.0 durable runtime overview" width="860" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/diagrams/v2-durable-runtime-dark.svg" />
+    <img src="assets/readme/diagrams/v2-durable-runtime.svg" alt="OpenRath v2.0.0 durable runtime overview" width="860" />
+  </picture>
 </p>
 
 The diagram summarizes this production path: Python definitions compile into
@@ -115,7 +121,10 @@ migration, security, and operations guidance lives in
 [`openapi-v2.json`](deploy/docs/openapi-v2.json).
 
 <p align="center">
-  <img src="assets/readme/diagrams/paradigm-map.png" alt="Multi-Agent Multi-Session Map" width="860" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/diagrams/paradigm-map-dark.svg" />
+    <img src="assets/readme/diagrams/paradigm-map.svg" alt="Multi-Agent Multi-Session Map" width="860" />
+  </picture>
 </p>
 
 | Paradigm | Typical shape | Example |
@@ -132,7 +141,10 @@ migration, security, and operations guidance lives in
 An agent is a transformation layer on Session, so what really needs to be forked, merged, reused, and traced is the Session dataflow—not a separate message history maintained by each agent.
 
 <p align="center">
-  <img src="assets/readme/diagrams/multi-agent-multi-session.png" alt="Why Multi-Agent Multi-Session" width="860" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/diagrams/multi-agent-multi-session-dark.svg" />
+    <img src="assets/readme/diagrams/multi-agent-multi-session.svg" alt="Why Multi-Agent Multi-Session" width="860" />
+  </picture>
 </p>
 
 OpenRath's design addresses the problems that appear when agent systems move from one assistant to large clusters:
