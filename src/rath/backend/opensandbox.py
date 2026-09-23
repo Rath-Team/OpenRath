@@ -145,6 +145,43 @@ _DEFAULT_TOOL_TIMEOUT_S = 90.0
 _CODE_RUN_ATTEMPTS = 3
 _CODE_RUN_BACKOFF_S = (0.5, 1.0)
 
+# IPython startup file installed in every new sandbox; see _kernel_wakeup_command.
+_KERNEL_WAKEUP_STARTUP = '''\
+"""Installed by OpenRath: re-arm ipykernel's shell stream after raw reply sends.
+
+ipykernel 7 writes shell replies to the ROUTER socket with a raw send_multipart
+while it reads requests from that socket through a ZMQStream. The raw send can
+consume the socket's wake-up, so a request that arrives during it stays unread
+until another client connects (ipython/ipykernel#1554). Re-reading the stream's
+events after each such send, as upstream proposes, delivers it at once.
+"""
+
+
+def _openrath_rearm_shell_stream():
+    try:
+        from ipykernel.subshell_manager import SubshellManager
+    except ImportError:
+        return
+    send = SubshellManager._send_on_shell_channel
+    if getattr(send, "_openrath_rearm", False):
+        return
+    stream = getattr(getattr(get_ipython(), "kernel", None), "shell_stream", None)
+    if stream is None or not hasattr(stream, "_rebuild_io_state"):
+        return
+
+    def _send_on_shell_channel(self, msg):
+        send(self, msg)
+        stream._rebuild_io_state()
+
+    _send_on_shell_channel._openrath_rearm = True
+    SubshellManager._send_on_shell_channel = _send_on_shell_channel
+
+
+_openrath_rearm_shell_stream()
+del _openrath_rearm_shell_stream
+'''
+_KERNEL_WAKEUP_FILE = "00-openrath-shell-wakeup.py"
+
 
 def _execution_stdout_bytes(execution: Any) -> bytes:
     return "".join(m.text for m in execution.logs.stdout).encode("utf-8")
@@ -274,6 +311,26 @@ async def _run_command_with_stdout_retry(
             call_timeout,
         )
     return execution
+
+
+def _kernel_wakeup_command() -> str:
+    """Shell command that installs ``_KERNEL_WAKEUP_STARTUP`` for new kernels.
+
+    execd opens a new Jupyter websocket for every code run, and Jupyter Server
+    nudges each one with a ``kernel_info_request`` whose shell reply goes to a
+    channel it has already closed. When the run's ``execute_request`` reaches
+    the kernel while that reply is being sent, ipykernel 7 can leave it unread
+    in the shell socket (ipython/ipykernel#1554): the code never runs, execd
+    waits for it with no deadline, and every later run on the context is
+    refused as "session is busy". The startup file runs before the kernel
+    reads its first request, so installing it when the sandbox opens covers
+    every kernel the sandbox starts.
+    """
+    startup_dir = '"${IPYTHONDIR:-$HOME/.ipython}/profile_default/startup"'
+    return (
+        f"mkdir -p {startup_dir} && printf %s "
+        f"{shlex.quote(_KERNEL_WAKEUP_STARTUP)} > {startup_dir}/{_KERNEL_WAKEUP_FILE}"
+    )
 
 
 def _is_transient_code_run_result(execution: Any) -> bool:
@@ -599,8 +656,10 @@ class OpenSandboxBackend(Backend):
             entrypoint,
             volumes,
         )
+        setup = [_kernel_wakeup_command()]
         if not effective_volumes:
-            await native.commands.run(f"mkdir -p {shlex.quote(self._SANDBOX_ROOT)}")
+            setup.insert(0, f"mkdir -p {shlex.quote(self._SANDBOX_ROOT)}")
+        await native.commands.run("; ".join(setup))
         self._natives[native.id] = native
         return BackendSandbox(backend=self, handle=native.id, spec=spec)
 
