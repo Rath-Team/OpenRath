@@ -37,7 +37,10 @@
 ## OpenRath 的 PyTorch 视角
 
 <p align="center">
-  <img src="assets/readme/diagrams/pytorch-lens.png" alt="OpenRath 的 PyTorch 视角" width="860" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/diagrams/pytorch-lens-dark.svg" />
+    <img src="assets/readme/diagrams/pytorch-lens.svg" alt="OpenRath 的 PyTorch 视角" width="860" />
+  </picture>
 </p>
 
 | PyTorch 理念 | OpenRath 理念 | 含义 |
@@ -61,7 +64,10 @@ OpenRath v2.0.0 最重要的变化，是 OpenRath 从一个可组合的 Python �
 保持不变；这个版本在其外层增加了一套生产级执行与运维体系。
 
 <p align="center">
-  <img src="assets/readme/diagrams/v2-durable-runtime.png" alt="OpenRath v2.0.0 持久化运行时概览" width="860" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/diagrams/v2-durable-runtime-dark.svg" />
+    <img src="assets/readme/diagrams/v2-durable-runtime.svg" alt="OpenRath v2.0.0 持久化运行时概览" width="860" />
+  </picture>
 </p>
 
 这张图概括了 OpenRath 的生产执行路径：Python 定义先编译为不可变执行计划，
@@ -109,7 +115,10 @@ OpenRath v2.0.0 面向生产部署，同时明确标注接口成熟度：Agent S
 [`openapi-v2.json`](deploy/docs/openapi-v2.json)。
 
 <p align="center">
-  <img src="assets/readme/diagrams/paradigm-map.png" alt="多智能体多会话映射" width="860" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/diagrams/paradigm-map-dark.svg" />
+    <img src="assets/readme/diagrams/paradigm-map.svg" alt="多智能体多会话映射" width="860" />
+  </picture>
 </p>
 
 | 范式 | 典型形态 | 示例 |
@@ -126,7 +135,10 @@ OpenRath v2.0.0 面向生产部署，同时明确标注接口成熟度：Agent S
 一个 Agent 是 Session 上的变换层，因此真正需要被 fork、merge、复用和追踪的是 Session 数据流，而不是每个 Agent 各自维护的一段 message history。
 
 <p align="center">
-  <img src="assets/readme/diagrams/multi-agent-multi-session.png" alt="为什么是多 Agent 多 Session" width="860" />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/readme/diagrams/multi-agent-multi-session-dark.svg" />
+    <img src="assets/readme/diagrams/multi-agent-multi-session.svg" alt="为什么是多 Agent 多 Session" width="860" />
+  </picture>
 </p>
 
 OpenRath 的设计解决的是 Agent 系统从单个助手走向大型集群时出现的问题：
