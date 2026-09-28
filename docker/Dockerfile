@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de AS builder
+FROM python:3.12-slim@sha256:2f17fc044b579bab302c2e8054d3a686e2cb9a83de48e70534b94cd8ebbe06a9 AS builder
 
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1 \
@@ -13,7 +13,7 @@ RUN pip install uv==0.7.18 \
     && uv sync --frozen --no-dev --no-editable \
        --extra server --extra postgres --extra s3 --extra redis --extra otel
 
-FROM python:3.12-slim@sha256:57cd7c3a7a273101a6485ba99423ee568157882804b1124b4dd04266317710de AS runtime
+FROM python:3.12-slim@sha256:2f17fc044b579bab302c2e8054d3a686e2cb9a83de48e70534b94cd8ebbe06a9 AS runtime
 
 ARG OPENRATH_VERSION=0+unknown
 ARG OPENRATH_REVISION=unknown
@@ -28,6 +28,11 @@ ENV PATH="/opt/venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
     OPENRATH_HOST=0.0.0.0 \
     OPENRATH_PORT=8000
+# Debian ships security fixes faster than the base image is rebuilt, and the
+# image scan fails on any HIGH or CRITICAL finding that has a fix.
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*
 RUN groupadd --system --gid 10001 openrath \
     && useradd --system --uid 10001 --gid openrath --home /app openrath
 WORKDIR /app
