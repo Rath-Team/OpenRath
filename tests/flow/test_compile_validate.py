@@ -21,7 +21,7 @@ from rath.session.session import Session
 @pytest.fixture(autouse=True)
 def _home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
     monkeypatch.setenv("OPENRATH_HOME", str(tmp_path / "home"))
-    for v in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY"):
+    for v in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "ATLASCLOUD_API_KEY"):
         monkeypatch.delenv(v, raising=False)
     yield
 
@@ -43,6 +43,13 @@ def test_validate_flags_missing_credentials() -> None:
     wf = _One(Provider(provider_kind="openai", model="m"))
     problems = wf.compile().validate()
     assert any("credential" in p.lower() or "api" in p.lower() for p in problems)
+
+
+def test_validate_accepts_atlascloud_env_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("ATLASCLOUD_API_KEY", "ak-test")
+    wf = _One(Provider(provider_kind="atlascloud", model="qwen/qwen3.5-flash"))
+    problems = wf.compile().validate()
+    assert problems == []
 
 
 def test_validate_flags_unknown_provider_kind() -> None:

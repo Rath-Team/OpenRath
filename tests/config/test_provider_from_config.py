@@ -60,6 +60,21 @@ def test_default_provider_used_when_name_omitted(tmp_path: Path) -> None:
     assert p.api_key == "sk-ant-default"
 
 
+def test_atlascloud_provider_round_trips_into_provider(tmp_path: Path) -> None:
+    store = _build_store_with(
+        tmp_path,
+        atlas=LLMProviderConfig(
+            provider_kind="atlascloud",
+            model="deepseek-ai/deepseek-v4-pro",
+            api_key="ak-from-config",
+        ),
+    )
+    p = Provider.from_config("atlas", store=store)
+    assert p.provider_kind == "atlascloud"
+    assert p.model == "deepseek-ai/deepseek-v4-pro"
+    assert p.api_key == "ak-from-config"
+
+
 def test_explicit_kwargs_override_config_fields(tmp_path: Path) -> None:
     store = _build_store_with(
         tmp_path,

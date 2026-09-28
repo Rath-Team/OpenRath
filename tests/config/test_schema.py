@@ -104,11 +104,13 @@ def test_llm_provider_rejects_unknown_provider_kind() -> None:
         LLMProviderConfig(provider_kind="bogus")  # type: ignore[arg-type]
 
 
-def test_llm_provider_accepts_openai_and_anthropic() -> None:
+def test_llm_provider_accepts_builtin_provider_kinds() -> None:
     a = LLMProviderConfig(provider_kind="openai", model="gpt-5")
     b = LLMProviderConfig(provider_kind="anthropic", model="claude-opus-4-7")
+    c = LLMProviderConfig(provider_kind="atlascloud", model="qwen/qwen3.5-flash")
     assert a.provider_kind == "openai"
     assert b.provider_kind == "anthropic"
+    assert c.provider_kind == "atlascloud"
 
 
 def test_extra_allow_round_trips_unknown_keys() -> None:
