@@ -10,12 +10,21 @@ export OPENSANDBOX_INSECURE_SERVER="${OPENSANDBOX_INSECURE_SERVER:-YES}"
 
 echo "Warming up OpenSandbox (create, code.run probe, close one sandbox)..."
 uv run python -c "
-from rath.backend import BackendToolCodeRun, get
+import sys
+
+from rath.backend import BackendToolCodeRun, ToolExecutionFailure, get
 
 backend = get('opensandbox')
 sandbox = backend.open()
 try:
     result = sandbox.dispatch(BackendToolCodeRun(code=\"print('warm')\"))
+    if isinstance(result, ToolExecutionFailure):
+        print(
+            f'warm-up failed: {sandbox.handle} kind={result.kind!r} '
+            f'message={result.message!r} detail={result.detail!r}',
+            file=sys.stderr,
+        )
+        sys.exit(1)
     print(f'warm-up ok: {sandbox.handle} code_error={result.error!r}')
 finally:
     backend.close(sandbox)
